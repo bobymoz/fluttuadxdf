@@ -16,7 +16,7 @@ dependencies:
   flutter_inappwebview: ^6.0.0
   # Visual Profissional
   google_fonts: ^6.1.0
-  carousel_slider: ^4.2.1   # Para o Carrossel
+  carousel_slider: ^5.0.0
   shimmer: ^3.0.0           # Efeito de carregamento (esqueleto)
   # Dados Locais (Histórico)
   shared_preferences: ^2.2.2
