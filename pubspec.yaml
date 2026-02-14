@@ -1,5 +1,5 @@
-name: jinoca_stream
-description: O melhor app de streaming.
+name: cdcine
+description: Streaming CDCINE.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,14 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Conexão com a Internet
   http: ^1.1.0
-  # Player de Vídeo (Navegador Interno)
-  webview_flutter: ^4.4.2
-  # Fontes Bonitas
+  # ESSA É A NOVA BIBLIOTECA PODEROSA
+  flutter_inappwebview: ^6.0.0
   google_fonts: ^6.1.0
-  # Imagens com Cache (Carrega rápido)
   cached_network_image: ^3.3.0
+  permission_handler: ^11.0.1 # Para garantir permissões
 
 flutter:
   uses-material-design: true
