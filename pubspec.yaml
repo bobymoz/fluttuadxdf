@@ -16,10 +16,28 @@ dependencies:
   flutter_inappwebview: ^6.0.0
   # Visual Profissional
   google_fonts: ^6.1.0
-  carousel_slider: ^5.0.0
-  shimmer: ^3.0.0           # Efeito de carregamento (esqueleto)
+  carousel_slider: ^5.0.0   # Versão corrigida para evitar erros
+  shimmer: ^3.0.0           # Efeito de carregamento
   # Dados Locais (Histórico)
   shared_preferences: ^2.2.2
 
+# --- CONFIGURAÇÃO DO ÍCONE (NOVA PARTE) ---
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Ferramenta para criar os ícones automaticamente
+  flutter_launcher_icons: ^0.13.1
+
 flutter:
   uses-material-design: true
+  # Garante que o Flutter veja a pasta assets onde está o ícone
+  assets:
+    - assets/
+
+# --- REGRAS DO ÍCONE ---
+# Certifique-se de ter criado a pasta 'assets' e colocado a imagem 'icon.png' lá
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon.png"
+  min_sdk_android: 21
