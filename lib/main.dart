@@ -1,10 +1,11 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// SUA CHAVE
+// SUA CHAVE TMDB
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
 
 void main() {
@@ -23,41 +24,6 @@ class CDcineApp extends StatelessWidget {
       ),
       home: const HomeScreen(),
     );
-  }
-}
-
-// --- O ENTREGADOR (ELE BUSCA O LINK LIMPO) ---
-class Entregador {
-  // Essa função vai na página bloqueada e rouba o link certo
-  static Future<String> buscarLinkLimpo(int id, String tipo) async {
-    String urlInicial = "https://superflixapi.one/$tipo/$id";
-    
-    try {
-      // 1. O Entregador bate na porta (baixa o HTML da página)
-      final response = await http.get(Uri.parse(urlInicial));
-      
-      if (response.statusCode == 200) {
-        String html = response.body;
-
-        // 2. O Entregador procura onde está escrito "src=" no HTML
-        // Isso pega o link que estava dentro da caixinha do seu print
-        RegExp exp = RegExp(r'src="([^"]+)"'); 
-        Match? match = exp.firstMatch(html);
-
-        if (match != null) {
-          String linkAchado = match.group(1)!;
-          // Limpa barras invertidas se houver
-          linkAchado = linkAchado.replaceAll('\\', '');
-          debugPrint("Entregador achou: $linkAchado");
-          return linkAchado;
-        }
-      }
-    } catch (e) {
-      debugPrint("Entregador falhou: $e");
-    }
-    
-    // Se não achar nada, retorna o link original mesmo
-    return urlInicial;
   }
 }
 
@@ -81,24 +47,20 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final response = await http.get(Uri.parse(
           'https://api.themoviedb.org/3/movie/popular?api_key=$tmdbApiKey&language=pt-BR&page=1'));
-      
       if (response.statusCode == 200) {
         setState(() {
           movies = json.decode(response.body)['results'];
           loading = false;
         });
       }
-    } catch (e) {
-      debugPrint("Erro: $e");
-    }
+    } catch (e) { debugPrint("Erro: $e"); }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("CDCINE", 
-          style: GoogleFonts.bebasNeue(color: Colors.red, fontSize: 35, letterSpacing: 2)),
+        title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: Colors.red, fontSize: 35)),
         centerTitle: true,
         backgroundColor: Colors.black,
       ),
@@ -107,31 +69,20 @@ class _HomeScreenState extends State<HomeScreen> {
         : GridView.builder(
             padding: const EdgeInsets.all(10),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3, 
-              childAspectRatio: 0.7, 
-              mainAxisSpacing: 10, 
-              crossAxisSpacing: 10
-            ),
+              crossAxisCount: 3, childAspectRatio: 0.7, mainAxisSpacing: 10, crossAxisSpacing: 10),
             itemCount: movies.length,
             itemBuilder: (context, i) {
               final m = movies[i];
-              final poster = "https://image.tmdb.org/t/p/w342${m['poster_path']}";
-              
               return GestureDetector(
                 onTap: () {
-                  // Manda o entregador trabalhar antes de abrir a tela
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (c) => LoadingScreen(id: m['id'], title: m['title']))
-                  );
+                  // Abre a tela que tem o "Navegador Fantasma"
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (c) => ScraperScreen(id: m['id'], title: m['title'], type: 'filme')
+                  ));
                 },
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    poster,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(color: Colors.grey[900], child: const Icon(Icons.movie)),
-                  ),
+                  child: Image.network("https://image.tmdb.org/t/p/w342${m['poster_path']}", fit: BoxFit.cover),
                 ),
               );
             },
@@ -140,51 +91,117 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- TELA DE CARREGAMENTO (ENQUANTO O ENTREGADOR TRABALHA) ---
-class LoadingScreen extends StatefulWidget {
+// --- TELA DE RASPAGEM (O NAVEGADOR FANTASMA) ---
+class ScraperScreen extends StatefulWidget {
   final int id;
   final String title;
-  const LoadingScreen({super.key, required this.id, required this.title});
+  final String type; // 'filme' ou 'serie'
+  
+  const ScraperScreen({super.key, required this.id, required this.title, required this.type});
 
   @override
-  State<LoadingScreen> createState() => _LoadingScreenState();
+  State<ScraperScreen> createState() => _ScraperScreenState();
 }
 
-class _LoadingScreenState extends State<LoadingScreen> {
+class _ScraperScreenState extends State<ScraperScreen> {
+  late final WebViewController _hiddenController;
+  String status = "Desbloqueando conteúdo...";
+  bool linkFound = false;
+  Timer? _checkTimer;
+
   @override
   void initState() {
     super.initState();
-    prepararEntrega();
+    iniciarNavegadorFantasma();
   }
 
-  void prepararEntrega() async {
-    // Chama o entregador
-    String urlFinal = await Entregador.buscarLinkLimpo(widget.id, 'filme');
-    
-    if (mounted) {
-      // Quando o entregador voltar com o link, abre o Player
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PlayerScreen(url: urlFinal, title: widget.title),
-        ),
-      );
-    }
+  @override
+  void dispose() {
+    _checkTimer?.cancel();
+    super.dispose();
+  }
+
+  void iniciarNavegadorFantasma() {
+    // URL que vamos acessar "escondido"
+    String targetUrl = "https://superflixapi.one/${widget.type}/${widget.id}";
+
+    _hiddenController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0")
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (url) {
+          // Quando a página termina de carregar, começamos a procurar o link
+          iniciarBusca();
+        },
+      ))
+      ..loadRequest(Uri.parse(targetUrl));
+  }
+
+  void iniciarBusca() {
+    // A cada 1 segundo, perguntamos ao navegador invisível se ele já achou o iframe
+    _checkTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (linkFound) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        // INJEÇÃO DE JAVASCRIPT: Procura o link dentro da página carregada
+        final result = await _hiddenController.runJavaScriptReturningResult(
+          "(function() { var ifr = document.querySelector('iframe'); return ifr ? ifr.src : ''; })();"
+        );
+        
+        String linkLimpo = result.toString().replaceAll('"', '');
+
+        // Verifica se achou um link válido (que não seja vazio ou a própria página)
+        if (linkLimpo.isNotEmpty && linkLimpo.startsWith('http') && !linkLimpo.contains('superflixapi')) {
+          timer.cancel();
+          setState(() { linkFound = true; status = "Filme encontrado!"; });
+          
+          // Sucesso! Vai para o Player Real
+          if (mounted) {
+            Navigator.pushReplacement(context, MaterialPageRoute(
+              builder: (c) => PlayerScreen(url: linkLimpo, title: widget.title)
+            ));
+          }
+        }
+      } catch (e) {
+        // A página ainda pode estar carregando ou redirecionando
+        print("Ainda procurando...");
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Colors.black,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(color: Colors.red),
-            SizedBox(height: 20),
-            Text("O Entregador está buscando seu filme...", style: TextStyle(color: Colors.white)),
-          ],
-        ),
+      body: Stack(
+        children: [
+          // 1. O CONTEÚDO VISÍVEL (LOADING)
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(color: Colors.red),
+                const SizedBox(height: 20),
+                Text(status, style: const TextStyle(color: Colors.white)),
+                const SizedBox(height: 10),
+                const Text("Bypassing protection...", style: TextStyle(color: Colors.grey, fontSize: 10)),
+              ],
+            ),
+          ),
+          
+          // 2. O NAVEGADOR INVISÍVEL (OFFSTAGE)
+          // Ele existe, carrega o site, passa pelo Javascript, mas o usuário não vê.
+          Offstage(
+            offstage: true, // TRUE = Escondido
+            child: SizedBox(
+              width: 100, height: 100, // Tamanho qualquer, não importa
+              child: WebViewWidget(controller: _hiddenController),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -205,16 +222,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
-      ..setUserAgent("Mozilla/5.0 (Linux; Android 10; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0")
       ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (req) {
-          // Permite carregar o vídeo
-          return NavigationDecision.navigate;
-        },
+        onNavigationRequest: (req) => NavigationDecision.navigate,
       ))
       ..loadRequest(Uri.parse(widget.url));
   }
@@ -222,13 +234,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title, style: const TextStyle(fontSize: 14)),
-        backgroundColor: Colors.black,
-        elevation: 0,
-      ),
       backgroundColor: Colors.black, 
-      body: WebViewWidget(controller: _controller)
+      body: SafeArea(
+        child: Stack(
+          children: [
+            WebViewWidget(controller: _controller),
+            Positioned(top:10, left:10, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)))
+          ],
+        )
+      )
     );
   }
 }
