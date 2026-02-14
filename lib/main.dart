@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -265,7 +266,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
             child: Text("Mais Populares", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           ),
 
-          // --- GRADE DE CONTEÚDO (CAPA + NOME) ---
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -382,7 +382,7 @@ class _SearchResultsState extends State<SearchResults> {
   }
 }
 
-// --- COMPONENTE DO POSTER (CAPA + NOME) ---
+// --- POSTER CARD ---
 class PosterCard extends StatelessWidget {
   final dynamic item;
   final VoidCallback onTap;
@@ -429,7 +429,7 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER (TELA CHEIA, SEM SINOPSE) ---
+// --- PLAYER (SEM SYSTEMCHROME) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -449,6 +449,13 @@ class _SuperPlayerState extends State<SuperPlayer> {
   void initState() {
     super.initState();
     salvarHistorico();
+    // REMOVIDO: SystemChrome.setEnabledSystemUIMode
+  }
+
+  @override
+  void dispose() {
+    // REMOVIDO: SystemChrome.setEnabledSystemUIMode
+    super.dispose();
   }
 
   void salvarHistorico() async {
@@ -486,7 +493,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
       <html>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>body{margin:0;background:#000;overflow:hidden}iframe{width:100%;height:100%;border:none}</style>
+        <style>body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; } iframe { width: 100%; height: 100%; border: none; display: block; } </style>
       </head>
       <body>
         <iframe src="$videoUrl" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
@@ -496,44 +503,44 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // 1. O VÍDEO OCUPA TUDO (FULLSCREEN)
-            InAppWebView(
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                mediaPlaybackRequiresUserGesture: false,
-                useShouldOverrideUrlLoading: true,
-                userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
-              ),
-              onWebViewCreated: (ctrl) {
-                webViewController = ctrl;
-                ctrl.loadData(
-                  data: htmlContent, 
-                  mimeType: "text/html", 
-                  encoding: "utf-8",
-                  baseUrl: WebUri("https://superflixapi.one/")
-                );
-              },
-              shouldOverrideUrlLoading: (ctrl, nav) async {
-                var uri = nav.request.url!;
-                if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
-                return NavigationActionPolicy.CANCEL; // Bloqueia Ads
-              },
+      // AQUI: Stack sem SafeArea e sem Column
+      body: Stack(
+        children: [
+          // 1. O VÍDEO
+          InAppWebView(
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              mediaPlaybackRequiresUserGesture: false,
+              useShouldOverrideUrlLoading: true,
+              userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
             ),
+            onWebViewCreated: (ctrl) {
+              webViewController = ctrl;
+              ctrl.loadData(
+                data: htmlContent, 
+                mimeType: "text/html", 
+                encoding: "utf-8",
+                baseUrl: WebUri("https://superflixapi.one/")
+              );
+            },
+            shouldOverrideUrlLoading: (ctrl, nav) async {
+              var uri = nav.request.url!;
+              if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
+              return NavigationActionPolicy.CANCEL;
+            },
+          ),
 
-            // 2. BOTÃO VOLTAR FLUTUANTE (Discreto no topo)
-            Positioned(
-              top: 15, left: 15,
-              child: FloatingActionButton.small(
-                backgroundColor: Colors.black54,
-                child: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
+          // 2. BOTÃO VOLTAR
+          Positioned(
+            top: 30, left: 15, // Ajustado para não ficar muito colado no topo se tiver notch
+            child: FloatingActionButton.small(
+              backgroundColor: Colors.black45,
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
