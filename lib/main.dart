@@ -30,7 +30,6 @@ class CDcineApp extends StatelessWidget {
           backgroundColor: Color(0xFF121212),
           elevation: 0,
         ),
-        // Transições Profissionais (Zoom/Fade)
         pageTransitionsTheme: const PageTransitionsTheme(
           builders: {
             TargetPlatform.android: ZoomPageTransitionsBuilder(),
@@ -43,10 +42,9 @@ class CDcineApp extends StatelessWidget {
   }
 }
 
-// --- TELA PRINCIPAL COM ABAS ---
+// --- TELA PRINCIPAL ---
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
@@ -60,7 +58,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    // 4 Categorias: Filmes, Séries, Animes, Doramas
     _tabController = TabController(length: 4, vsync: this);
   }
 
@@ -89,17 +86,16 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
             )
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(130), // Altura para Busca + Tabs
+          preferredSize: const Size.fromHeight(130),
           child: Column(
             children: [
-              // --- BARRA DE PESQUISA ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: TextField(
                   controller: _searchController,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: "Pesquisar filmes, animes...",
+                    hintText: "Pesquisar...",
                     hintStyle: TextStyle(color: Colors.grey[600]),
                     prefixIcon: const Icon(Icons.search, color: Colors.grey),
                     filled: true,
@@ -115,8 +111,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   },
                 ),
               ),
-              
-              // --- CATEGORIAS (ABAS) ---
               TabBar(
                 controller: _tabController,
                 indicatorColor: const Color(0xFFE50914),
@@ -140,19 +134,19 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         : TabBarView(
             controller: _tabController,
             children: const [
-              ContentPage(category: 'movie'),     // Filmes
-              ContentPage(category: 'tv'),        // Séries
-              ContentPage(category: 'anime'),     // Animes
-              ContentPage(category: 'dorama'),    // Doramas
+              ContentPage(category: 'movie'),
+              ContentPage(category: 'tv'),
+              ContentPage(category: 'anime'),
+              ContentPage(category: 'dorama'),
             ],
           ),
     );
   }
 }
 
-// --- PÁGINA DE CONTEÚDO (CARROSSEL + GRADE) ---
+// --- PÁGINA DE CONTEÚDO ---
 class ContentPage extends StatefulWidget {
-  final String category; // movie, tv, anime, dorama
+  final String category;
   const ContentPage({super.key, required this.category});
 
   @override
@@ -165,7 +159,7 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
   bool loading = true;
 
   @override
-  bool get wantKeepAlive => true; // Mantém a aba carregada ao trocar
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -177,7 +171,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
     String urlGrid = "";
     String urlTrending = "";
 
-    // Lógica inteligente para separar o conteúdo no TMDB
     if (widget.category == 'movie') {
       urlGrid = "https://api.themoviedb.org/3/movie/popular?api_key=$tmdbApiKey&language=pt-BR&page=1";
       urlTrending = "https://api.themoviedb.org/3/trending/movie/day?api_key=$tmdbApiKey&language=pt-BR";
@@ -185,11 +178,9 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
       urlGrid = "https://api.themoviedb.org/3/tv/popular?api_key=$tmdbApiKey&language=pt-BR&page=1";
       urlTrending = "https://api.themoviedb.org/3/trending/tv/day?api_key=$tmdbApiKey&language=pt-BR";
     } else if (widget.category == 'anime') {
-      // Filtro para Animes: Gênero Animação (16) + Lingua Japonesa (ja)
       urlGrid = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=16&with_original_language=ja&sort_by=popularity.desc";
       urlTrending = urlGrid;
     } else if (widget.category == 'dorama') {
-      // Filtro para Doramas: Lingua Coreana (ko)
       urlGrid = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_original_language=ko&sort_by=popularity.desc";
       urlTrending = urlGrid;
     }
@@ -202,7 +193,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
         setState(() {
           contentList = json.decode(resGrid.body)['results'];
           trendingList = json.decode(resTrend.body)['results'];
-          // Remove itens sem imagem
           trendingList.removeWhere((item) => item['backdrop_path'] == null);
           loading = false;
         });
@@ -214,7 +204,7 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Necessário para o KeepAlive
+    super.build(context);
     
     if (loading) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
@@ -224,7 +214,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- CARROSSEL AUTOMÁTICO ---
           if (trendingList.isNotEmpty)
             CarouselSlider(
               options: CarouselOptions(
@@ -276,14 +265,14 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
             child: Text("Mais Populares", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
           ),
 
-          // --- GRADE DE CONTEÚDO ---
+          // --- GRADE DE CONTEÚDO (CAPA + NOME) ---
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 10),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
-              childAspectRatio: 0.65,
+              childAspectRatio: 0.55, // Aumentei a altura para caber o texto
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -303,8 +292,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
   }
 
   void openPlayer(BuildContext context, dynamic item, String category) {
-    // Define se é filme ou série para a SuperFlix
-    // Anime e Dorama são tratados como 'serie' na API da SuperFlix
     String type = (category == 'movie') ? 'filme' : 'serie';
     
     Navigator.push(
@@ -356,7 +343,6 @@ class _SearchResultsState extends State<SearchResults> {
       if (res.statusCode == 200) {
         setState(() {
           results = json.decode(res.body)['results'];
-          // Remove pessoas, só queremos filmes/series
           results.removeWhere((item) => item['media_type'] == 'person' || item['poster_path'] == null);
           loading = false;
         });
@@ -374,7 +360,11 @@ class _SearchResultsState extends State<SearchResults> {
     return GridView.builder(
       padding: const EdgeInsets.all(10),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, childAspectRatio: 0.65, crossAxisSpacing: 10, mainAxisSpacing: 10),
+        crossAxisCount: 3, 
+        childAspectRatio: 0.55, // Aumentei altura para caber texto
+        crossAxisSpacing: 10, 
+        mainAxisSpacing: 10
+      ),
       itemCount: results.length,
       itemBuilder: (context, index) {
         final item = results[index];
@@ -392,7 +382,7 @@ class _SearchResultsState extends State<SearchResults> {
   }
 }
 
-// --- COMPONENTE DO POSTER (REUTILIZÁVEL) ---
+// --- COMPONENTE DO POSTER (CAPA + NOME) ---
 class PosterCard extends StatelessWidget {
   final dynamic item;
   final VoidCallback onTap;
@@ -403,24 +393,43 @@ class PosterCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: "https://image.tmdb.org/t/p/w342${item['poster_path']}",
-          fit: BoxFit.cover,
-          placeholder: (c, u) => Shimmer.fromColors(
-            baseColor: Colors.grey[850]!,
-            highlightColor: Colors.grey[800]!,
-            child: Container(color: Colors.black),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: "https://image.tmdb.org/t/p/w342${item['poster_path']}",
+                fit: BoxFit.cover,
+                width: double.infinity,
+                placeholder: (c, u) => Shimmer.fromColors(
+                  baseColor: Colors.grey[850]!,
+                  highlightColor: Colors.grey[800]!,
+                  child: Container(color: Colors.black),
+                ),
+                errorWidget: (c, u, e) => Container(color: Colors.grey[900], child: const Icon(Icons.error)),
+              ),
+            ),
           ),
-          errorWidget: (c, u, e) => Container(color: Colors.grey[900], child: const Icon(Icons.error)),
-        ),
+          const SizedBox(height: 5),
+          Text(
+            item['title'] ?? item['name'] ?? "Sem título",
+            maxLines: 2, // Permite até 2 linhas de texto
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w500
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// --- TELA DO PLAYER E DOWNLOAD ---
+// --- PLAYER (SEM DOWNLOAD) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -442,12 +451,10 @@ class _SuperPlayerState extends State<SuperPlayer> {
     salvarHistorico();
   }
 
-  // Salva no SharedPreferences para a tela de Histórico
   void salvarHistorico() async {
     final prefs = await SharedPreferences.getInstance();
     List<String> history = prefs.getStringList('history') ?? [];
     
-    // Cria um JSON do item
     Map<String, dynamic> item = {
       'id': widget.id,
       'title': widget.title,
@@ -456,11 +463,9 @@ class _SuperPlayerState extends State<SuperPlayer> {
       'date': DateTime.now().toIso8601String(),
     };
 
-    // Remove duplicatas (se já assistiu antes, sobe pro topo)
     history.removeWhere((element) => json.decode(element)['id'] == widget.id);
-    history.insert(0, json.encode(item)); // Adiciona no início
+    history.insert(0, json.encode(item));
 
-    // Limita a 50 itens
     if (history.length > 50) history = history.sublist(0, 50);
 
     await prefs.setStringList('history', history);
@@ -468,9 +473,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    // URL baseada no tipo
-    // OBS: Para séries/animes, estamos mandando para a Temporada 1, Ep 1 por padrão
-    // A interface da SuperFlix dentro do iframe permite trocar eps
+    // URL DIRETA
     String videoUrl = "";
     if (widget.type == 'filme') {
       videoUrl = "https://superflixapi.one/filme/${widget.id}";
@@ -512,7 +515,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
                     data: htmlContent, 
                     mimeType: "text/html", 
                     encoding: "utf-8",
-                    baseUrl: WebUri("https://superflixapi.one/") // Truque do Iframe
+                    baseUrl: WebUri("https://superflixapi.one/")
                   );
                 },
                 shouldOverrideUrlLoading: (ctrl, nav) async {
@@ -523,7 +526,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
               ),
             ),
 
-            // INFORMAÇÕES E BOTÕES
+            // INFORMAÇÕES (SEM BOTÃO DE DOWNLOAD)
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -541,25 +544,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    
-                    // BOTÃO DE DOWNLOAD (VISUAL)
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey[800],
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.download_rounded, color: Colors.white),
-                        label: const Text("Baixar Episódio/Filme", style: TextStyle(color: Colors.white)),
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Download indisponível no momento (Servidor Protegido)."))
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 20),
                     const Text("Sinopse", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 5),
                     const Text(
@@ -573,6 +557,13 @@ class _SuperPlayerState extends State<SuperPlayer> {
           ],
         ),
       ),
+      // Botão flutuante para voltar (fica em cima do vídeo se quiser, ou use o back do celular)
+      floatingActionButton: FloatingActionButton.small(
+        backgroundColor: Colors.black54,
+        child: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startTop,
     );
   }
 }
