@@ -272,7 +272,7 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
             padding: const EdgeInsets.symmetric(horizontal: 10),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
-              childAspectRatio: 0.55, // Aumentei a altura para caber o texto
+              childAspectRatio: 0.55, 
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -361,7 +361,7 @@ class _SearchResultsState extends State<SearchResults> {
       padding: const EdgeInsets.all(10),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3, 
-        childAspectRatio: 0.55, // Aumentei altura para caber texto
+        childAspectRatio: 0.55,
         crossAxisSpacing: 10, 
         mainAxisSpacing: 10
       ),
@@ -415,7 +415,7 @@ class PosterCard extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             item['title'] ?? item['name'] ?? "Sem título",
-            maxLines: 2, // Permite até 2 linhas de texto
+            maxLines: 2, 
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white70,
@@ -429,11 +429,11 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER (SEM DOWNLOAD) ---
+// --- PLAYER (TELA CHEIA, SEM SINOPSE) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
-  final String type; // filme ou serie
+  final String type; 
   final String? posterPath;
 
   const SuperPlayer({super.key, required this.id, required this.title, required this.type, this.posterPath});
@@ -497,73 +497,44 @@ class _SuperPlayerState extends State<SuperPlayer> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            // ÁREA DO VÍDEO (16:9)
-            AspectRatio(
-              aspectRatio: 16/9,
-              child: InAppWebView(
-                initialSettings: InAppWebViewSettings(
-                  javaScriptEnabled: true,
-                  mediaPlaybackRequiresUserGesture: false,
-                  useShouldOverrideUrlLoading: true,
-                  userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
-                ),
-                onWebViewCreated: (ctrl) {
-                  webViewController = ctrl;
-                  ctrl.loadData(
-                    data: htmlContent, 
-                    mimeType: "text/html", 
-                    encoding: "utf-8",
-                    baseUrl: WebUri("https://superflixapi.one/")
-                  );
-                },
-                shouldOverrideUrlLoading: (ctrl, nav) async {
-                  var uri = nav.request.url!;
-                  if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
-                  return NavigationActionPolicy.CANCEL; // Bloqueia Ads
-                },
+            // 1. O VÍDEO OCUPA TUDO (FULLSCREEN)
+            InAppWebView(
+              initialSettings: InAppWebViewSettings(
+                javaScriptEnabled: true,
+                mediaPlaybackRequiresUserGesture: false,
+                useShouldOverrideUrlLoading: true,
+                userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
               ),
+              onWebViewCreated: (ctrl) {
+                webViewController = ctrl;
+                ctrl.loadData(
+                  data: htmlContent, 
+                  mimeType: "text/html", 
+                  encoding: "utf-8",
+                  baseUrl: WebUri("https://superflixapi.one/")
+                );
+              },
+              shouldOverrideUrlLoading: (ctrl, nav) async {
+                var uri = nav.request.url!;
+                if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
+                return NavigationActionPolicy.CANCEL; // Bloqueia Ads
+              },
             ),
 
-            // INFORMAÇÕES (SEM BOTÃO DE DOWNLOAD)
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                color: const Color(0xFF121212),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Icon(widget.type == 'filme' ? Icons.movie : Icons.tv, color: Colors.grey, size: 16),
-                        const SizedBox(width: 5),
-                        Text(widget.type.toUpperCase(), style: const TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Text("Sinopse", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 5),
-                    const Text(
-                      "Para ver a sinopse completa e mais detalhes, continue assistindo. O player carrega automaticamente a melhor qualidade disponível.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
+            // 2. BOTÃO VOLTAR FLUTUANTE (Discreto no topo)
+            Positioned(
+              top: 15, left: 15,
+              child: FloatingActionButton.small(
+                backgroundColor: Colors.black54,
+                child: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
               ),
-            )
+            ),
           ],
         ),
       ),
-      // Botão flutuante para voltar (fica em cima do vídeo se quiser, ou use o back do celular)
-      floatingActionButton: FloatingActionButton.small(
-        backgroundColor: Colors.black54,
-        child: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.startTop,
     );
   }
 }
