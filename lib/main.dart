@@ -4,19 +4,19 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// SUA CHAVE JÁ INSERIDA AQUI
+// SUA CHAVE TMDB
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
 
 void main() {
-  runApp(const JinocaApp());
+  runApp(const CDcineApp());
 }
 
-class JinocaApp extends StatelessWidget {
-  const JinocaApp({super.key});
+class CDcineApp extends StatelessWidget {
+  const CDcineApp({super.key});
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'JINOCA',
+      title: 'CDCINE',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF000000),
@@ -44,7 +44,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadData() async {
     try {
-      // Busca filmes populares em português usando sua chave
       final response = await http.get(Uri.parse(
           'https://api.themoviedb.org/3/movie/popular?api_key=$tmdbApiKey&language=pt-BR&page=1'));
       
@@ -53,11 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
           movies = json.decode(response.body)['results'];
           loading = false;
         });
-      } else {
-        print("Erro na API: ${response.statusCode}");
       }
     } catch (e) {
-      print("Erro de conexão: $e");
+      debugPrint("Erro: $e");
     }
   }
 
@@ -65,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("JINOCA", 
+        title: Text("CDCINE", 
           style: GoogleFonts.bebasNeue(color: Colors.red, fontSize: 35, letterSpacing: 2)),
         centerTitle: true,
         backgroundColor: Colors.black,
@@ -92,11 +89,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: FadeInImage.assetNetwork(
-                    placeholder: 'assets/loading.gif', // se não tiver, use um Container preto
-                    image: poster,
+                  child: Image.network(
+                    poster,
                     fit: BoxFit.cover,
-                    imageErrorBuilder: (c, e, s) => Container(color: Colors.grey[900], child: const Icon(Icons.movie)),
+                    errorBuilder: (c, e, s) => Container(color: Colors.grey[900], child: const Icon(Icons.movie)),
                   ),
                 ),
               );
@@ -120,25 +116,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Configuração para evitar o bloqueio de "Visualização Externa"
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
+      // Simulando um navegador Chrome real no Android
+      ..setUserAgent("Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          // Bloqueador de Pop-ups
           if (req.url.contains('superflixapi.one')) {
             return NavigationDecision.navigate;
           }
-          return NavigationDecision.prevent;
+          return NavigationDecision.prevent; // Bloqueia propagandas
         },
       ))
-      ..loadRequest(Uri.parse("https://superflixapi.one/filme/${widget.id}"));
+      // Enviando Referer para o servidor aceitar a conexão
+      ..loadRequest(
+        Uri.parse("https://superflixapi.one/filme/${widget.id}"),
+        headers: {
+          'Referer': 'https://superflixapi.one/',
+          'Origin': 'https://superflixapi.one/',
+        },
+      );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title, style: const TextStyle(fontSize: 16))),
+      appBar: AppBar(
+        title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+        backgroundColor: Colors.black,
+      ),
       backgroundColor: Colors.black, 
       body: WebViewWidget(controller: _controller)
     );
