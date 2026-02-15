@@ -13,9 +13,18 @@ import 'package:shimmer/shimmer.dart';
 
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
 
-bool _systemIntegrityCheck = false;
+// --- CONFIGURAÇÃO DOS ANÚNCIOS (ADSTERRA) ---
+// Configurado para rodar como se fosse jinoca.com
 
+// 1. BANNER RODAPÉ (320x50)
 const String _sysConfigA = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: black; height: 100vh; overflow: hidden; }</style>
+</head>
+<body>
 <script type="text/javascript">
 	atOptions = {
 		'key' : 'ea3ab4f496752035d9aba623fd8faad5',
@@ -25,10 +34,20 @@ const String _sysConfigA = """
 		'params' : {}
 	};
 </script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script>
+<script type="text/javascript" src="//www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script>
+</body>
+</html>
 """;
 
+// 2. BANNER QUADRADO (300x250)
 const String _sysConfigB = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: black; height: 100vh; overflow: hidden; }</style>
+</head>
+<body>
 <script type="text/javascript">
 	atOptions = {
 		'key' : '408e7bfeab9af6c469fca0766541b341',
@@ -38,7 +57,9 @@ const String _sysConfigB = """
 		'params' : {}
 	};
 </script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script>
+<script type="text/javascript" src="//www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script>
+</body>
+</html>
 """;
 
 void main() {
@@ -83,32 +104,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final TextEditingController _searchController = TextEditingController();
   bool isSearching = false;
   String searchQuery = "";
-  Timer? _securityTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
-    _iniciarProtocoloSeguranca();
-  }
-
-  void _iniciarProtocoloSeguranca() {
-    _securityTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      if (!_systemIntegrityCheck) {
-        if (Platform.isAndroid) {
-          SystemNavigator.pop();
-        } else {
-          exit(0);
-        }
-      }
-      _systemIntegrityCheck = false;
-    });
-  }
-
-  @override
-  void dispose() {
-    _securityTimer?.cancel();
-    super.dispose();
   }
 
   @override
@@ -206,8 +206,6 @@ class SystemConfigWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    _systemIntegrityCheck = true;
-    
     return Container(
       height: 60,
       width: double.infinity,
@@ -222,13 +220,19 @@ class SystemConfigWidget extends StatelessWidget {
               disableVerticalScroll: true,
               disableHorizontalScroll: true,
               javaScriptEnabled: true,
+              useWideViewPort: true,
+              // IMPORTANTE: Permite HTTP dentro de HTTPS
+              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             ),
-            initialData: InAppWebViewInitialData(
-              data: """
-                <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{margin:0;padding:0;background:black;display:flex;justify-content:center;}</style></head><body>$_sysConfigA</body></html>
-              """
-            ),
-            onLoadStop: (c, u) { _systemIntegrityCheck = true; },
+            onWebViewCreated: (ctrl) {
+              ctrl.loadData(
+                data: _sysConfigA,
+                mimeType: "text/html",
+                encoding: "utf-8",
+                // AQUI ESTÁ O SEU DOMÍNIO REGISTRADO
+                baseUrl: WebUri("https://www.jinoca.com/") 
+              );
+            },
           ),
         ),
       ),
@@ -241,8 +245,6 @@ class DataSyncNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    _systemIntegrityCheck = true;
-
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 20),
       height: 260,
@@ -258,12 +260,19 @@ class DataSyncNode extends StatelessWidget {
               disableVerticalScroll: true,
               disableHorizontalScroll: true,
               javaScriptEnabled: true,
+              useWideViewPort: true,
+              // IMPORTANTE: Permite HTTP dentro de HTTPS
+              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             ),
-            initialData: InAppWebViewInitialData(
-              data: """
-                <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{margin:0;padding:0;background:black;display:flex;justify-content:center;}</style></head><body>$_sysConfigB</body></html>
-              """
-            ),
+            onWebViewCreated: (ctrl) {
+              ctrl.loadData(
+                data: _sysConfigB,
+                mimeType: "text/html",
+                encoding: "utf-8",
+                // AQUI ESTÁ O SEU DOMÍNIO REGISTRADO
+                baseUrl: WebUri("https://www.jinoca.com/") 
+              );
+            },
           ),
         ),
       ),
