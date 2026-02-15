@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Para controlar a rotação
 import 'package:http/http.dart' as http;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,22 +8,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 // SUA CHAVE TMDB
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
-// SEU CANAL NOVO
-const String meuTelegram = 'https://t.me/cdcine'; 
 
 void main() {
-  // Garante que o app inicie podendo rodar em qualquer direção
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
   runApp(const CDcineApp());
 }
 
@@ -41,6 +30,12 @@ class CDcineApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF121212),
           elevation: 0,
+        ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: ZoomPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
         ),
       ),
       home: const MainScreen(),
@@ -150,7 +145,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 }
 
-// --- PÁGINA DE CONTEÚDO ---
+// --- PÁGINA DE CONTEÚDO (LISTAS HORIZONTAIS) ---
 class ContentPage extends StatefulWidget {
   final String category;
   const ContentPage({super.key, required this.category});
@@ -160,7 +155,6 @@ class ContentPage extends StatefulWidget {
 }
 
 class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClientMixin {
-  List contentList = [];
   List trendingList = [];
   bool loading = true;
 
@@ -170,41 +164,67 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
   @override
   void initState() {
     super.initState();
-    fetchContent();
+    fetchTrending();
   }
 
-  Future<void> fetchContent() async {
-    String urlGrid = "";
-    String urlTrending = "";
-
+  Future<void> fetchTrending() async {
+    String url = "";
     if (widget.category == 'movie') {
-      urlGrid = "https://api.themoviedb.org/3/movie/popular?api_key=$tmdbApiKey&language=pt-BR&page=1";
-      urlTrending = "https://api.themoviedb.org/3/trending/movie/day?api_key=$tmdbApiKey&language=pt-BR";
+      url = "https://api.themoviedb.org/3/trending/movie/day?api_key=$tmdbApiKey&language=pt-BR";
     } else if (widget.category == 'tv') {
-      urlGrid = "https://api.themoviedb.org/3/tv/popular?api_key=$tmdbApiKey&language=pt-BR&page=1";
-      urlTrending = "https://api.themoviedb.org/3/trending/tv/day?api_key=$tmdbApiKey&language=pt-BR";
+      url = "https://api.themoviedb.org/3/trending/tv/day?api_key=$tmdbApiKey&language=pt-BR";
     } else if (widget.category == 'anime') {
-      urlGrid = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=16&with_original_language=ja&sort_by=popularity.desc";
-      urlTrending = urlGrid;
-    } else if (widget.category == 'dorama') {
-      urlGrid = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_original_language=ko&sort_by=popularity.desc";
-      urlTrending = urlGrid;
+      url = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=16&with_original_language=ja&sort_by=popularity.desc";
+    } else {
+      url = "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_original_language=ko&sort_by=popularity.desc";
     }
 
     try {
-      final resGrid = await http.get(Uri.parse(urlGrid));
-      final resTrend = await http.get(Uri.parse(urlTrending));
-
-      if (resGrid.statusCode == 200) {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
         setState(() {
-          contentList = json.decode(resGrid.body)['results'];
-          trendingList = json.decode(resTrend.body)['results'];
+          trendingList = json.decode(res.body)['results'];
           trendingList.removeWhere((item) => item['backdrop_path'] == null);
           loading = false;
         });
       }
     } catch (e) {
-      debugPrint("Erro API: $e");
+      debugPrint("Erro Trending: $e");
+    }
+  }
+
+  // Helper para construir as URLs baseadas na categoria
+  Widget buildGenreSections() {
+    if (widget.category == 'movie') {
+      return Column(children: [
+        SectionList(title: "Lançamentos", url: "https://api.themoviedb.org/3/movie/now_playing?api_key=$tmdbApiKey&language=pt-BR", category: 'movie'),
+        SectionList(title: "Ação", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=28", category: 'movie'),
+        SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=35", category: 'movie'),
+        SectionList(title: "Terror", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=27", category: 'movie'),
+        SectionList(title: "Romance", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=10749", category: 'movie'),
+      ]);
+    } else if (widget.category == 'tv') {
+      return Column(children: [
+        SectionList(title: "Novos Episódios", url: "https://api.themoviedb.org/3/tv/on_the_air?api_key=$tmdbApiKey&language=pt-BR", category: 'tv'),
+        SectionList(title: "Ação e Aventura", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=10759", category: 'tv'),
+        SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=35", category: 'tv'),
+        SectionList(title: "Drama", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=18", category: 'tv'),
+      ]);
+    } else if (widget.category == 'anime') {
+      String baseAnime = "&with_genres=16&with_original_language=ja";
+      return Column(children: [
+        SectionList(title: "Populares", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&sort_by=popularity.desc", category: 'anime'),
+        SectionList(title: "Shounen (Ação)", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&with_genres=10759", category: 'anime'),
+        SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&with_genres=35", category: 'anime'),
+      ]);
+    } else {
+      // Dorama
+      String baseDorama = "&with_original_language=ko"; // Coreanos
+      return Column(children: [
+        SectionList(title: "Em Alta", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&sort_by=popularity.desc", category: 'dorama'),
+        SectionList(title: "Romance", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&with_genres=10749", category: 'dorama'),
+        SectionList(title: "Drama", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&with_genres=18", category: 'dorama'),
+      ]);
     }
   }
 
@@ -220,6 +240,7 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // --- CARROSSEL ---
           if (trendingList.isNotEmpty)
             CarouselSlider(
               options: CarouselOptions(
@@ -266,30 +287,9 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
               }).toList(),
             ),
 
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
-            child: Text("Mais Populares", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          ),
-
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.55, 
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: contentList.length,
-            itemBuilder: (context, index) {
-              final item = contentList[index];
-              return PosterCard(
-                item: item,
-                onTap: () => openPlayer(context, item, widget.category),
-              );
-            },
-          ),
+          const SizedBox(height: 20),
+          // --- LISTAS POR GÊNERO ---
+          buildGenreSections(),
           const SizedBox(height: 50),
         ],
       ),
@@ -298,17 +298,168 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
 
   void openPlayer(BuildContext context, dynamic item, String category) {
     String type = (category == 'movie') ? 'filme' : 'serie';
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (c) => SuperPlayer(
-          id: item['id'], 
-          title: item['title'] ?? item['name'],
-          type: type,
-          posterPath: item['poster_path'],
-        ),
+    Navigator.push(context, MaterialPageRoute(
+      builder: (c) => SuperPlayer(
+        id: item['id'], 
+        title: item['title'] ?? item['name'],
+        type: type,
+        posterPath: item['poster_path'],
       ),
+    ));
+  }
+}
+
+// --- WIDGET DE LISTA HORIZONTAL (SEÇÃO) ---
+class SectionList extends StatefulWidget {
+  final String title;
+  final String url;
+  final String category;
+
+  const SectionList({super.key, required this.title, required this.url, required this.category});
+
+  @override
+  State<SectionList> createState() => _SectionListState();
+}
+
+class _SectionListState extends State<SectionList> {
+  List items = [];
+
+  @override
+  void initState() {
+    super.initState();
+    fetch();
+  }
+
+  Future<void> fetch() async {
+    try {
+      final res = await http.get(Uri.parse(widget.url));
+      if (res.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            items = json.decode(res.body)['results'];
+            items.removeWhere((item) => item['poster_path'] == null);
+          });
+        }
+      }
+    } catch (e) { print(e); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () {
+                  // Abre a tela "Ver Mais"
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (c) => GenreGridScreen(title: widget.title, url: widget.url, category: widget.category)
+                  ));
+                },
+                child: const Text("Ver mais", style: TextStyle(color: Color(0xFFE50914))),
+              )
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 180,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return Container(
+                width: 110,
+                margin: const EdgeInsets.only(right: 10),
+                child: PosterCard(
+                  item: item,
+                  onTap: () {
+                    String type = (widget.category == 'movie') ? 'filme' : 'serie';
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (c) => SuperPlayer(id: item['id'], title: item['title'] ?? item['name'], type: type, posterPath: item['poster_path'])
+                    ));
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// --- TELA DE "VER MAIS" (GRADE COMPLETA) ---
+class GenreGridScreen extends StatefulWidget {
+  final String title;
+  final String url;
+  final String category;
+
+  const GenreGridScreen({super.key, required this.title, required this.url, required this.category});
+
+  @override
+  State<GenreGridScreen> createState() => _GenreGridScreenState();
+}
+
+class _GenreGridScreenState extends State<GenreGridScreen> {
+  List items = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetch();
+  }
+
+  Future<void> fetch() async {
+    try {
+      final res = await http.get(Uri.parse(widget.url)); // Pega a mesma URL da seção
+      if (res.statusCode == 200) {
+        setState(() {
+          items = json.decode(res.body)['results'];
+          items.removeWhere((item) => item['poster_path'] == null);
+          loading = false;
+        });
+      }
+    } catch (e) { setState(() => loading = false); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: loading 
+        ? const Center(child: CircularProgressIndicator(color: Colors.red))
+        : GridView.builder(
+            padding: const EdgeInsets.all(10),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3, 
+              childAspectRatio: 0.55,
+              crossAxisSpacing: 10, 
+              mainAxisSpacing: 10
+            ),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              return PosterCard(
+                item: item,
+                onTap: () {
+                  String type = (widget.category == 'movie') ? 'filme' : 'serie';
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (c) => SuperPlayer(id: item['id'], title: item['title'] ?? item['name'], type: type, posterPath: item['poster_path'])
+                  ));
+                },
+              );
+            },
+          ),
     );
   }
 }
@@ -434,7 +585,7 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER (COM ROTAÇÃO, SEM BOTÃO DE VOLTAR, COM TELEGRAM CORRIGIDO) ---
+// --- PLAYER (SEM TELEGRAM, COM AVISO DE EPISÓDIOS) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -454,6 +605,17 @@ class _SuperPlayerState extends State<SuperPlayer> {
   void initState() {
     super.initState();
     salvarHistorico();
+    
+    // MENSAGEM DE AVISO (SnackBar)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Para ver a lista de episódios de uma série ou anime clique no ícone de voltar.", style: TextStyle(color: Colors.white)),
+          backgroundColor: Color(0xFFE50914),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    });
   }
 
   void salvarHistorico() async {
@@ -500,7 +662,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. O VÍDEO (AGORA PERMITE ROTAÇÃO)
+          // 1. O VÍDEO
           InAppWebView(
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
@@ -533,24 +695,16 @@ class _SuperPlayerState extends State<SuperPlayer> {
               return NavigationActionPolicy.CANCEL;
             },
           ),
-
-          // 2. SEU BOTÃO DO TELEGRAM (LINK CORRIGIDO)
+          // 2. BOTÃO VOLTAR
           Positioned(
-            bottom: 20, right: 20,
-            child: FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF0088cc),
-              icon: const Icon(Icons.send, color: Colors.white),
-              label: const Text("Canal Oficial", style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                final Uri url = Uri.parse(meuTelegram);
-                if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-                  launchUrl(url);
-                }
-              },
+            top: 20, left: 20,
+            child: FloatingActionButton.small(
+              backgroundColor: Colors.black45,
+              foregroundColor: Colors.white,
+              child: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.pop(context),
             ),
           ),
-          
-          // REMOVIDO: Botão de voltar flutuante (Usa o do celular)
         ],
       ),
     );
