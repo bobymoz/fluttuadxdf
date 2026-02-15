@@ -429,7 +429,7 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER (SEM SYSTEMCHROME) ---
+// --- PLAYER IMERSIVO SEM BOTÃO FLUTUANTE ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -449,13 +449,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
   void initState() {
     super.initState();
     salvarHistorico();
-    // REMOVIDO: SystemChrome.setEnabledSystemUIMode
-  }
-
-  @override
-  void dispose() {
-    // REMOVIDO: SystemChrome.setEnabledSystemUIMode
-    super.dispose();
   }
 
   void salvarHistorico() async {
@@ -503,44 +496,28 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      // AQUI: Stack sem SafeArea e sem Column
-      body: Stack(
-        children: [
-          // 1. O VÍDEO
-          InAppWebView(
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              mediaPlaybackRequiresUserGesture: false,
-              useShouldOverrideUrlLoading: true,
-              userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
-            ),
-            onWebViewCreated: (ctrl) {
-              webViewController = ctrl;
-              ctrl.loadData(
-                data: htmlContent, 
-                mimeType: "text/html", 
-                encoding: "utf-8",
-                baseUrl: WebUri("https://superflixapi.one/")
-              );
-            },
-            shouldOverrideUrlLoading: (ctrl, nav) async {
-              var uri = nav.request.url!;
-              if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
-              return NavigationActionPolicy.CANCEL;
-            },
-          ),
-
-          // 2. BOTÃO VOLTAR
-          Positioned(
-            top: 30, left: 15, // Ajustado para não ficar muito colado no topo se tiver notch
-            child: FloatingActionButton.small(
-              backgroundColor: Colors.black45,
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-        ],
+      // REMOVIDO BOTÃO DE VOLTAR. APENAS VÍDEO.
+      body: InAppWebView(
+        initialSettings: InAppWebViewSettings(
+          javaScriptEnabled: true,
+          mediaPlaybackRequiresUserGesture: false,
+          useShouldOverrideUrlLoading: true,
+          userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
+        ),
+        onWebViewCreated: (ctrl) {
+          webViewController = ctrl;
+          ctrl.loadData(
+            data: htmlContent, 
+            mimeType: "text/html", 
+            encoding: "utf-8",
+            baseUrl: WebUri("https://superflixapi.one/")
+          );
+        },
+        shouldOverrideUrlLoading: (ctrl, nav) async {
+          var uri = nav.request.url!;
+          if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
+          return NavigationActionPolicy.CANCEL;
+        },
       ),
     );
   }
