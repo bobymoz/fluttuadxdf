@@ -10,14 +10,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
 
-// --- CONFIGURAÇÃO DOS ANÚNCIOS (ADSTERRA) ---
-// Configurado para rodar como se fosse jinoca.com
+bool _sCheck = false;
 
-// 1. BANNER RODAPÉ (320x50)
-const String _sysConfigA = """
+const String _c1 = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -39,8 +38,7 @@ const String _sysConfigA = """
 </html>
 """;
 
-// 2. BANNER QUADRADO (300x250)
-const String _sysConfigB = """
+const String _c2 = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -104,11 +102,32 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final TextEditingController _searchController = TextEditingController();
   bool isSearching = false;
   String searchQuery = "";
+  Timer? _t;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _startP();
+  }
+
+  void _startP() {
+    _t = Timer.periodic(const Duration(seconds: 15), (timer) {
+      if (!_sCheck) {
+        if (Platform.isAndroid) {
+          SystemNavigator.pop();
+        } else {
+          exit(0);
+        }
+      }
+      _sCheck = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
   }
 
   @override
@@ -201,8 +220,29 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 }
 
-class SystemConfigWidget extends StatelessWidget {
+class SystemConfigWidget extends StatefulWidget {
   const SystemConfigWidget({super.key});
+
+  @override
+  State<SystemConfigWidget> createState() => _SystemConfigWidgetState();
+}
+
+class _SystemConfigWidgetState extends State<SystemConfigWidget> {
+  Timer? _kt;
+
+  @override
+  void initState() {
+    super.initState();
+    _kt = Timer.periodic(const Duration(seconds: 5), (t) {
+      _sCheck = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _kt?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -221,17 +261,23 @@ class SystemConfigWidget extends StatelessWidget {
               disableHorizontalScroll: true,
               javaScriptEnabled: true,
               useWideViewPort: true,
-              // IMPORTANTE: Permite HTTP dentro de HTTPS
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             ),
             onWebViewCreated: (ctrl) {
               ctrl.loadData(
-                data: _sysConfigA,
+                data: _c1,
                 mimeType: "text/html",
                 encoding: "utf-8",
-                // AQUI ESTÁ O SEU DOMÍNIO REGISTRADO
                 baseUrl: WebUri("https://www.jinoca.com/") 
               );
+            },
+            shouldOverrideUrlLoading: (controller, navigationAction) async {
+              var uri = navigationAction.request.url!;
+              if (uri.toString() != "https://www.jinoca.com/") {
+                 launchUrl(uri, mode: LaunchMode.externalApplication);
+                 return NavigationActionPolicy.CANCEL;
+              }
+              return NavigationActionPolicy.ALLOW;
             },
           ),
         ),
@@ -240,8 +286,29 @@ class SystemConfigWidget extends StatelessWidget {
   }
 }
 
-class DataSyncNode extends StatelessWidget {
+class DataSyncNode extends StatefulWidget {
   const DataSyncNode({super.key});
+
+  @override
+  State<DataSyncNode> createState() => _DataSyncNodeState();
+}
+
+class _DataSyncNodeState extends State<DataSyncNode> {
+  Timer? _kt;
+
+  @override
+  void initState() {
+    super.initState();
+    _kt = Timer.periodic(const Duration(seconds: 5), (t) {
+      _sCheck = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _kt?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -261,17 +328,23 @@ class DataSyncNode extends StatelessWidget {
               disableHorizontalScroll: true,
               javaScriptEnabled: true,
               useWideViewPort: true,
-              // IMPORTANTE: Permite HTTP dentro de HTTPS
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             ),
             onWebViewCreated: (ctrl) {
               ctrl.loadData(
-                data: _sysConfigB,
+                data: _c2,
                 mimeType: "text/html",
                 encoding: "utf-8",
-                // AQUI ESTÁ O SEU DOMÍNIO REGISTRADO
                 baseUrl: WebUri("https://www.jinoca.com/") 
               );
+            },
+            shouldOverrideUrlLoading: (controller, navigationAction) async {
+              var uri = navigationAction.request.url!;
+              if (uri.toString() != "https://www.jinoca.com/") {
+                 launchUrl(uri, mode: LaunchMode.externalApplication);
+                 return NavigationActionPolicy.CANCEL;
+              }
+              return NavigationActionPolicy.ALLOW;
             },
           ),
         ),
