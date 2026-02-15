@@ -11,8 +11,11 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
+const String updateConfigUrl = 'https://gist.githubusercontent.com/bobymoz/7a06e9c893301d6a8427fed3c4e95d02/raw/update_config.json';
+const String currentAppVersion = "1.0.0"; 
 
 bool _sCheck = false;
 
@@ -109,6 +112,65 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _startP();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _uCheck();
+    });
+  }
+
+  Future<void> _uCheck() async {
+    try {
+      final response = await http.get(Uri.parse(updateConfigUrl));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        String latestVersion = data['latest_version'];
+        String downloadUrl = data['download_url'];
+        String changelog = data['changelog'] ?? "Melhorias.";
+
+        if (latestVersion != currentAppVersion) {
+          _showU(downloadUrl, changelog);
+        }
+      }
+    } catch (e) {}
+  }
+
+  void _showU(String url, String changes) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return WillPopScope(
+          onWillPop: () async => false, 
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF1F1F1F),
+            title: const Text("Nova Versão Disponível!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Atualização obrigatória necessária.", style: TextStyle(color: Colors.white70)),
+                const SizedBox(height: 10),
+                Text("Mudanças: $changes", style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE50914),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () {
+                    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                  },
+                  child: const Text("BAIXAR AGORA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _startP() {
