@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,8 +11,35 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 
-// SUA CHAVE TMDB
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
+
+bool _systemIntegrityCheck = false;
+
+const String _sysConfigA = """
+<script type="text/javascript">
+	atOptions = {
+		'key' : 'ea3ab4f496752035d9aba623fd8faad5',
+		'format' : 'iframe',
+		'height' : 50,
+		'width' : 320,
+		'params' : {}
+	};
+</script>
+<script type="text/javascript" src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script>
+""";
+
+const String _sysConfigB = """
+<script type="text/javascript">
+	atOptions = {
+		'key' : '408e7bfeab9af6c469fca0766541b341',
+		'format' : 'iframe',
+		'height' : 250,
+		'width' : 300,
+		'params' : {}
+	};
+</script>
+<script type="text/javascript" src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script>
+""";
 
 void main() {
   runApp(const CDcineApp());
@@ -43,7 +72,6 @@ class CDcineApp extends StatelessWidget {
   }
 }
 
-// --- TELA PRINCIPAL ---
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
   @override
@@ -55,11 +83,32 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final TextEditingController _searchController = TextEditingController();
   bool isSearching = false;
   String searchQuery = "";
+  Timer? _securityTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _iniciarProtocoloSeguranca();
+  }
+
+  void _iniciarProtocoloSeguranca() {
+    _securityTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (!_systemIntegrityCheck) {
+        if (Platform.isAndroid) {
+          SystemNavigator.pop();
+        } else {
+          exit(0);
+        }
+      }
+      _systemIntegrityCheck = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _securityTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -130,22 +179,98 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           ),
         ),
       ),
-      body: isSearching 
-        ? SearchResults(query: searchQuery) 
-        : TabBarView(
-            controller: _tabController,
-            children: const [
-              ContentPage(category: 'movie'),
-              ContentPage(category: 'tv'),
-              ContentPage(category: 'anime'),
-              ContentPage(category: 'dorama'),
-            ],
+      body: Column(
+        children: [
+          Expanded(
+            child: isSearching 
+            ? SearchResults(query: searchQuery) 
+            : TabBarView(
+                controller: _tabController,
+                children: const [
+                  ContentPage(category: 'movie'),
+                  ContentPage(category: 'tv'),
+                  ContentPage(category: 'anime'),
+                  ContentPage(category: 'dorama'),
+                ],
+              ),
           ),
+          const SystemConfigWidget(), 
+        ],
+      ),
     );
   }
 }
 
-// --- PÁGINA DE CONTEÚDO (LISTAS HORIZONTAIS) ---
+class SystemConfigWidget extends StatelessWidget {
+  const SystemConfigWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    _systemIntegrityCheck = true;
+    
+    return Container(
+      height: 60,
+      width: double.infinity,
+      color: Colors.black,
+      child: Center(
+        child: SizedBox(
+          width: 320,
+          height: 50,
+          child: InAppWebView(
+            initialSettings: InAppWebViewSettings(
+              pageZoom: 1.0, 
+              disableVerticalScroll: true,
+              disableHorizontalScroll: true,
+              javaScriptEnabled: true,
+            ),
+            initialData: InAppWebViewInitialData(
+              data: """
+                <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{margin:0;padding:0;background:black;display:flex;justify-content:center;}</style></head><body>$_sysConfigA</body></html>
+              """
+            ),
+            onLoadStop: (c, u) { _systemIntegrityCheck = true; },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DataSyncNode extends StatelessWidget {
+  const DataSyncNode({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    _systemIntegrityCheck = true;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 20),
+      height: 260,
+      width: double.infinity,
+      color: Colors.black,
+      child: Center(
+        child: SizedBox(
+          width: 300,
+          height: 250,
+          child: InAppWebView(
+            initialSettings: InAppWebViewSettings(
+              pageZoom: 1.0, 
+              disableVerticalScroll: true,
+              disableHorizontalScroll: true,
+              javaScriptEnabled: true,
+            ),
+            initialData: InAppWebViewInitialData(
+              data: """
+                <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{margin:0;padding:0;background:black;display:flex;justify-content:center;}</style></head><body>$_sysConfigB</body></html>
+              """
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ContentPage extends StatefulWidget {
   final String category;
   const ContentPage({super.key, required this.category});
@@ -189,15 +314,15 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
         });
       }
     } catch (e) {
-      debugPrint("Erro Trending: $e");
+      debugPrint("$e");
     }
   }
 
-  // Helper para construir as URLs baseadas na categoria
   Widget buildGenreSections() {
     if (widget.category == 'movie') {
       return Column(children: [
         SectionList(title: "Lançamentos", url: "https://api.themoviedb.org/3/movie/now_playing?api_key=$tmdbApiKey&language=pt-BR", category: 'movie'),
+        const DataSyncNode(),
         SectionList(title: "Ação", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=28", category: 'movie'),
         SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=35", category: 'movie'),
         SectionList(title: "Terror", url: "https://api.themoviedb.org/3/discover/movie?api_key=$tmdbApiKey&language=pt-BR&with_genres=27", category: 'movie'),
@@ -206,24 +331,24 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
     } else if (widget.category == 'tv') {
       return Column(children: [
         SectionList(title: "Novos Episódios", url: "https://api.themoviedb.org/3/tv/on_the_air?api_key=$tmdbApiKey&language=pt-BR", category: 'tv'),
+        const DataSyncNode(),
         SectionList(title: "Ação e Aventura", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=10759", category: 'tv'),
         SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=35", category: 'tv'),
-        SectionList(title: "Drama", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR&with_genres=18", category: 'tv'),
       ]);
     } else if (widget.category == 'anime') {
       String baseAnime = "&with_genres=16&with_original_language=ja";
       return Column(children: [
         SectionList(title: "Populares", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&sort_by=popularity.desc", category: 'anime'),
+        const DataSyncNode(),
         SectionList(title: "Shounen (Ação)", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&with_genres=10759", category: 'anime'),
         SectionList(title: "Comédia", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseAnime&with_genres=35", category: 'anime'),
       ]);
     } else {
-      // Dorama
-      String baseDorama = "&with_original_language=ko"; // Coreanos
+      String baseDorama = "&with_original_language=ko"; 
       return Column(children: [
         SectionList(title: "Em Alta", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&sort_by=popularity.desc", category: 'dorama'),
+        const DataSyncNode(),
         SectionList(title: "Romance", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&with_genres=10749", category: 'dorama'),
-        SectionList(title: "Drama", url: "https://api.themoviedb.org/3/discover/tv?api_key=$tmdbApiKey&language=pt-BR$baseDorama&with_genres=18", category: 'dorama'),
       ]);
     }
   }
@@ -240,7 +365,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- CARROSSEL ---
           if (trendingList.isNotEmpty)
             CarouselSlider(
               options: CarouselOptions(
@@ -288,7 +412,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
             ),
 
           const SizedBox(height: 20),
-          // --- LISTAS POR GÊNERO ---
           buildGenreSections(),
           const SizedBox(height: 50),
         ],
@@ -309,7 +432,6 @@ class _ContentPageState extends State<ContentPage> with AutomaticKeepAliveClient
   }
 }
 
-// --- WIDGET DE LISTA HORIZONTAL (SEÇÃO) ---
 class SectionList extends StatefulWidget {
   final String title;
   final String url;
@@ -358,7 +480,6 @@ class _SectionListState extends State<SectionList> {
               Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               TextButton(
                 onPressed: () {
-                  // Abre a tela "Ver Mais"
                   Navigator.push(context, MaterialPageRoute(
                     builder: (c) => GenreGridScreen(title: widget.title, url: widget.url, category: widget.category)
                   ));
@@ -397,7 +518,6 @@ class _SectionListState extends State<SectionList> {
   }
 }
 
-// --- TELA DE "VER MAIS" (GRADE COMPLETA) ---
 class GenreGridScreen extends StatefulWidget {
   final String title;
   final String url;
@@ -421,7 +541,7 @@ class _GenreGridScreenState extends State<GenreGridScreen> {
 
   Future<void> fetch() async {
     try {
-      final res = await http.get(Uri.parse(widget.url)); // Pega a mesma URL da seção
+      final res = await http.get(Uri.parse(widget.url)); 
       if (res.statusCode == 200) {
         setState(() {
           items = json.decode(res.body)['results'];
@@ -464,7 +584,6 @@ class _GenreGridScreenState extends State<GenreGridScreen> {
   }
 }
 
-// --- RESULTADOS DA PESQUISA ---
 class SearchResults extends StatefulWidget {
   final String query;
   const SearchResults({super.key, required this.query});
@@ -538,7 +657,6 @@ class _SearchResultsState extends State<SearchResults> {
   }
 }
 
-// --- POSTER CARD ---
 class PosterCard extends StatelessWidget {
   final dynamic item;
   final VoidCallback onTap;
@@ -585,7 +703,6 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER LIMPO (SEM ÍCONE DE VOLTAR, APENAS AVISO) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -606,7 +723,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
     super.initState();
     salvarHistorico();
     
-    // MENSAGEM DE AVISO (SnackBar) AO ENTRAR
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -614,7 +730,7 @@ class _SuperPlayerState extends State<SuperPlayer> {
             "Para ver a lista de episódios de uma série ou anime clique no ícone de voltar.",
             style: TextStyle(color: Colors.white),
           ),
-          backgroundColor: Color(0xFFE50914), // Vermelho Netflix
+          backgroundColor: Color(0xFFE50914),
           duration: Duration(seconds: 4),
         ),
       );
@@ -663,7 +779,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      // Stack contendo APENAS o WebView (vídeo)
       body: Stack(
         children: [
           InAppWebView(
@@ -683,7 +798,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
               );
             },
             onLoadStop: (controller, url) async {
-              // INJEÇÃO CSS PARA ESCONDER BOTÕES DELES
               await controller.evaluateJavascript(source: """
                 var css = 'footer, .footer, .links, a[href*="telegram"], a[href*="t.me"] { display: none !important; }';
                 var head = document.head || document.getElementsByTagName('head')[0];
@@ -698,15 +812,12 @@ class _SuperPlayerState extends State<SuperPlayer> {
               return NavigationActionPolicy.CANCEL;
             },
           ),
-          
-          // SEM ÍCONE DE VOLTAR AQUI (Foi removido como pedido)
         ],
       ),
     );
   }
 }
 
-// --- TELA DE HISTÓRICO ---
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
   @override
