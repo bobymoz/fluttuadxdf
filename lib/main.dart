@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Para controlar a rotação
 import 'package:http/http.dart' as http;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,11 +8,22 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // SUA CHAVE TMDB
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
+// SEU CANAL NOVO
+const String meuTelegram = 'https://t.me/cdcine'; 
 
 void main() {
+  // Garante que o app inicie podendo rodar em qualquer direção
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   runApp(const CDcineApp());
 }
 
@@ -30,12 +41,6 @@ class CDcineApp extends StatelessWidget {
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF121212),
           elevation: 0,
-        ),
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: ZoomPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          },
         ),
       ),
       home: const MainScreen(),
@@ -429,7 +434,7 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER IMERSIVO SEM BOTÃO FLUTUANTE ---
+// --- PLAYER (COM ROTAÇÃO, SEM BOTÃO DE VOLTAR, COM TELEGRAM CORRIGIDO) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -465,15 +470,12 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     history.removeWhere((element) => json.decode(element)['id'] == widget.id);
     history.insert(0, json.encode(item));
-
     if (history.length > 50) history = history.sublist(0, 50);
-
     await prefs.setStringList('history', history);
   }
 
   @override
   Widget build(BuildContext context) {
-    // URL DIRETA
     String videoUrl = "";
     if (widget.type == 'filme') {
       videoUrl = "https://superflixapi.one/filme/${widget.id}";
@@ -496,28 +498,60 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      // REMOVIDO BOTÃO DE VOLTAR. APENAS VÍDEO.
-      body: InAppWebView(
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          mediaPlaybackRequiresUserGesture: false,
-          useShouldOverrideUrlLoading: true,
-          userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
-        ),
-        onWebViewCreated: (ctrl) {
-          webViewController = ctrl;
-          ctrl.loadData(
-            data: htmlContent, 
-            mimeType: "text/html", 
-            encoding: "utf-8",
-            baseUrl: WebUri("https://superflixapi.one/")
-          );
-        },
-        shouldOverrideUrlLoading: (ctrl, nav) async {
-          var uri = nav.request.url!;
-          if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
-          return NavigationActionPolicy.CANCEL;
-        },
+      body: Stack(
+        children: [
+          // 1. O VÍDEO (AGORA PERMITE ROTAÇÃO)
+          InAppWebView(
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              mediaPlaybackRequiresUserGesture: false,
+              useShouldOverrideUrlLoading: true,
+              userAgent: "Mozilla/5.0 (Linux; Android 10; Mobile)",
+            ),
+            onWebViewCreated: (ctrl) {
+              webViewController = ctrl;
+              ctrl.loadData(
+                data: htmlContent, 
+                mimeType: "text/html", 
+                encoding: "utf-8",
+                baseUrl: WebUri("https://superflixapi.one/")
+              );
+            },
+            onLoadStop: (controller, url) async {
+              // INJEÇÃO CSS PARA ESCONDER BOTÕES DELES
+              await controller.evaluateJavascript(source: """
+                var css = 'footer, .footer, .links, a[href*="telegram"], a[href*="t.me"] { display: none !important; }';
+                var head = document.head || document.getElementsByTagName('head')[0];
+                var style = document.createElement('style');
+                style.appendChild(document.createTextNode(css));
+                head.appendChild(style);
+              """);
+            },
+            shouldOverrideUrlLoading: (ctrl, nav) async {
+              var uri = nav.request.url!;
+              if (uri.toString().contains('superflixapi.one')) return NavigationActionPolicy.ALLOW;
+              return NavigationActionPolicy.CANCEL;
+            },
+          ),
+
+          // 2. SEU BOTÃO DO TELEGRAM (LINK CORRIGIDO)
+          Positioned(
+            bottom: 20, right: 20,
+            child: FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF0088cc),
+              icon: const Icon(Icons.send, color: Colors.white),
+              label: const Text("Canal Oficial", style: TextStyle(color: Colors.white)),
+              onPressed: () async {
+                final Uri url = Uri.parse(meuTelegram);
+                if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                  launchUrl(url);
+                }
+              },
+            ),
+          ),
+          
+          // REMOVIDO: Botão de voltar flutuante (Usa o do celular)
+        ],
       ),
     );
   }
@@ -526,7 +560,6 @@ class _SuperPlayerState extends State<SuperPlayer> {
 // --- TELA DE HISTÓRICO ---
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
-
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
