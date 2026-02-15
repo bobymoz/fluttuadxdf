@@ -16,12 +16,13 @@ dependencies:
   carousel_slider: ^5.0.0
   shimmer: ^3.0.0
   shared_preferences: ^2.2.2
-  url_launcher: ^6.2.5  # <--- NOVA DEPENDÊNCIA PARA O BOTÃO TELEGRAM
+  url_launcher: ^6.2.5
+  package_info_plus: ^5.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1 # <--- FERRAMENTA DE ÍCONE
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -31,5 +32,5 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icon.png" # Certifique-se que o arquivo está aqui!
+  image_path: "assets/icon.png"
   min_sdk_android: 21
