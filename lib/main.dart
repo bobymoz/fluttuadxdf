@@ -585,7 +585,7 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-// --- PLAYER (SEM TELEGRAM, COM AVISO DE EPISÓDIOS) ---
+// --- PLAYER LIMPO (SEM ÍCONE DE VOLTAR, APENAS AVISO) ---
 class SuperPlayer extends StatefulWidget {
   final int id;
   final String title;
@@ -606,12 +606,15 @@ class _SuperPlayerState extends State<SuperPlayer> {
     super.initState();
     salvarHistorico();
     
-    // MENSAGEM DE AVISO (SnackBar)
+    // MENSAGEM DE AVISO (SnackBar) AO ENTRAR
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Para ver a lista de episódios de uma série ou anime clique no ícone de voltar.", style: TextStyle(color: Colors.white)),
-          backgroundColor: Color(0xFFE50914),
+          content: Text(
+            "Para ver a lista de episódios de uma série ou anime clique no ícone de voltar.",
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Color(0xFFE50914), // Vermelho Netflix
           duration: Duration(seconds: 4),
         ),
       );
@@ -660,9 +663,9 @@ class _SuperPlayerState extends State<SuperPlayer> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      // Stack contendo APENAS o WebView (vídeo)
       body: Stack(
         children: [
-          // 1. O VÍDEO
           InAppWebView(
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
@@ -695,16 +698,8 @@ class _SuperPlayerState extends State<SuperPlayer> {
               return NavigationActionPolicy.CANCEL;
             },
           ),
-          // 2. BOTÃO VOLTAR
-          Positioned(
-            top: 20, left: 20,
-            child: FloatingActionButton.small(
-              backgroundColor: Colors.black45,
-              foregroundColor: Colors.white,
-              child: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
+          
+          // SEM ÍCONE DE VOLTAR AQUI (Foi removido como pedido)
         ],
       ),
     );
