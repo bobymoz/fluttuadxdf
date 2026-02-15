@@ -9,35 +9,27 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Rede e Imagem
   http: ^1.1.0
   cached_network_image: ^3.3.0
-  # Player Poderoso
   flutter_inappwebview: ^6.0.0
-  # Visual Profissional
   google_fonts: ^6.1.0
-  carousel_slider: ^5.0.0   # Versão corrigida para evitar erros
-  shimmer: ^3.0.0           # Efeito de carregamento
-  # Dados Locais (Histórico)
+  carousel_slider: ^5.0.0
+  shimmer: ^3.0.0
   shared_preferences: ^2.2.2
+  url_launcher: ^6.2.5  # <--- NOVA DEPENDÊNCIA PARA O BOTÃO TELEGRAM
 
-# --- CONFIGURAÇÃO DO ÍCONE (NOVA PARTE) ---
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  # Ferramenta para criar os ícones automaticamente
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.13.1 # <--- FERRAMENTA DE ÍCONE
 
 flutter:
   uses-material-design: true
-  # Garante que o Flutter veja a pasta assets onde está o ícone
   assets:
     - assets/
 
-# --- REGRAS DO ÍCONE ---
-# Certifique-se de ter criado a pasta 'assets' e colocado a imagem 'icon.png' lá
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icon.png"
+  image_path: "assets/icon.png" # Certifique-se que o arquivo está aqui!
   min_sdk_android: 21
