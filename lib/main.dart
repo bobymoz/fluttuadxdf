@@ -16,6 +16,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 const String tmdbApiKey = '9c31b3aeb2e59aa2caf74c745ce15887'; 
 const String updateConfigUrl = 'https://gist.githubusercontent.com/bobymoz/7a06e9c893301d6a8427fed3c4e95d02/raw/update_config.json';
 const String currentAppVersion = "1.0.0"; 
+const String telegramUrl = "https://t.me/cdcine";
 
 bool _sCheck = false;
 
@@ -119,18 +120,21 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   Future<void> _uCheck() async {
     try {
-      final response = await http.get(Uri.parse(updateConfigUrl));
+      final String noCacheUrl = "$updateConfigUrl?v=${DateTime.now().millisecondsSinceEpoch}";
+      final response = await http.get(Uri.parse(noCacheUrl));
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         String latestVersion = data['latest_version'];
         String downloadUrl = data['download_url'];
         String changelog = data['changelog'] ?? "Melhorias.";
 
-        if (latestVersion != currentAppVersion) {
+        if (latestVersion.trim() != currentAppVersion.trim()) {
           _showU(downloadUrl, changelog);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      debugPrint("$e");
+    }
   }
 
   void _showU(String url, String changes) {
@@ -214,7 +218,15 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   _searchController.clear();
                 });
               },
-            )
+            ),
+          IconButton(
+            icon: const Icon(Icons.send, color: Color(0xFF0088cc)), 
+            tooltip: "Canal Telegram",
+            onPressed: () {
+              launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication);
+            },
+          ),
+          const SizedBox(width: 10),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(130),
