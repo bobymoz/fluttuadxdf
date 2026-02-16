@@ -688,6 +688,8 @@ class GenreGridScreen extends StatefulWidget {
 class _GenreGridScreenState extends State<GenreGridScreen> {
   List items = [];
   bool loading = true;
+  int _page = 1;
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
@@ -697,15 +699,30 @@ class _GenreGridScreenState extends State<GenreGridScreen> {
 
   Future<void> fetch() async {
     try {
-      final res = await http.get(Uri.parse(widget.url)); 
+      final res = await http.get(Uri.parse("${widget.url}&page=$_page")); 
       if (res.statusCode == 200) {
-        setState(() {
-          items = json.decode(res.body)['results'];
-          items.removeWhere((item) => item['poster_path'] == null);
-          loading = false;
-        });
+        final newItems = json.decode(res.body)['results'];
+        if (mounted) {
+          setState(() {
+            items.addAll(newItems);
+            items.removeWhere((item) => item['poster_path'] == null);
+            loading = false;
+            _isLoadingMore = false;
+          });
+        }
       }
-    } catch (e) { setState(() => loading = false); }
+    } catch (e) { 
+      if(mounted) setState(() { loading = false; _isLoadingMore = false; }); 
+    }
+  }
+
+  void _loadMore() {
+    if (_isLoadingMore) return;
+    setState(() {
+      _isLoadingMore = true;
+      _page++;
+    });
+    fetch();
   }
 
   @override
@@ -714,27 +731,52 @@ class _GenreGridScreenState extends State<GenreGridScreen> {
       appBar: AppBar(title: Text(widget.title)),
       body: loading 
         ? const Center(child: CircularProgressIndicator(color: Colors.red))
-        : GridView.builder(
-            padding: const EdgeInsets.all(10),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3, 
-              childAspectRatio: 0.55,
-              crossAxisSpacing: 10, 
-              mainAxisSpacing: 10
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return PosterCard(
-                item: item,
-                onTap: () {
-                  String type = (widget.category == 'movie') ? 'filme' : 'serie';
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (c) => SuperPlayer(id: item['id'], title: item['title'] ?? item['name'], type: type, posterPath: item['poster_path'])
-                  ));
-                },
-              );
-            },
+        : Column(
+            children: [
+              Expanded(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(10),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, 
+                    childAspectRatio: 0.55,
+                    crossAxisSpacing: 10, 
+                    mainAxisSpacing: 10
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return PosterCard(
+                      item: item,
+                      onTap: () {
+                        String type = (widget.category == 'movie') ? 'filme' : 'serie';
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (c) => SuperPlayer(id: item['id'], title: item['title'] ?? item['name'], type: type, posterPath: item['poster_path'])
+                        ));
+                      },
+                    );
+                  },
+                ),
+              ),
+              if (_isLoadingMore)
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: CircularProgressIndicator(color: Colors.red),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[800],
+                      padding: const EdgeInsets.symmetric(vertical: 15)
+                    ),
+                    onPressed: _loadMore,
+                    child: const Text("CARREGAR MAIS FILMES...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+            ],
           ),
     );
   }
