@@ -25,7 +25,7 @@ void main() async {
 }
 
 // ==========================================
-// GERENCIADOR DE DOWNLOADS
+// GERENCIADOR DE DOWNLOADS GLOBAL
 // ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
@@ -86,28 +86,7 @@ class CDcineApp extends StatelessWidget {
         return Stack(
           children: [
             child!,
-            ValueListenableBuilder<double>(
-              valueListenable: DownloadManager.progress,
-              builder: (context, val, _) {
-                if (val == -1.0) return const SizedBox.shrink();
-                Color bgColor = Colors.grey[900]!;
-                String text = "Baixando: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
-                Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
-                if (val == -2.0) { bgColor = Colors.green[800]!; text = "Download Concluído"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
-                else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro no Download"; icon = const Icon(Icons.error, color: Colors.white); }
-                return Positioned(
-                  bottom: 20, left: 20, right: 20,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12)),
-                      child: Row(children: [icon, const SizedBox(width: 15), Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
-                    ),
-                  ),
-                );
-              },
-            ),
+            const DraggableDownloadOverlay(), // Overlay que pode ser movido
           ],
         );
       },
@@ -116,8 +95,54 @@ class CDcineApp extends StatelessWidget {
   }
 }
 
+// Widget do Download que pode ser arrastado pela tela
+class DraggableDownloadOverlay extends StatefulWidget {
+  const DraggableDownloadOverlay({super.key});
+  @override State<DraggableDownloadOverlay> createState() => _DraggableDownloadOverlayState();
+}
+
+class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
+  double bottomOffset = 20;
+  double leftOffset = 20;
+
+  @override Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: DownloadManager.progress,
+      builder: (context, val, _) {
+        if (val == -1.0) return const SizedBox.shrink();
+        Color bgColor = Colors.grey[900]!;
+        String text = "Baixando: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
+        Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
+        if (val == -2.0) { bgColor = Colors.green[800]!; text = "Download Concluído"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
+        else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro no Download"; icon = const Icon(Icons.error, color: Colors.white); }
+        
+        return Positioned(
+          bottom: bottomOffset, left: leftOffset,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                bottomOffset -= details.delta.dy;
+                leftOffset += details.delta.dx;
+              });
+            },
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.85,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)]),
+                child: Row(children: [icon, const SizedBox(width: 15), Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // ==========================================
-// SCRAPER GLOBAL (Sem TMDB)
+// SCRAPER GLOBAL 
 // ==========================================
 Future<List<Map<String, String>>> fetchScraperData(String url) async {
   try {
@@ -141,21 +166,18 @@ Future<List<Map<String, String>>> fetchScraperData(String url) async {
 // ==========================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-  @override
-  State<MainScreen> createState() => _MainScreenState();
+  @override State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  @override
-  void initState() {
+  @override void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this); // Sem Doramas
   }
 
-  @override
-  Widget build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)),
@@ -168,12 +190,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: const Color(0xFFE50914), indicatorWeight: 3, labelColor: Colors.white, unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           tabs: const [
-            Tab(icon: Icon(Icons.movie_outlined), text: "FILMES"),
-            Tab(icon: Icon(Icons.tv), text: "SÉRIES"),
-            Tab(icon: Icon(Icons.animation), text: "ANIMES"),
-            Tab(icon: Icon(Icons.favorite_border), text: "DORAMAS"),
+            Tab(text: "FILMES"),
+            Tab(text: "SÉRIES"),
+            Tab(text: "ANIMES"),
           ],
         ),
       ),
@@ -183,7 +204,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           CategoryTab(type: 'filmes'),
           CategoryTab(type: 'series'),
           CategoryTab(type: 'animes'),
-          CategoryTab(type: 'doramas'), // Dorama usa busca
         ],
       ),
     );
@@ -196,8 +216,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 class CategoryTab extends StatefulWidget {
   final String type;
   const CategoryTab({super.key, required this.type});
-  @override
-  State<CategoryTab> createState() => _CategoryTabState();
+  @override State<CategoryTab> createState() => _CategoryTabState();
 }
 
 class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClientMixin {
@@ -205,24 +224,18 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
   bool loading = true;
   @override bool get wantKeepAlive => true;
 
-  @override
-  void initState() {
+  @override void initState() {
     super.initState();
     _loadInitialData();
   }
 
   void _loadInitialData() async {
-    String url = widget.type == 'doramas' ? "$smartPlayUrl/search/1?search=dorama" : "$smartPlayUrl/posts/${widget.type}/1";
+    String url = "$smartPlayUrl/posts/${widget.type}/1";
     carouselItems = await fetchScraperData(url);
     if (mounted) setState(() => loading = false);
   }
 
-  Widget _buildSection(String title, String urlPattern) {
-    return SectionWidget(title: title, urlPattern: urlPattern, type: widget.type);
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     super.build(context);
     if (loading) return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
 
@@ -232,7 +245,7 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
         children: [
           if (carouselItems.isNotEmpty)
             CarouselSlider(
-              options: CarouselOptions(height: 220, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.85),
+              options: CarouselOptions(height: 250, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.85),
               items: carouselItems.map((item) {
                 return GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
@@ -251,19 +264,20 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
           const SizedBox(height: 10),
           
           if (widget.type == 'filmes') ...[
-            _buildSection("Lançamentos", "$smartPlayUrl/posts/filmes/[PAGE]"),
-            _buildSection("Ação", "$smartPlayUrl/search/[PAGE]?search=ação"),
-            _buildSection("Comédia", "$smartPlayUrl/search/[PAGE]?search=comédia"),
-            _buildSection("Terror", "$smartPlayUrl/search/[PAGE]?search=terror"),
+            SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]"),
+            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia"),
+            SectionWidget(title: "Terror", urlPattern: "$smartPlayUrl/search/[PAGE]?search=terror"),
           ] else if (widget.type == 'series') ...[
-            _buildSection("Séries em Alta", "$smartPlayUrl/posts/series/[PAGE]"),
-            _buildSection("Ação e Aventura", "$smartPlayUrl/search/[PAGE]?search=ação série"),
+            SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/posts/series/[PAGE]"),
+            SectionWidget(title: "Ação e Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação série"),
+            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ficção série"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia série"),
           ] else if (widget.type == 'animes') ...[
-            _buildSection("Animes Recentes", "$smartPlayUrl/posts/animes/[PAGE]"),
-            _buildSection("Shounen", "$smartPlayUrl/search/[PAGE]?search=shounen"),
-          ] else ...[
-            _buildSection("Doramas Populares", "$smartPlayUrl/search/[PAGE]?search=dorama"),
-            _buildSection("Romance", "$smartPlayUrl/search/[PAGE]?search=dorama romance"),
+            SectionWidget(title: "Animes Recentes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]"),
+            SectionWidget(title: "Shounen", urlPattern: "$smartPlayUrl/search/[PAGE]?search=shounen"),
+            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=aventura anime"),
+            SectionWidget(title: "Isekai", urlPattern: "$smartPlayUrl/search/[PAGE]?search=isekai"),
           ],
           const SizedBox(height: 40),
         ],
@@ -273,8 +287,8 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
 }
 
 class SectionWidget extends StatefulWidget {
-  final String title; final String urlPattern; final String type;
-  const SectionWidget({super.key, required this.title, required this.urlPattern, required this.type});
+  final String title; final String urlPattern;
+  const SectionWidget({super.key, required this.title, required this.urlPattern});
   @override State<SectionWidget> createState() => _SectionWidgetState();
 }
 
@@ -364,7 +378,7 @@ class _GridScreenState extends State<GridScreen> {
 }
 
 // ==========================================
-// PESQUISA INDIVIDUAL
+// PESQUISA INDIVIDUAL E LIMPA
 // ==========================================
 class SearchScreen extends StatefulWidget { const SearchScreen({super.key}); @override State<SearchScreen> createState() => _SearchScreenState(); }
 class _SearchScreenState extends State<SearchScreen> {
@@ -424,7 +438,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (EXOPLAYER NATIVO + DETALHES + RECOMENDAÇÕES)
+// TELA DO PLAYER (EXOPLAYER NATIVO, SINOPSE, FIX DE LOOP)
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -436,12 +450,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
 
-  String sinopse = "Carregando informações do servidor...";
+  String sinopse = "Carregando informações...";
   String backdrop = "";
   List temporadas = []; List episodios = [];
   String? tempSelecionada; String epAtivoNome = "";
   List recomendacoes = [];
+  
   bool isPlaying = false;
+  bool isSynopsisExpanded = false;
+
+  // Controle de Estado do Scraper (Evita Loop de Episódios)
+  int _extracaoStatus = 0; // 0 = Puxando Infos, 1 = Puxando Episódios de Temp
 
   @override void initState() { super.initState(); _salvarHistorico(); _fetchRecomendacoes(); }
 
@@ -456,48 +475,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if(mounted) setState(() { recomendacoes = res.where((e) => e['id'] != widget.item['id']).take(6).toList(); });
   }
 
-  // O "Playwright" embutido
+  // WebView Invisível - A Máquina de Estado que Evita o Loop
   void _onExtratorLoaded() async {
     if (webExtrator == null) return;
+    
     try {
-      // Puxa Detalhes visuais (Igual Python)
-      var dadosJs = await webExtrator!.evaluateJavascript(source: """
-        (function() {
-          var data = {sinopse: "Sinopse indisponível", backdrop: ""};
-          var syn = document.querySelector('.synopsis'); if(syn) data.sinopse = syn.innerText;
-          var bg = document.querySelector('.backdrop img'); if(bg) data.backdrop = bg.src;
-          return JSON.stringify(data);
-        })();
-      """);
-      if (dadosJs != null && mounted) {
-        var d = json.decode(dadosJs.toString());
-        setState(() { sinopse = d['sinopse']; backdrop = d['backdrop'] ?? widget.item['imagem']; });
-      }
-
-      if (widget.item['tipo'] == 'filmes') return;
-
-      // Puxa Temporadas
-      var seasonsRes = await webExtrator!.evaluateJavascript(source: "window.CookieManager ? window.CookieManager.get('seasons_${widget.item['id']}') : null");
-      if (seasonsRes != null && seasonsRes.toString().isNotEmpty && seasonsRes.toString() != "null") {
-        List sList = json.decode(seasonsRes.toString());
-        List temp = [];
-        for (int i = 0; i < sList.length; i++) {
-          String id = sList[i]['ID']?.toString() ?? sList[i]['id']?.toString() ?? "";
-          String nome = sList[i]['nome']?.toString() ?? sList[i]['name']?.toString() ?? "Temporada ${i + 1}";
-          if (id.isNotEmpty) temp.add({"id": id, "nome": nome});
+      if (_extracaoStatus == 0) {
+        // PASSO 1: Extrair Sinopse e Fundo
+        var dadosJs = await webExtrator!.evaluateJavascript(source: """
+          (function() {
+            var data = {sinopse: "Sinopse indisponível", backdrop: ""};
+            var syn = document.querySelector('.synopsis'); if(syn) data.sinopse = syn.innerText;
+            var bg = document.querySelector('.backdrop img'); if(bg) data.backdrop = bg.src;
+            return JSON.stringify(data);
+          })();
+        """);
+        if (dadosJs != null && mounted) {
+          var d = json.decode(dadosJs.toString());
+          setState(() { sinopse = d['sinopse']; backdrop = d['backdrop'] ?? widget.item['imagem']; });
         }
-        if (temp.isNotEmpty && mounted) {
-          setState(() { temporadas = temp; tempSelecionada = temp[0]['id']; });
-          _carregarEpisodios(temp[0]['id']);
-          return;
+
+        if (widget.item['tipo'] == 'filmes') return;
+
+        // PASSO 2: Procurar Temporadas
+        var seasonsRes = await webExtrator!.evaluateJavascript(source: "window.CookieManager ? window.CookieManager.get('seasons_${widget.item['id']}') : null");
+        if (seasonsRes != null && seasonsRes.toString().isNotEmpty && seasonsRes.toString() != "null") {
+          List sList = json.decode(seasonsRes.toString());
+          List temp = [];
+          for (int i = 0; i < sList.length; i++) {
+            String id = sList[i]['ID']?.toString() ?? sList[i]['id']?.toString() ?? "";
+            String nome = sList[i]['nome']?.toString() ?? sList[i]['name']?.toString() ?? "Temporada ${i + 1}";
+            if (id.isNotEmpty) temp.add({"id": id, "nome": nome});
+          }
+          if (temp.isNotEmpty && mounted) {
+            setState(() { temporadas = temp; tempSelecionada = temp[0]['id']; });
+            _carregarEpisodiosUrl(temp[0]['id']); // Inicia a busca pelos episódios da Temp 1
+            return;
+          }
         }
+        // PASSO 3: Fallback (Animes sem temporada)
+        _extrairEpisodiosDiretos();
+      } 
+      else if (_extracaoStatus == 1) {
+        // Após carregar a URL da Temporada, o WebView cai aqui. Puxa os episódios.
+        _extrairEpisodiosDiretos();
       }
-      _extrairEpisodiosDiretos();
     } catch (e) {}
   }
 
-  void _carregarEpisodios(String seasonId) {
-    setState(() => episodios = []);
+  void _carregarEpisodiosUrl(String seasonId) {
+    setState(() { episodios = []; _extracaoStatus = 1; }); // Muda o status para 1 (Evita Loop)
     webExtrator?.loadUrl(urlRequest: URLRequest(url: WebUri("$smartPlayUrl/season/$seasonId/episodes")));
   }
 
@@ -589,7 +616,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  // INICIA O PLAYER NATIVO (EXOPLAYER)
+  // PLAYER NATIVO CHEWIE/EXOPLAYER COM ANIMAÇÃO DE CARREGAMENTO
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
@@ -632,27 +659,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // 1. ÁREA DO VÍDEO (TOPO)
+          // 1. ÁREA DO VÍDEO E PLAYER
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             color: Colors.black,
             child: AspectRatio(
               aspectRatio: 16 / 9,
-              child: isPlaying && _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized
-                ? Chewie(controller: _chewieController!)
-                : Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
-                      Container(color: Colors.black.withOpacity(0.6)),
-                      // Botão Voltar
-                      Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
-                      if (widget.item['tipo'] == 'filmes')
-                        Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false)))
-                      else
-                        const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-                    ],
-                  ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
+                  Container(color: Colors.black.withOpacity(0.6)),
+                  
+                  // Estado 1: Botão Play (Antes de clicar)
+                  if (!isPlaying && widget.item['tipo'] == 'filmes')
+                    Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
+                  if (!isPlaying && widget.item['tipo'] != 'filmes')
+                    const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+                  
+                  // Estado 2: Carregando Servidor (Processando Animado)
+                  if (isPlaying && (_chewieController == null || !_chewieController!.videoPlayerController.value.isInitialized))
+                    const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
+
+                  // Estado 3: Player Pronto e Rodando
+                  if (isPlaying && _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized)
+                    Chewie(controller: _chewieController!),
+
+                  // Botão de Voltar
+                  if (!isPlaying)
+                    Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+                ],
+              ),
             ),
           ),
 
@@ -663,7 +700,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
               initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")),
               onWebViewCreated: (c) => webExtrator = c,
-              onLoadStop: (c, u) { _onExtratorLoaded(); _extrairEpisodiosDiretos(); },
+              onLoadStop: (c, u) { _onExtratorLoaded(); },
             ),
           ),
 
@@ -678,7 +715,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: Text(widget.item['titulo'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))),
-                      // BOTÃO BAIXAR LADO DO TITULO
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                         icon: const Icon(Icons.download, color: Colors.white), label: const Text("BAIXAR", style: TextStyle(color: Colors.white)),
@@ -691,9 +727,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                   const SizedBox(height: 15),
 
+                  // SINOPSE COM BOTAO VER MAIS
                   const Text("Sinopse", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
-                  Text(sinopse, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+                  GestureDetector(
+                    onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sinopse,
+                          maxLines: isSynopsisExpanded ? null : 3,
+                          overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                        ),
+                        if (sinopse.length > 150)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)),
+                          )
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 20),
 
                   // EPISÓDIOS (Séries)
@@ -706,7 +761,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           dropdownColor: Colors.grey[900], value: tempSelecionada,
                           style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
                           items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
-                          onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); }); _carregarEpisodios(val); } },
+                          onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; }); _carregarEpisodiosUrl(val); } },
                         ),
                       ),
                     ),
@@ -714,7 +769,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ],
 
                   if (widget.item['tipo'] != 'filmes') ...[
-                    if (episodios.isEmpty && sinopse != "Sinopse não disponível.")
+                    if (episodios.isEmpty && sinopse != "Carregando informações...")
                       const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
                     else
                       SizedBox(
@@ -736,7 +791,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           },
                         ),
                       ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 10),
+                    const Text("Dica: Segure o dedo em um episódio para fazer o DOWNLOAD.", style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic)),
                   ],
 
                   // RECOMENDAÇÕES ABAIXO DE TUDO
