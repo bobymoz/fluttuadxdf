@@ -22,8 +22,8 @@ const String telegramUrl = "https://t.me/cdcine";
 // ==========================================
 // ANÚNCIOS ORIGINAIS DO CLIENTE
 // ==========================================
-const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script type="text/javascript">atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script type="text/javascript" src="//www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
-const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script type="text/javascript">atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script type="text/javascript" src="//www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
+const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
+const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +31,6 @@ void main() async {
   runApp(const CDcineApp());
 }
 
-// Limpador de Títulos Bugados (Remove %20 e caracteres estranhos)
 String cleanTitle(String input) {
   try {
     String text = Uri.decodeFull(input);
@@ -42,7 +41,7 @@ String cleanTitle(String input) {
 }
 
 // ==========================================
-// GERENCIADOR DE DOWNLOADS COM CANCELAMENTO
+// GERENCIADOR DE DOWNLOADS
 // ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
@@ -70,19 +69,33 @@ class DownloadManager {
       _salvarHistorico(savePath);
       Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0);
     } catch (e) {
-      // CORREÇÃO: Verificação segura do tipo DioException exigida pelas novas versões do Dio
-      if (e is DioException && CancelToken.isCancel(e)) { 
-        progress.value = -1.0; 
-      } else { 
-        progress.value = -3.0; 
-        Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); 
-      }
+      if (e is DioException && CancelToken.isCancel(e)) { progress.value = -1.0; } 
+      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); }
     }
   }
 
-  static void cancelDownload() {
-    cancelToken?.cancel();
-    progress.value = -1.0;
+  // Janela de Confirmação de Cancelamento
+  static void confirmCancelDownload(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1F1F1F),
+        title: const Text("Cancelar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text("Deseja mesmo cancelar a transferência?", style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Não", style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              cancelToken?.cancel();
+              progress.value = -1.0;
+              Navigator.pop(ctx);
+            },
+            child: const Text("Sim", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   static void _salvarHistorico(String path) async {
@@ -117,7 +130,6 @@ class CDcineApp extends StatelessWidget {
   }
 }
 
-// Widget flutuante de download
 class DraggableDownloadOverlay extends StatefulWidget {
   const DraggableDownloadOverlay({super.key});
   @override State<DraggableDownloadOverlay> createState() => _DraggableDownloadOverlayState();
@@ -145,7 +157,17 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
               child: Container(
                 width: MediaQuery.of(context).size.width * 0.85, padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)]),
-                child: Row(children: [icon, const SizedBox(width: 15), Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
+                child: Row(
+                  children: [
+                    icon, const SizedBox(width: 15), 
+                    Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                    if (val >= 0.0 && val <= 1.0)
+                      IconButton(
+                        icon: const Icon(Icons.cancel, color: Colors.red),
+                        onPressed: () => DownloadManager.confirmCancelDownload(context),
+                      )
+                  ],
+                ),
               ),
             ),
           ),
@@ -155,9 +177,6 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
   }
 }
 
-// ==========================================
-// SCRAPER GLOBAL (API PYTHON-LIKE)
-// ==========================================
 Future<List<Map<String, String>>> fetchScraperData(String url) async {
   try {
     final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
@@ -175,7 +194,7 @@ Future<List<Map<String, String>>> fetchScraperData(String url) async {
 }
 
 // ==========================================
-// TELA PRINCIPAL (Categorias)
+// TELA PRINCIPAL (UI REFEITA)
 // ==========================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -184,10 +203,28 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final TextEditingController _searchCtrl = TextEditingController();
+  bool isSearching = false;
+  String searchQuery = "";
 
   @override void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this); 
+  }
+
+  void _onSearchSubmit(String val) {
+    setState(() {
+      searchQuery = val;
+      isSearching = val.isNotEmpty;
+    });
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _searchCtrl.clear();
+      searchQuery = "";
+      isSearching = false;
+    });
   }
 
   @override Widget build(BuildContext context) {
@@ -217,24 +254,86 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         ),
       ),
       appBar: AppBar(
+        leadingWidth: 100, // Espaço para Menu + Histórico
+        leading: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())),
+            IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
+          ],
+        ),
         title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
           IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen()))),
-          IconButton(icon: const Icon(Icons.search, color: Colors.white), tooltip: "Pesquisar", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchScreen()))),
+          const SizedBox(width: 5),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFFE50914), indicatorWeight: 3, labelColor: Colors.white, unselectedLabelColor: Colors.grey,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [Tab(text: "FILMES"), Tab(text: "SÉRIES"), Tab(text: "ANIMES")],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(130), // Altura ajustada para Pesquisa + Tabs
+          child: Column(
+            children: [
+              // Barra de Pesquisa "Aberta" em cima do carrossel
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: TextField(
+                  controller: _searchCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Procurar conteúdo...",
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    filled: true, fillColor: Colors.grey[900],
+                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    suffixIcon: isSearching ? IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: _clearSearch) : null,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  ),
+                  onSubmitted: _onSearchSubmit,
+                ),
+              ),
+              TabBar(
+                controller: _tabController,
+                indicatorColor: const Color(0xFFE50914), indicatorWeight: 3, labelColor: Colors.white, unselectedLabelColor: Colors.grey,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
+                tabs: const [
+                  Tab(icon: Icon(Icons.movie_creation_outlined), text: "FILMES"),
+                  Tab(icon: Icon(Icons.tv_outlined), text: "SÉRIES"),
+                  Tab(icon: Icon(Icons.animation), text: "ANIMES"),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [CategoryTab(type: 'filmes'), CategoryTab(type: 'series'), CategoryTab(type: 'animes')],
-      ),
+      body: isSearching 
+        ? SearchResults(query: searchQuery)
+        : TabBarView(
+            controller: _tabController,
+            children: const [CategoryTab(type: 'filmes'), CategoryTab(type: 'series'), CategoryTab(type: 'animes')],
+          ),
+    );
+  }
+}
+
+// ==========================================
+// RESULTADOS DE PESQUISA (Na mesma tela)
+// ==========================================
+class SearchResults extends StatelessWidget {
+  final String query;
+  const SearchResults({super.key, required this.query});
+  
+  @override Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: fetchScraperData("$smartPlayUrl/search/1?search=$query"),
+      builder: (c, AsyncSnapshot<List> snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)));
+        if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+        return GridView.builder(
+          padding: const EdgeInsets.all(10), 
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
+          itemCount: snapshot.data!.length, 
+          itemBuilder: (c, i) => PosterCard(item: snapshot.data![i])
+        );
+      },
     );
   }
 }
@@ -259,10 +358,10 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
 
   Widget _buildAd(String htmlData, double height) {
     return Container(
-      height: height, width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 10),
+      height: height + 10, width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 10),
       child: InAppWebView(
-        initialData: InAppWebViewInitialData(data: htmlData),
-        initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true),
+        initialData: InAppWebViewInitialData(data: htmlData, baseUrl: WebUri("https://www.highperformanceformat.com")),
+        initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true, useShouldOverrideUrlLoading: true),
         shouldOverrideUrlLoading: (c, nav) async { launchUrl(nav.request.url!, mode: LaunchMode.externalApplication); return NavigationActionPolicy.CANCEL; },
       ),
     );
@@ -394,36 +493,6 @@ class _GridScreenState extends State<GridScreen> {
   }
 }
 
-// ==========================================
-// PESQUISA INDIVIDUAL E LIMPA
-// ==========================================
-class SearchScreen extends StatefulWidget { const SearchScreen({super.key}); @override State<SearchScreen> createState() => _SearchScreenState(); }
-class _SearchScreenState extends State<SearchScreen> {
-  final TextEditingController _ctrl = TextEditingController();
-  List items = []; bool loading = false; bool searched = false;
-  void _doSearch(String query) async {
-    if (query.isEmpty) return;
-    setState(() { loading = true; searched = true; });
-    var res = await fetchScraperData("$smartPlayUrl/search/1?search=$query");
-    setState(() { items = res; loading = false; });
-  }
-  @override Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _ctrl, style: const TextStyle(color: Colors.white), autofocus: true,
-          decoration: const InputDecoration(hintText: "Procurar conteúdo...", hintStyle: TextStyle(color: Colors.grey), border: InputBorder.none),
-          onSubmitted: _doSearch,
-        ),
-      ),
-      body: loading ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))) 
-        : (!searched ? const Center(child: Icon(Icons.search, size: 80, color: Colors.white24)) 
-        : (items.isEmpty ? const Center(child: Text("Nenhum resultado encontrado.")) 
-        : GridView.builder(padding: const EdgeInsets.all(10), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), itemCount: items.length, itemBuilder: (c, i) => PosterCard(item: items[i])))),
-    );
-  }
-}
-
 class PosterCard extends StatelessWidget {
   final dynamic item; const PosterCard({super.key, required this.item});
   @override Widget build(BuildContext context) {
@@ -453,7 +522,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (EXOPLAYER, AUTO-RESUME, FIX DE LOOP)
+// TELA DO PLAYER (EXOPLAYER, AUTO-RESUME)
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -477,7 +546,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool isSynopsisExpanded = false;
   int _extracaoStatus = 0; 
 
-  // Variáveis de Continuar a Assistir (Resume)
   int savedPositionSeconds = 0;
   String? savedEpId;
   String? savedEpNome;
@@ -497,7 +565,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  // CONTINUAR DE ONDE PAROU
   void _checkResumeData() async {
     final prefs = await SharedPreferences.getInstance();
     String? data = prefs.getString("resume_${widget.item['id']}");
@@ -542,7 +609,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         """);
         if (dadosJs != null && mounted) {
           var d = json.decode(dadosJs.toString());
-          setState(() { sinopse = d['sinopse']; backdrop = d['backdrop'] ?? widget.item['imagem']; });
+          setState(() { sinopse = cleanTitle(d['sinopse']); backdrop = d['backdrop'] ?? widget.item['imagem']; });
         }
 
         if (widget.item['tipo'] == 'filmes') return;
@@ -597,7 +664,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           }).toList();
         });
 
-        // AUTO-RESUME PARA SÉRIES
         if (!_autoPlayDisparado && savedEpId != null && savedEpId!.isNotEmpty) {
           _autoPlayDisparado = true;
           _abrirServidores(savedEpId!, savedEpNome ?? "Episódio", false);
@@ -623,8 +689,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         List<Map> servers = players.map((p) {
           String url = p["file"].toString().replaceAll("&amp;", "&");
           String tipo = p["type"]?.toString() ?? "Video";
-          String name = (p["title"] ?? "").toString();
-          String idioma = (url.contains("/dub/") || name.toLowerCase().contains("dub")) ? "Dublado" : (url.contains("/leg/") || name.toLowerCase().contains("leg")) ? "Legendado" : "Opção";
+          
+          String name = cleanTitle((p["title"] ?? p["name"] ?? "").toString());
+          String idioma = name;
+          if (idioma.isEmpty || idioma.toLowerCase() == "video") {
+            if (url.toLowerCase().contains("/dub/")) idioma = "Dublado";
+            else if (url.toLowerCase().contains("/leg/")) idioma = "Legendado";
+            else idioma = "Opção $tipo";
+          }
+
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
@@ -683,6 +756,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     setState(() { isPlaying = true; isServerLoading = true; });
 
+    await Future.delayed(const Duration(milliseconds: 100));
+
     _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"});
     await _videoPlayerController!.initialize();
 
@@ -713,7 +788,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // 1. ÁREA DO VÍDEO
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             color: Colors.black,
@@ -730,7 +804,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: IconButton(
                         icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
                         onPressed: () {
-                          // AUTO-RESUME PARA FILMES
                           if (!_autoPlayDisparado && savedPositionSeconds > 0) {
                             _autoPlayDisparado = true;
                             _abrirServidores(widget.item['id'], widget.item['titulo'], false);
@@ -767,7 +840,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
 
-          // 2. INFORMAÇÕES
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -938,7 +1010,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     leading: CircularProgressIndicator(value: progress, color: const Color(0xFFE50914)),
                     title: Text(DownloadManager.currentTitle, style: const TextStyle(color: Colors.white)),
                     subtitle: Text("A transferir: ${(progress * 100).toStringAsFixed(0)}%", style: const TextStyle(color: Colors.greenAccent)),
-                    trailing: IconButton(icon: const Icon(Icons.cancel, color: Colors.red), tooltip: "Cancelar", onPressed: DownloadManager.cancelDownload),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.cancel, color: Colors.red), 
+                      tooltip: "Cancelar", 
+                      onPressed: () => DownloadManager.confirmCancelDownload(context)
+                    ),
                   ),
                 );
               }
