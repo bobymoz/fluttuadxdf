@@ -70,8 +70,13 @@ class DownloadManager {
       _salvarHistorico(savePath);
       Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0);
     } catch (e) {
-      if (CancelToken.isCancel(e)) { progress.value = -1.0; } 
-      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); }
+      // CORREÇÃO: Verificação segura do tipo DioException exigida pelas novas versões do Dio
+      if (e is DioException && CancelToken.isCancel(e)) { 
+        progress.value = -1.0; 
+      } else { 
+        progress.value = -3.0; 
+        Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); 
+      }
     }
   }
 
@@ -214,7 +219,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)),
         centerTitle: true,
-        // O botão de menu lateral (Hamburger) é adicionado automaticamente pelo Flutter aqui
         actions: [
           IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
           IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen()))),
@@ -391,7 +395,7 @@ class _GridScreenState extends State<GridScreen> {
 }
 
 // ==========================================
-// PESQUISA INDIVIDUAL
+// PESQUISA INDIVIDUAL E LIMPA
 // ==========================================
 class SearchScreen extends StatefulWidget { const SearchScreen({super.key}); @override State<SearchScreen> createState() => _SearchScreenState(); }
 class _SearchScreenState extends State<SearchScreen> {
@@ -892,7 +896,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ==========================================
-// TELAS DE HISTÓRICO E DOWNLOADS (COM CANCELAMENTO)
+// TELAS DE HISTÓRICO E DOWNLOADS
 // ==========================================
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
