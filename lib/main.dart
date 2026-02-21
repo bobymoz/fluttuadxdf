@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -18,55 +19,71 @@ import 'package:chewie/chewie.dart';
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
 const String telegramUrl = "https://t.me/cdcine";
 
+// ==========================================
+// ANÚNCIOS ORIGINAIS DO CLIENTE
+// ==========================================
+const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script type="text/javascript">atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script type="text/javascript" src="//www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
+const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script type="text/javascript">atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script type="text/javascript" src="//www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
   runApp(const CDcineApp());
 }
 
+// Limpador de Títulos Bugados (Remove %20 e caracteres estranhos)
+String cleanTitle(String input) {
+  try {
+    String text = Uri.decodeFull(input);
+    return text.replaceAll('&amp;', '&').replaceAll('&#039;', "'").replaceAll('&quot;', '"').replaceAll('&#8211;', '-').replaceAll('&#8217;', "'").trim();
+  } catch (e) {
+    return input;
+  }
+}
+
 // ==========================================
-// GERENCIADOR DE DOWNLOADS GLOBAL
+// GERENCIADOR DE DOWNLOADS COM CANCELAMENTO
 // ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static String currentTitle = "";
+  static CancelToken? cancelToken;
 
   static Future<void> startDownload(String url, String title, bool isMp4) async {
     var status = await Permission.storage.request();
     if (!status.isGranted) await Permission.videos.request();
 
-    currentTitle = title;
+    currentTitle = cleanTitle(title);
     progress.value = 0.0;
+    cancelToken = CancelToken();
 
     try {
       final dir = Directory('/storage/emulated/0/Download');
-      String safeTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
+      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '');
       String ext = isMp4 ? "mp4" : "m3u8";
       final savePath = "${dir.path}/CDCINE_$safeTitle.$ext";
 
-      await Dio().download(
-        url, savePath,
-        options: Options(headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}),
-        onReceiveProgress: (rec, total) {
-          if (total != -1) progress.value = rec / total;
-        },
-      );
+      await Dio().download(url, savePath, cancelToken: cancelToken, options: Options(headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}), onReceiveProgress: (rec, total) {
+        if (total != -1) progress.value = rec / total;
+      });
       progress.value = -2.0; 
       _salvarHistorico(savePath);
       Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0);
     } catch (e) {
-      progress.value = -3.0; 
-      Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0);
+      if (CancelToken.isCancel(e)) { progress.value = -1.0; } 
+      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); }
     }
+  }
+
+  static void cancelDownload() {
+    cancelToken?.cancel();
+    progress.value = -1.0;
   }
 
   static void _salvarHistorico(String path) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> files = prefs.getStringList('downloads') ?? [];
-    if (!files.contains(path)) {
-      files.add(path);
-      prefs.setStringList('downloads', files);
-    }
+    if (!files.contains(path)) { files.add(path); prefs.setStringList('downloads', files); }
   }
 }
 
@@ -86,7 +103,7 @@ class CDcineApp extends StatelessWidget {
         return Stack(
           children: [
             child!,
-            const DraggableDownloadOverlay(), // Overlay que pode ser movido
+            const DraggableDownloadOverlay(),
           ],
         );
       },
@@ -95,15 +112,13 @@ class CDcineApp extends StatelessWidget {
   }
 }
 
-// Widget do Download que pode ser arrastado pela tela
+// Widget flutuante de download
 class DraggableDownloadOverlay extends StatefulWidget {
   const DraggableDownloadOverlay({super.key});
   @override State<DraggableDownloadOverlay> createState() => _DraggableDownloadOverlayState();
 }
-
 class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
-  double bottomOffset = 20;
-  double leftOffset = 20;
+  double bottomOffset = 20; double leftOffset = 20;
 
   @override Widget build(BuildContext context) {
     return ValueListenableBuilder<double>(
@@ -111,25 +126,19 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
       builder: (context, val, _) {
         if (val == -1.0) return const SizedBox.shrink();
         Color bgColor = Colors.grey[900]!;
-        String text = "Baixando: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
+        String text = "A transferir: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
         Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
-        if (val == -2.0) { bgColor = Colors.green[800]!; text = "Download Concluído"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
-        else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro no Download"; icon = const Icon(Icons.error, color: Colors.white); }
+        if (val == -2.0) { bgColor = Colors.green[800]!; text = "Transferência Concluída"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
+        else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro na Transferência"; icon = const Icon(Icons.error, color: Colors.white); }
         
         return Positioned(
           bottom: bottomOffset, left: leftOffset,
           child: GestureDetector(
-            onPanUpdate: (details) {
-              setState(() {
-                bottomOffset -= details.delta.dy;
-                leftOffset += details.delta.dx;
-              });
-            },
+            onPanUpdate: (details) { setState(() { bottomOffset -= details.delta.dy; leftOffset += details.delta.dx; }); },
             child: Material(
               color: Colors.transparent,
               child: Container(
-                width: MediaQuery.of(context).size.width * 0.85,
-                padding: const EdgeInsets.all(16),
+                width: MediaQuery.of(context).size.width * 0.85, padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)]),
                 child: Row(children: [icon, const SizedBox(width: 15), Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))]),
               ),
@@ -142,19 +151,18 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
 }
 
 // ==========================================
-// SCRAPER GLOBAL 
+// SCRAPER GLOBAL (API PYTHON-LIKE)
 // ==========================================
 Future<List<Map<String, String>>> fetchScraperData(String url) async {
   try {
     final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
-    List<Map<String, String>> list = [];
-    Set<String> vistos = {};
+    List<Map<String, String>> list = []; Set<String> vistos = {};
     RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
     for (var match in exp.allMatches(res.body)) {
       String id = match.group(3)!;
       if (!vistos.contains(id)) {
         vistos.add(id);
-        list.add({"imagem": match.group(1)!, "tipo": match.group(2)!, "id": id, "titulo": match.group(4)!.replaceAll(RegExp(r'<[^>]*>'), '').trim()});
+        list.add({"imagem": match.group(1)!, "tipo": match.group(2)!, "id": id, "titulo": cleanTitle(match.group(4)!)});
       }
     }
     return list;
@@ -174,65 +182,86 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   @override void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this); // Sem Doramas
+    _tabController = TabController(length: 3, vsync: this); 
   }
 
   @override Widget build(BuildContext context) {
     return Scaffold(
+      drawer: Drawer(
+        backgroundColor: const Color(0xFF121212),
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Color(0xFFE50914)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text("CDCINE PRO", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                  Text("O melhor conteúdo, sem limites.", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.send, color: Colors.blueAccent), 
+              title: const Text('O Nosso Telegram', style: TextStyle(color: Colors.white)), 
+              onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }
+            ),
+          ],
+        ),
+      ),
       appBar: AppBar(
         title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)),
         centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.history, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
+        // O botão de menu lateral (Hamburger) é adicionado automaticamente pelo Flutter aqui
         actions: [
-          IconButton(icon: const Icon(Icons.search, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchScreen()))),
-          IconButton(icon: const Icon(Icons.download_done, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen()))),
+          IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
+          IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen()))),
+          IconButton(icon: const Icon(Icons.search, color: Colors.white), tooltip: "Pesquisar", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchScreen()))),
         ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: const Color(0xFFE50914), indicatorWeight: 3, labelColor: Colors.white, unselectedLabelColor: Colors.grey,
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(text: "FILMES"),
-            Tab(text: "SÉRIES"),
-            Tab(text: "ANIMES"),
-          ],
+          tabs: const [Tab(text: "FILMES"), Tab(text: "SÉRIES"), Tab(text: "ANIMES")],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          CategoryTab(type: 'filmes'),
-          CategoryTab(type: 'series'),
-          CategoryTab(type: 'animes'),
-        ],
+        children: const [CategoryTab(type: 'filmes'), CategoryTab(type: 'series'), CategoryTab(type: 'animes')],
       ),
     );
   }
 }
 
 // ==========================================
-// ABAS DE CATEGORIA
+// ABAS DE CATEGORIA COM ANÚNCIOS INTERCALADOS
 // ==========================================
 class CategoryTab extends StatefulWidget {
-  final String type;
-  const CategoryTab({super.key, required this.type});
+  final String type; const CategoryTab({super.key, required this.type});
   @override State<CategoryTab> createState() => _CategoryTabState();
 }
 
 class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClientMixin {
-  List carouselItems = [];
-  bool loading = true;
+  List carouselItems = []; bool loading = true;
   @override bool get wantKeepAlive => true;
 
-  @override void initState() {
-    super.initState();
-    _loadInitialData();
+  @override void initState() { super.initState(); _loadInitialData(); }
+  void _loadInitialData() async {
+    carouselItems = await fetchScraperData("$smartPlayUrl/posts/${widget.type}/1");
+    if (mounted) setState(() => loading = false);
   }
 
-  void _loadInitialData() async {
-    String url = "$smartPlayUrl/posts/${widget.type}/1";
-    carouselItems = await fetchScraperData(url);
-    if (mounted) setState(() => loading = false);
+  Widget _buildAd(String htmlData, double height) {
+    return Container(
+      height: height, width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 10),
+      child: InAppWebView(
+        initialData: InAppWebViewInitialData(data: htmlData),
+        initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true),
+        shouldOverrideUrlLoading: (c, nav) async { launchUrl(nav.request.url!, mode: LaunchMode.externalApplication); return NavigationActionPolicy.CANCEL; },
+      ),
+    );
   }
 
   @override Widget build(BuildContext context) {
@@ -245,38 +274,38 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
         children: [
           if (carouselItems.isNotEmpty)
             CarouselSlider(
-              options: CarouselOptions(height: 250, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.85),
+              options: CarouselOptions(height: 250, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.45),
               items: carouselItems.map((item) {
                 return GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 10),
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), image: DecorationImage(image: NetworkImage(item['imagem']), fit: BoxFit.cover)),
-                    child: Container(
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), gradient: const LinearGradient(colors: [Colors.transparent, Colors.black], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
-                      alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(10),
-                      child: Text(item['titulo'], style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
                   ),
                 );
               }).toList(),
             ),
-          const SizedBox(height: 10),
+          
+          _buildAd(_c1, 50), 
           
           if (widget.type == 'filmes') ...[
             SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]"),
             SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação"),
+            _buildAd(_c2, 250), 
             SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia"),
             SectionWidget(title: "Terror", urlPattern: "$smartPlayUrl/search/[PAGE]?search=terror"),
           ] else if (widget.type == 'series') ...[
             SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/posts/series/[PAGE]"),
-            SectionWidget(title: "Ação e Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação série"),
-            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ficção série"),
-            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia série"),
+            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação"),
+            _buildAd(_c2, 250),
+            SectionWidget(title: "Drama", urlPattern: "$smartPlayUrl/search/[PAGE]?search=drama"),
+            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ficção"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia"),
           ] else if (widget.type == 'animes') ...[
             SectionWidget(title: "Animes Recentes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]"),
             SectionWidget(title: "Shounen", urlPattern: "$smartPlayUrl/search/[PAGE]?search=shounen"),
-            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=aventura anime"),
+            _buildAd(_c2, 250),
+            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=aventura"),
             SectionWidget(title: "Isekai", urlPattern: "$smartPlayUrl/search/[PAGE]?search=isekai"),
           ],
           const SizedBox(height: 40),
@@ -291,15 +320,10 @@ class SectionWidget extends StatefulWidget {
   const SectionWidget({super.key, required this.title, required this.urlPattern});
   @override State<SectionWidget> createState() => _SectionWidgetState();
 }
-
 class _SectionWidgetState extends State<SectionWidget> {
   List items = [];
   @override void initState() { super.initState(); _fetchData(); }
-  void _fetchData() async {
-    List res = await fetchScraperData(widget.urlPattern.replaceAll("[PAGE]", "1"));
-    if (mounted) setState(() => items = res);
-  }
-  
+  void _fetchData() async { List res = await fetchScraperData(widget.urlPattern.replaceAll("[PAGE]", "1")); if (mounted) setState(() => items = res); }
   @override Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Column(
@@ -329,15 +353,11 @@ class _SectionWidgetState extends State<SectionWidget> {
   }
 }
 
-// ==========================================
-// TELA DE GRID (PAGINAÇÃO SUBSTITUTIVA)
-// ==========================================
 class GridScreen extends StatefulWidget {
   final String title; final String urlPattern;
   const GridScreen({super.key, required this.title, required this.urlPattern});
   @override State<GridScreen> createState() => _GridScreenState();
 }
-
 class _GridScreenState extends State<GridScreen> {
   List items = []; bool loading = true; int page = 1;
   @override void initState() { super.initState(); _fetch(); }
@@ -346,14 +366,7 @@ class _GridScreenState extends State<GridScreen> {
     var newItems = await fetchScraperData(widget.urlPattern.replaceAll("[PAGE]", page.toString()));
     if(mounted) setState(() { items = newItems; loading = false; });
   }
-
-  void _changePage(int direction) {
-    if (page + direction > 0) {
-      setState(() { page += direction; items.clear(); });
-      _fetch();
-    }
-  }
-
+  void _changePage(int direction) { if (page + direction > 0) { setState(() { page += direction; items.clear(); }); _fetch(); } }
   @override Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
@@ -378,26 +391,24 @@ class _GridScreenState extends State<GridScreen> {
 }
 
 // ==========================================
-// PESQUISA INDIVIDUAL E LIMPA
+// PESQUISA INDIVIDUAL
 // ==========================================
 class SearchScreen extends StatefulWidget { const SearchScreen({super.key}); @override State<SearchScreen> createState() => _SearchScreenState(); }
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _ctrl = TextEditingController();
   List items = []; bool loading = false; bool searched = false;
-
   void _doSearch(String query) async {
     if (query.isEmpty) return;
     setState(() { loading = true; searched = true; });
     var res = await fetchScraperData("$smartPlayUrl/search/1?search=$query");
     setState(() { items = res; loading = false; });
   }
-
   @override Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: TextField(
           controller: _ctrl, style: const TextStyle(color: Colors.white), autofocus: true,
-          decoration: const InputDecoration(hintText: "Buscar no aplicativo...", hintStyle: TextStyle(color: Colors.grey), border: InputBorder.none),
+          decoration: const InputDecoration(hintText: "Procurar conteúdo...", hintStyle: TextStyle(color: Colors.grey), border: InputBorder.none),
           onSubmitted: _doSearch,
         ),
       ),
@@ -438,7 +449,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (EXOPLAYER NATIVO, SINOPSE, FIX DE LOOP)
+// TELA DO PLAYER (EXOPLAYER, AUTO-RESUME, FIX DE LOOP)
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -449,25 +460,63 @@ class _PlayerScreenState extends State<PlayerScreen> {
   InAppWebViewController? webExtrator;
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
+  Timer? _saveTimer;
 
-  String sinopse = "Carregando informações...";
+  String sinopse = "A carregar informações...";
   String backdrop = "";
   List temporadas = []; List episodios = [];
   String? tempSelecionada; String epAtivoNome = "";
   List recomendacoes = [];
   
   bool isPlaying = false;
+  bool isServerLoading = false;
   bool isSynopsisExpanded = false;
+  int _extracaoStatus = 0; 
 
-  // Controle de Estado do Scraper (Evita Loop de Episódios)
-  int _extracaoStatus = 0; // 0 = Puxando Infos, 1 = Puxando Episódios de Temp
+  // Variáveis de Continuar a Assistir (Resume)
+  int savedPositionSeconds = 0;
+  String? savedEpId;
+  String? savedEpNome;
+  bool _autoPlayDisparado = false;
 
-  @override void initState() { super.initState(); _salvarHistorico(); _fetchRecomendacoes(); }
+  @override void initState() { 
+    super.initState(); 
+    _salvarHistoricoGeral(); 
+    _fetchRecomendacoes(); 
+    _checkResumeData(); 
+  }
 
   @override void dispose() {
+    _saveTimer?.cancel();
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
     super.dispose();
+  }
+
+  // CONTINUAR DE ONDE PAROU
+  void _checkResumeData() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? data = prefs.getString("resume_${widget.item['id']}");
+    if (data != null) {
+      var map = json.decode(data);
+      savedPositionSeconds = map['position'] ?? 0;
+      savedEpId = map['ep_id'];
+      savedEpNome = map['ep_nome'];
+    }
+  }
+
+  void _iniciarSalvamentoContinuo() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (_videoPlayerController != null && _videoPlayerController!.value.isPlaying) {
+        int pos = _videoPlayerController!.value.position.inSeconds;
+        if (pos > 0) {
+          final prefs = await SharedPreferences.getInstance();
+          Map<String, dynamic> data = {"position": pos, "ep_id": savedEpId, "ep_nome": epAtivoNome};
+          prefs.setString("resume_${widget.item['id']}", json.encode(data));
+        }
+      }
+    });
   }
 
   void _fetchRecomendacoes() async {
@@ -475,13 +524,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if(mounted) setState(() { recomendacoes = res.where((e) => e['id'] != widget.item['id']).take(6).toList(); });
   }
 
-  // WebView Invisível - A Máquina de Estado que Evita o Loop
   void _onExtratorLoaded() async {
     if (webExtrator == null) return;
-    
     try {
       if (_extracaoStatus == 0) {
-        // PASSO 1: Extrair Sinopse e Fundo
         var dadosJs = await webExtrator!.evaluateJavascript(source: """
           (function() {
             var data = {sinopse: "Sinopse indisponível", backdrop: ""};
@@ -497,7 +543,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         if (widget.item['tipo'] == 'filmes') return;
 
-        // PASSO 2: Procurar Temporadas
         var seasonsRes = await webExtrator!.evaluateJavascript(source: "window.CookieManager ? window.CookieManager.get('seasons_${widget.item['id']}') : null");
         if (seasonsRes != null && seasonsRes.toString().isNotEmpty && seasonsRes.toString() != "null") {
           List sList = json.decode(seasonsRes.toString());
@@ -505,26 +550,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
           for (int i = 0; i < sList.length; i++) {
             String id = sList[i]['ID']?.toString() ?? sList[i]['id']?.toString() ?? "";
             String nome = sList[i]['nome']?.toString() ?? sList[i]['name']?.toString() ?? "Temporada ${i + 1}";
-            if (id.isNotEmpty) temp.add({"id": id, "nome": nome});
+            if (id.isNotEmpty) temp.add({"id": id, "nome": cleanTitle(nome)});
           }
           if (temp.isNotEmpty && mounted) {
             setState(() { temporadas = temp; tempSelecionada = temp[0]['id']; });
-            _carregarEpisodiosUrl(temp[0]['id']); // Inicia a busca pelos episódios da Temp 1
+            _carregarEpisodiosUrl(temp[0]['id']); 
             return;
           }
         }
-        // PASSO 3: Fallback (Animes sem temporada)
         _extrairEpisodiosDiretos();
       } 
       else if (_extracaoStatus == 1) {
-        // Após carregar a URL da Temporada, o WebView cai aqui. Puxa os episódios.
         _extrairEpisodiosDiretos();
       }
     } catch (e) {}
   }
 
   void _carregarEpisodiosUrl(String seasonId) {
-    setState(() { episodios = []; _extracaoStatus = 1; }); // Muda o status para 1 (Evita Loop)
+    setState(() { episodios = []; _extracaoStatus = 1; }); 
     webExtrator?.loadUrl(urlRequest: URLRequest(url: WebUri("$smartPlayUrl/season/$seasonId/episodes")));
   }
 
@@ -543,27 +586,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
         List eList = json.decode(epsRes.toString());
         setState(() {
           episodios = eList.map((e) {
-            String num = e['full_nome'].toString().replaceAll(RegExp(r'[^0-9]'), '');
-            return {"id": e['id'].toString(), "full_nome": e['full_nome'].toString(), "num": num.isEmpty ? "▶" : num};
+            String fullNome = cleanTitle(e['full_nome'].toString());
+            var nums = RegExp(r'\d+').allMatches(fullNome);
+            String numFormatado = nums.isNotEmpty ? nums.last.group(0)! : "▶"; 
+            return {"id": e['id'].toString(), "full_nome": fullNome, "num": numFormatado};
           }).toList();
         });
+
+        // AUTO-RESUME PARA SÉRIES
+        if (!_autoPlayDisparado && savedEpId != null && savedEpId!.isNotEmpty) {
+          _autoPlayDisparado = true;
+          _abrirServidores(savedEpId!, savedEpNome ?? "Episódio", false);
+        }
       }
     } catch (e) {}
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))));
+    setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
+    
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
     Map payload = widget.item['tipo'] == 'filmes' ? {"movie_id": idVideo, "action_type": "PLAY"} : {"ep_id": idVideo, "action_type": "PLAY"};
 
     try {
       final res = await http.post(Uri.parse(urlApi), headers: {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json", "Referer": smartPlayUrl}, body: json.encode(payload));
-      Navigator.pop(context);
       
       var data = json.decode(res.body);
       if (data['success'] == true && data['players'] != null) {
         List players = data['players'];
-        if (players.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum servidor online."))); return; }
+        if (players.isEmpty) { setState(() => isServerLoading = false); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum servidor online."))); return; }
         
         List<Map> servers = players.map((p) {
           String url = p["file"].toString().replaceAll("&amp;", "&");
@@ -573,9 +624,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
+        setState(() => isServerLoading = false);
         _mostrarModalServidores(servers, nomeVideo, isParaDownload);
       }
-    } catch (e) { Navigator.pop(context); }
+    } catch (e) { setState(() => isServerLoading = false); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao conectar ao servidor."))); }
   }
 
   void _mostrarModalServidores(List<Map> servers, String titulo, bool isParaDownload) {
@@ -597,10 +649,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   shape: RoundedRectangleBorder(side: BorderSide(color: s['isMp4'] ? Colors.green : Colors.grey[800]!), borderRadius: BorderRadius.circular(8)),
                   child: ListTile(
                     title: Text(s['idioma'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    subtitle: Text(s['isMp4'] ? "Recomendado (MP4)" : "Padrão (M3U8)", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                    subtitle: Text(s['isMp4'] ? "Premium (MP4)" : "Padrão (M3U8)", style: const TextStyle(color: Colors.white70, fontSize: 12)),
                     onTap: () {
                       Navigator.pop(ctx);
                       if (isParaDownload) {
+                        setState(() => isPlaying = false);
                         DownloadManager.startDownload(s['url'], titulo, true);
                       } else {
                         _iniciarExoPlayer(s['url'], titulo);
@@ -613,40 +666,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         );
       }
-    );
+    ).whenComplete(() {
+      if (isServerLoading || (_chewieController == null && isPlaying)) {
+        setState(() { isPlaying = false; isServerLoading = false; });
+      }
+    });
   }
 
-  // PLAYER NATIVO CHEWIE/EXOPLAYER COM ANIMAÇÃO DE CARREGAMENTO
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
 
-    setState(() { isPlaying = true; epAtivoNome = tituloEpisodio; });
+    setState(() { isPlaying = true; isServerLoading = true; });
 
-    _videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(url), 
-      httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}
-    );
-
+    _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"});
     await _videoPlayerController!.initialize();
+
+    if (savedPositionSeconds > 0) {
+      await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
+    }
 
     _chewieController = ChewieController(
       videoPlayerController: _videoPlayerController!,
-      autoPlay: true,
-      looping: false,
-      aspectRatio: 16 / 9,
-      allowPlaybackSpeedChanging: true,
-      materialProgressColors: ChewieProgressColors(
-        playedColor: const Color(0xFFE50914),
-        handleColor: const Color(0xFFE50914),
-        backgroundColor: Colors.grey[800]!,
-        bufferedColor: Colors.white54,
-      ),
+      autoPlay: true, looping: false, aspectRatio: 16 / 9, allowPlaybackSpeedChanging: true,
+      materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), backgroundColor: Colors.grey[800]!, bufferedColor: Colors.white54),
     );
-    setState(() {});
+    
+    setState(() => isServerLoading = false);
+    _iniciarSalvamentoContinuo();
   }
 
-  void _salvarHistorico() async {
+  void _salvarHistoricoGeral() async {
     final prefs = await SharedPreferences.getInstance();
     List<String> hist = prefs.getStringList('history') ?? [];
     Map<String, dynamic> it = {'id': widget.item['id'], 'title': widget.item['titulo'], 'type': widget.item['tipo'], 'poster_path': widget.item['imagem']};
@@ -659,7 +709,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // 1. ÁREA DO VÍDEO E PLAYER
+          // 1. ÁREA DO VÍDEO
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             color: Colors.black,
@@ -671,21 +721,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
                   Container(color: Colors.black.withOpacity(0.6)),
                   
-                  // Estado 1: Botão Play (Antes de clicar)
                   if (!isPlaying && widget.item['tipo'] == 'filmes')
-                    Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
+                    Center(
+                      child: IconButton(
+                        icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
+                        onPressed: () {
+                          // AUTO-RESUME PARA FILMES
+                          if (!_autoPlayDisparado && savedPositionSeconds > 0) {
+                            _autoPlayDisparado = true;
+                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                          } else {
+                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                          }
+                        }
+                      )
+                    ),
+                  
                   if (!isPlaying && widget.item['tipo'] != 'filmes')
                     const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
                   
-                  // Estado 2: Carregando Servidor (Processando Animado)
-                  if (isPlaying && (_chewieController == null || !_chewieController!.videoPlayerController.value.isInitialized))
-                    const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
+                  if (isPlaying && isServerLoading)
+                    Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  // Estado 3: Player Pronto e Rodando
-                  if (isPlaying && _chewieController != null && _chewieController!.videoPlayerController.value.isInitialized)
+                  if (isPlaying && !isServerLoading && _chewieController != null)
                     Chewie(controller: _chewieController!),
 
-                  // Botão de Voltar
                   if (!isPlaying)
                     Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
                 ],
@@ -693,7 +753,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
 
-          // WEBVIEW EXTRATORA INVISÍVEL
           SizedBox(
             height: 1, width: 1,
             child: InAppWebView(
@@ -704,7 +763,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
 
-          // 2. INFORMAÇÕES E RECOMENDAÇÕES (PARTE INFERIOR)
+          // 2. INFORMAÇÕES
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -717,17 +776,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Expanded(child: Text(widget.item['titulo'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white))),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                        icon: const Icon(Icons.download, color: Colors.white), label: const Text("BAIXAR", style: TextStyle(color: Colors.white)),
+                        icon: const Icon(Icons.download, color: Colors.white), label: const Text("TRANSFERIR", style: TextStyle(color: Colors.white)),
                         onPressed: () {
                           if (widget.item['tipo'] == 'filmes') _abrirServidores(widget.item['id'], widget.item['titulo'], true);
-                          else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segure o dedo sobre o episódio que deseja baixar.")));
+                          else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pressione durante algum tempo no episódio que deseja transferir.")));
                         },
                       )
                     ],
                   ),
                   const SizedBox(height: 15),
 
-                  // SINOPSE COM BOTAO VER MAIS
                   const Text("Sinopse", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 8),
                   GestureDetector(
@@ -751,7 +809,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // EPISÓDIOS (Séries)
                   if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
                     const Divider(color: Colors.white24),
                     Container(
@@ -769,7 +826,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ],
 
                   if (widget.item['tipo'] != 'filmes') ...[
-                    if (episodios.isEmpty && sinopse != "Carregando informações...")
+                    if (episodios.isEmpty && sinopse != "A carregar informações...")
                       const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
                     else
                       SizedBox(
@@ -781,7 +838,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
                             return GestureDetector(
                               onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
-                              onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true), // Download do EP
+                              onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true), 
                               child: Container(
                                 width: 50, margin: const EdgeInsets.only(right: 10),
                                 decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : Colors.grey[850], borderRadius: BorderRadius.circular(6)),
@@ -792,10 +849,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                     const SizedBox(height: 10),
-                    const Text("Dica: Segure o dedo em um episódio para fazer o DOWNLOAD.", style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic)),
+                    const Text("Dica: Pressione durante algum tempo num episódio para fazer TRANSFERÊNCIA.", style: TextStyle(color: Colors.grey, fontSize: 11, fontStyle: FontStyle.italic)),
                   ],
 
-                  // RECOMENDAÇÕES ABAIXO DE TUDO
                   if (recomendacoes.isNotEmpty) ...[
                     const Divider(color: Colors.white24),
                     const SizedBox(height: 10),
@@ -836,7 +892,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ==========================================
-// TELAS DE HISTÓRICO E DOWNLOADS
+// TELAS DE HISTÓRICO E DOWNLOADS (COM CANCELAMENTO)
 // ==========================================
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -846,7 +902,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Histórico")),
-      body: history.isEmpty ? const Center(child: Text("Você ainda não assistiu nada.", style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: history.length, itemBuilder: (c, i) {
+      body: history.isEmpty ? const Center(child: Text("Ainda não assistiu a nada.", style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: history.length, itemBuilder: (c, i) {
         var item = history[i];
         return ListTile(
           leading: CachedNetworkImage(imageUrl: item['poster_path'], width: 50, fit: BoxFit.cover),
@@ -865,11 +921,37 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void carregar() async { final prefs = await SharedPreferences.getInstance(); setState(() => files = prefs.getStringList('downloads') ?? []); }
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Meus Downloads")),
-      body: files.isEmpty ? const Center(child: Text("Nenhum download concluído.", style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: files.length, itemBuilder: (c, i) {
-        String name = files[i].split('/').last;
-        return ListTile(leading: const Icon(Icons.video_file, color: Colors.greenAccent, size: 40), title: Text(name, style: const TextStyle(color: Colors.white)), subtitle: const Text("Salvo na Galeria/Downloads"), trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { final prefs = await SharedPreferences.getInstance(); files.removeAt(i); prefs.setStringList('downloads', files); setState(() {}); }));
-      }),
+      appBar: AppBar(title: const Text("As Minhas Transferências")),
+      body: Column(
+        children: [
+          ValueListenableBuilder<double>(
+            valueListenable: DownloadManager.progress,
+            builder: (context, progress, child) {
+              if (progress >= 0.0 && progress <= 1.0) {
+                return Card(
+                  color: Colors.grey[900], margin: const EdgeInsets.all(10),
+                  child: ListTile(
+                    leading: CircularProgressIndicator(value: progress, color: const Color(0xFFE50914)),
+                    title: Text(DownloadManager.currentTitle, style: const TextStyle(color: Colors.white)),
+                    subtitle: Text("A transferir: ${(progress * 100).toStringAsFixed(0)}%", style: const TextStyle(color: Colors.greenAccent)),
+                    trailing: IconButton(icon: const Icon(Icons.cancel, color: Colors.red), tooltip: "Cancelar", onPressed: DownloadManager.cancelDownload),
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          const Divider(color: Colors.white24),
+          Expanded(
+            child: files.isEmpty 
+              ? const Center(child: Text("Nenhuma transferência concluída.", style: TextStyle(color: Colors.grey))) 
+              : ListView.builder(itemCount: files.length, itemBuilder: (c, i) {
+                  String name = files[i].split('/').last.replaceAll('CDCINE_', '');
+                  return ListTile(leading: const Icon(Icons.video_file, color: Colors.greenAccent, size: 40), title: Text(name, style: const TextStyle(color: Colors.white)), subtitle: const Text("Guardado na Galeria"), trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { final prefs = await SharedPreferences.getInstance(); files.removeAt(i); prefs.setStringList('downloads', files); setState(() {}); }));
+                }),
+          ),
+        ],
+      )
     );
   }
 }
