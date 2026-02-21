@@ -52,7 +52,6 @@ class _MainScreenState extends State<MainScreen> {
     _fetchHome();
   }
 
-  // Equivalente à Rota /api/home
   Future<void> _fetchHome() async {
     setState(() => isLoading = true);
     try {
@@ -67,7 +66,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // Equivalente à Rota /api/search
   Future<void> _search(String q) async {
     if (q.isEmpty) { _fetchHome(); return; }
     setState(() => isLoading = true);
@@ -83,12 +81,12 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // Extrator Regex (Igual ao Python)
+  // Extrator Regex - CORRIGIDO AS 3 ASPAS AQUI
   void _parseHtml(String html) {
     List<Map<String, String>> novosItens = [];
     Set<String> vistos = {};
     
-    RegExp exp = RegExp(r'<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>', dotAll: true);
+    RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
     for (var match in exp.allMatches(html)) {
       String id = match.group(3)!;
       if (!vistos.contains(id)) {
@@ -197,12 +195,10 @@ class _DetailsScreenState extends State<DetailsScreen> {
     }
   }
 
-  // Executado quando a WebView invisível termina de carregar a página
   void _onWebViewLoaded() async {
     if (webController == null) return;
 
     if (_extractingEpisodes) {
-      // MODO EXTRAÇÃO DE EPISÓDIOS (Rota /api/episodes)
       try {
         var epsRes = await webController!.evaluateJavascript(source: """
           (function(){
@@ -229,7 +225,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
       }
 
     } else {
-      // MODO EXTRAÇÃO DE TEMPORADAS (Rota /api/details)
       try {
         var seasonsRes = await webController!.evaluateJavascript(source: "window.CookieManager.get('seasons_${widget.item['id']}')");
         if (seasonsRes != null && seasonsRes.toString().isNotEmpty) {
@@ -247,7 +242,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
           }
         }
 
-        // Se não tem temporadas (ex: alguns animes), extrai os episódios diretos
         _extractingEpisodes = true;
         _onWebViewLoaded();
 
@@ -264,13 +258,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
       episodios = []; 
       _extractingEpisodes = true; 
     });
-    // Navega a WebView invisível para a página da temporada
     webController?.loadUrl(urlRequest: URLRequest(url: WebUri("$baseUrl/season/$seasonId/episodes")));
   }
 
-  // =====================================
-  // BUSCAR SERVIDORES E DETECTAR DUBLADO/LEGENDADO
-  // =====================================
   Future<void> _fetchServersAndPlay(String idVideo, String videoTitle) async {
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Colors.red)));
     
@@ -293,15 +283,12 @@ class _DetailsScreenState extends State<DetailsScreen> {
         if (players.isEmpty) { _msg("Nenhum servidor retornou vídeo."); return; }
         
         List<Map<String, String>> serversTratados = [];
-        
-        // APLICAÇÃO DA INTELIGÊNCIA DO PYTHON
         for (var p in players) {
           String urlVideo = p["file"].toString().replaceAll("&amp;", "&");
           String tipoVideo = p["type"]?.toString() ?? "Video";
           String nomeOriginal = (p["title"] ?? p["name"] ?? "").toString();
           String idioma = "";
 
-          // Identifica Dublado ou Legendado
           if (urlVideo.toLowerCase().contains("/dub/") || nomeOriginal.toLowerCase().contains("dub")) {
             idioma = "Dublado";
           } else if (urlVideo.toLowerCase().contains("/leg/") || nomeOriginal.toLowerCase().contains("leg")) {
@@ -376,7 +363,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
       appBar: AppBar(title: Text(widget.item['titulo']!)),
       body: Column(
         children: [
-          // CABEÇALHO DO ITEM
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -410,7 +396,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
           ),
           const Divider(color: Colors.white24),
 
-          // WEBVIEW OCULTA (Motor de Extração - O Playwright do Flutter)
           if (widget.item['tipo'] != 'filmes')
             SizedBox(
               height: 1, width: 1,
@@ -422,7 +407,6 @@ class _DetailsScreenState extends State<DetailsScreen> {
               ),
             ),
 
-          // ÁREA DE LISTAGEM (Temporadas e Episódios)
           Expanded(
             child: isExtracting 
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(color: Colors.red), const SizedBox(height: 10), Text(currentStatus, style: const TextStyle(color: Colors.grey))]))
@@ -514,7 +498,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // HTML customizado para o Player (Suporta MP4 nativo e M3U8 via hls.js igual ao seu frontend Python)
     String htmlPlayer = """
       <!DOCTYPE html>
       <html>
@@ -546,7 +529,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       appBar: AppBar(
         title: Text(widget.title, style: const TextStyle(fontSize: 14)),
         actions: [
-          if (widget.isMp4) // Permite download se for MP4
+          if (widget.isMp4)
             IconButton(
               icon: const Icon(Icons.download, color: Colors.greenAccent), 
               onPressed: isDownloading ? null : _startDownload,
