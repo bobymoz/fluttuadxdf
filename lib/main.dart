@@ -160,9 +160,6 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
   }
 }
 
-// ==========================================
-// SCRAPER COM FILTRO (Apenas para as Abas!)
-// ==========================================
 Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
   try {
     final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
@@ -172,7 +169,6 @@ Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterTy
       String id = match.group(3)!;
       String tipo = match.group(2)!;
       
-      // O filtro só é aplicado se filterType não for nulo (ou seja, nas abas). Na pesquisa, ele é ignorado!
       if (filterType != null && tipo != filterType) continue; 
       
       if (!vistos.contains(id)) {
@@ -284,9 +280,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           ),
         ),
         body: isSearching 
-          ? SearchResults(query: searchQuery) // A PESQUISA É GLOBAL (Sem Filtro)
+          ? SearchResults(query: searchQuery) 
           : TabBarView(controller: _tabController, children: const [
-              CategoryTab(type: 'filmes'), // AS ABAS TÊM FILTRO
+              CategoryTab(type: 'filmes'), 
               CategoryTab(type: 'series'), 
               CategoryTab(type: 'animes')
             ]),
@@ -296,7 +292,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 }
 
 // ==========================================
-// RESULTADOS DE PESQUISA INTELIGENTE (SEM FILTRO)
+// RESULTADOS DE PESQUISA INTELIGENTE
 // ==========================================
 class SearchResults extends StatelessWidget {
   final String query;
@@ -304,13 +300,25 @@ class SearchResults extends StatelessWidget {
   
   Future<List> _smartSearch() async {
     String safeQuery = Uri.encodeComponent(query);
-    // Não passa o filterType, logo procura em TODO o site!
     var res = await fetchScraperData("$smartPlayUrl/search/1?search=$safeQuery");
     
-    // Fallback: Se a pesquisa (ex: Mr. Robot) falhar, tenta limpar os caracteres especiais
+    // Fallback 1: Limpar caracteres especiais se não achou (ex: "mr. robot" -> "mr robot")
+    if (res.isEmpty && query.contains(RegExp(r'[^\w\s]'))) {
+      String fallback1 = query.replaceAll(RegExp(r'[^\w\s]'), '').trim();
+      if (fallback1.isNotEmpty) {
+        res = await fetchScraperData("$smartPlayUrl/search/1?search=${Uri.encodeComponent(fallback1)}");
+      }
+    }
+    
+    // Fallback 2: Separar por palavras e buscar a palavra mais forte (ex: "mr robot" -> pesquisa só "robot")
     if (res.isEmpty && query.contains(" ")) {
-      String fallback = Uri.encodeComponent(query.replaceAll(RegExp(r'[^\w\s]'), ''));
-      res = await fetchScraperData("$smartPlayUrl/search/1?search=$fallback");
+      List<String> words = query.replaceAll(RegExp(r'[^\w\s]'), '').split(" ");
+      words.removeWhere((w) => w.length <= 2); 
+      if (words.isNotEmpty) {
+        words.sort((a, b) => b.length.compareTo(a.length)); 
+        String fallback2 = Uri.encodeComponent(words.first);
+        res = await fetchScraperData("$smartPlayUrl/search/1?search=$fallback2");
+      }
     }
     return res;
   }
@@ -333,7 +341,7 @@ class SearchResults extends StatelessWidget {
 }
 
 // ==========================================
-// ABAS DE CATEGORIA COM FILTRO ATIVADO
+// ABAS DE CATEGORIA COM FILTRO ATIVADO E PALAVRAS-CHAVE MELHORADAS
 // ==========================================
 class CategoryTab extends StatefulWidget {
   final String type; const CategoryTab({super.key, required this.type});
@@ -347,7 +355,6 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
 
   @override void initState() { super.initState(); _loadInitialData(); }
   void _loadInitialData() async {
-    // Passa o filterType para garantir que a aba de séries só exibe séries no carrossel
     carouselItems = await fetchScraperData("$smartPlayUrl/posts/${widget.type}/1", filterType: widget.type);
     if (mounted) setState(() => loading = false);
   }
@@ -405,25 +412,24 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
           
           _buildAd(_c1, 50), 
           
-          // O SEGREDO DO FILTRO: Usamos `filterType` para garantir a categoria pura nas listas.
           if (widget.type == 'filmes') ...[
             SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes"),
-            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação", filterType: "filmes"),
+            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=acao", filterType: "filmes"),
             _buildAd(_c2, 250), 
-            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia", filterType: "filmes"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comed", filterType: "filmes"),
             SectionWidget(title: "Terror", urlPattern: "$smartPlayUrl/search/[PAGE]?search=terror", filterType: "filmes"),
           ] else if (widget.type == 'series') ...[
             SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series"),
-            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação", filterType: "series"),
+            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=acao", filterType: "series"),
             _buildAd(_c2, 250),
             SectionWidget(title: "Drama", urlPattern: "$smartPlayUrl/search/[PAGE]?search=drama", filterType: "series"),
-            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ficção", filterType: "series"),
-            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia", filterType: "series"),
+            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=sci", filterType: "series"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comed", filterType: "series"),
           ] else if (widget.type == 'animes') ...[
             SectionWidget(title: "Animes Recentes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes"),
             SectionWidget(title: "Shounen", urlPattern: "$smartPlayUrl/search/[PAGE]?search=shounen", filterType: "animes"),
             _buildAd(_c2, 250),
-            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=aventura", filterType: "animes"),
+            SectionWidget(title: "Aventura e Fantasia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=fantasia", filterType: "animes"),
             SectionWidget(title: "Isekai", urlPattern: "$smartPlayUrl/search/[PAGE]?search=isekai", filterType: "animes"),
           ],
           const SizedBox(height: 40),
@@ -535,7 +541,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (EXOPLAYER, SHIMMER, RESUME)
+// TELA DO PLAYER
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -749,7 +755,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(isParaDownload ? "Servidores para Download:" : "Selecione um servidor", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(isParaDownload ? "Servidores para Download:" : "Selecione o servidor", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () { 
                     Navigator.pop(ctx); 
                     if (!isParaDownload) setState(() { isPlaying = false; isServerLoading = false; }); 
