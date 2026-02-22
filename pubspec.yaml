@@ -24,6 +24,7 @@ dependencies:
   permission_handler: ^11.3.0
   video_player: ^2.8.2
   chewie: ^1.7.5
+  open_filex: ^4.5.2
 
 dev_dependencies:
   flutter_test:
