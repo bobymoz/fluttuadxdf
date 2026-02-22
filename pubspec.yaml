@@ -25,6 +25,7 @@ dependencies:
   video_player: ^2.8.2
   chewie: ^1.7.5
   open_filex: ^4.5.2
+  background_downloader: ^3.9.1
 
 dev_dependencies:
   flutter_test:
