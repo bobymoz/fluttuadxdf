@@ -19,12 +19,12 @@ import 'package:open_filex/open_filex.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
 const String telegramUrl = "https://t.me/cdcine";
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
 const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
 
-// DICIONÁRIO DE GÊNEROS COM IMAGENS ESTILO NETFLIX/CRUNCHYROLL
 const List<Map<String, String>> officialGenres = [
   {"nome": "Ação", "slug": "4", "img": "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg"},
   {"nome": "Action & Adventure", "slug": "53", "img": "https://image.tmdb.org/t/p/w500/2rmK7mnchw9Xr3XdiTFSxTTLXqv.jpg"},
@@ -56,9 +56,6 @@ String cleanTitle(String input) {
   } catch (e) { return input; }
 }
 
-// ==========================================
-// FUNÇÕES GLOBAIS DE UI (SKELETONS)
-// ==========================================
 Widget _buildGridSkeleton() {
   return GridView.builder(
     padding: const EdgeInsets.all(10), 
@@ -85,9 +82,6 @@ Widget _buildCarouselSkeleton() {
   );
 }
 
-// ==========================================
-// MOTOR DE DOWNLOAD
-// ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static String currentTitle = "";
@@ -143,6 +137,30 @@ class DownloadManager {
     List<String> files = prefs.getStringList('downloads') ?? [];
     if (!files.contains(path)) { files.add(path); prefs.setStringList('downloads', files); }
   }
+}
+
+final Map<String, List<Map<String, String>>> _apiCache = {};
+
+Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
+  if (_apiCache.containsKey(url)) {
+    var list = _apiCache[url]!;
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
+    return list;
+  }
+  try {
+    final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
+    List<Map<String, String>> list = []; Set<String> vistos = {};
+    RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
+    for (var match in exp.allMatches(res.body)) {
+      String id = match.group(3)!; String tipo = match.group(2)!;
+      if (!vistos.contains(id)) {
+        vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
+      }
+    }
+    _apiCache[url] = list;
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
+    return list;
+  } catch (e) { return []; }
 }
 
 class CDcineApp extends StatelessWidget {
@@ -208,33 +226,8 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
   }
 }
 
-// CACHE EM MEMÓRIA
-final Map<String, List<Map<String, String>>> _apiCache = {};
-
-Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
-  if (_apiCache.containsKey(url)) {
-    var list = _apiCache[url]!;
-    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
-    return list;
-  }
-  try {
-    final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
-    List<Map<String, String>> list = []; Set<String> vistos = {};
-    RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
-    for (var match in exp.allMatches(res.body)) {
-      String id = match.group(3)!; String tipo = match.group(2)!;
-      if (!vistos.contains(id)) {
-        vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
-      }
-    }
-    _apiCache[url] = list;
-    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
-    return list;
-  } catch (e) { return []; }
-}
-
 // ==========================================
-// TELA PRINCIPAL (Navegação Inferior)
+// TELA PRINCIPAL (BOTTOM NAVIGATION BAR)
 // ==========================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -332,7 +325,7 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // ==========================================
-// ABA 0: INÍCIO (Carrossel + Secções)
+// ABA 0: INÍCIO (Carrossel + Secções, Sem anúncio gigante no topo)
 // ==========================================
 class InicioTab extends StatefulWidget {
   const InicioTab({super.key});
@@ -350,7 +343,6 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
 
   @override Widget build(BuildContext context) {
     super.build(context);
-    
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -380,11 +372,10 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               ],
             ),
           
+          SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
           SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]"),
-          SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]", filterType: "series"),
-          Container(height: 60, width: double.infinity, margin: const EdgeInsets.symmetric(vertical: 10), child: InAppWebView(initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true))),
-          SectionWidget(title: "Animes Populares", urlPattern: "$smartPlayUrl/genre/6/[PAGE]", filterType: "animes"),
-          SectionWidget(title: "Novelas", urlPattern: "$smartPlayUrl/genre/30/[PAGE]", filterType: "series"),
+          SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/genre/4/[PAGE]"),
+          SectionWidget(title: "Séries Animadas", urlPattern: "$smartPlayUrl/genre/6/[PAGE]"),
           const SizedBox(height: 40),
         ],
       ),
@@ -393,7 +384,7 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
 }
 
 // ==========================================
-// ABA PURA (FILMES, SÉRIES, ANIMES) - Sem Carrossel, Só Grid
+// ABA PURA (FILMES, SÉRIES, ANIMES) - Só Grid
 // ==========================================
 class PaginatedCategoryView extends StatefulWidget {
   final String urlPattern; final String filterType; final String title;
@@ -441,7 +432,7 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
 }
 
 // ==========================================
-// ABA DE GÊNEROS COM IMAGENS REAIS
+// ABA DE GÊNEROS COM IMAGENS DE FUNDO
 // ==========================================
 class GenerosView extends StatelessWidget {
   const GenerosView({super.key});
@@ -542,14 +533,14 @@ class _GridScreenState extends State<GridScreen> {
       body: loading && items.isEmpty ? _buildGridSkeleton() : Column(
         children: [
           Expanded(child: GridView.builder(padding: const EdgeInsets.all(10), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), itemCount: items.length, itemBuilder: (c, i) => PosterCard(item: items[i]))),
-          if (items.isNotEmpty) Container(height: 60, width: double.infinity, child: InAppWebView(initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true))),
           Container(
             color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
-                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
+                ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]), onPressed: page > 1 ? () => _changePage(-1) : null, child: const Icon(Icons.arrow_back, color: Colors.white)),
+                Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, child: const Icon(Icons.arrow_forward, color: Colors.white)),
               ],
             ),
           )
@@ -559,7 +550,50 @@ class _GridScreenState extends State<GridScreen> {
   }
 }
 
-// CARTÃO PREMIUM 
+// ==========================================
+// RESULTADOS DE PESQUISA (Global e Sem Filtro)
+// ==========================================
+class SearchResults extends StatelessWidget {
+  final String query;
+  const SearchResults({super.key, required this.query});
+  
+  Future<List> _smartSearch() async {
+    String safeQuery = Uri.encodeComponent(query);
+    var res = await fetchScraperData("$smartPlayUrl/search/1?search=$safeQuery");
+    if (res.isEmpty && query.contains(RegExp(r'[^\w\s]'))) {
+      String fallback1 = query.replaceAll(RegExp(r'[^\w\s]'), '').trim();
+      if (fallback1.isNotEmpty) res = await fetchScraperData("$smartPlayUrl/search/1?search=${Uri.encodeComponent(fallback1)}");
+    }
+    if (res.isEmpty && query.contains(" ")) {
+      List<String> words = query.replaceAll(RegExp(r'[^\w\s]'), '').split(" ");
+      words.removeWhere((w) => w.length <= 2); 
+      if (words.isNotEmpty) {
+        words.sort((a, b) => b.length.compareTo(a.length)); 
+        String fallback2 = Uri.encodeComponent(words.first);
+        res = await fetchScraperData("$smartPlayUrl/search/1?search=$fallback2");
+      }
+    }
+    return res;
+  }
+
+  @override Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: _smartSearch(),
+      builder: (c, AsyncSnapshot<List> snapshot) {
+        if (!snapshot.hasData) return _buildGridSkeleton();
+        if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+        return GridView.builder(
+          padding: const EdgeInsets.all(10), 
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
+          itemCount: snapshot.data!.length, 
+          itemBuilder: (c, i) => PosterCard(item: snapshot.data![i])
+        );
+      },
+    );
+  }
+}
+
+// CARTÃO PREMIUM
 class PosterCard extends StatelessWidget {
   final dynamic item; const PosterCard({super.key, required this.item});
   @override Widget build(BuildContext context) {
@@ -589,7 +623,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (CRUNCHYROLL STYLE + SKELETON + ABR)
+// TELA DO PLAYER (SKELETON INICIAL E ABR NATIVO)
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -755,8 +789,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final res = await http.post(Uri.parse(urlApi), headers: {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json", "Referer": smartPlayUrl}, body: json.encode(payload));
-      
       var data = json.decode(res.body);
+      
       if (data['success'] == true && data['players'] != null) {
         List players = data['players'];
         if (players.isEmpty) { 
@@ -788,7 +822,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         } else {
           _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
         }
-
       }
     } catch (e) { 
       if (!isParaDownload) setState(() { isServerLoading = false; isPlaying = false; });
@@ -808,7 +841,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
       }
 
-      // M3U8 tem Adaptive Bitrate natural. Chewie suporta selecao de vel.
+      // PLAYER CRUNCHYROLL/NETFLIX
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: true, looping: false, aspectRatio: 16 / 9, 
@@ -892,6 +925,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       )
                     ),
                   
+                  if (!isPlaying && widget.item['tipo'] != 'filmes')
+                    const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+                  
                   if (isPlaying && isServerLoading)
                     Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
@@ -907,7 +943,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
           SizedBox(height: 1, width: 1, child: InAppWebView(initialSettings: InAppWebViewSettings(javaScriptEnabled: true), initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")), onWebViewCreated: (c) => webExtrator = c, onLoadStop: (c, u) { _onExtratorLoaded(); })),
 
-          // 2. INFORMAÇÕES (COM SKELETON)
+          // 2. INFORMAÇÕES
           Expanded(
             child: !isDataLoaded 
               ? _buildPlayerSkeleton()
@@ -995,7 +1031,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                       if (recomendacoes.isNotEmpty) ...[
                         const SizedBox(height: 20),
-                        Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("You may also like", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
+                        Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
                         const SizedBox(height: 10),
                         SizedBox(
                           height: 160,
