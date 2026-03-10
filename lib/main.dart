@@ -166,7 +166,19 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
   }
 }
 
+// ==========================================
+// APP CDN (CACHE EM MEMÓRIA PARA VELOCIDADE EXTREMA)
+// ==========================================
+final Map<String, List<Map<String, String>>> _apiCache = {};
+
 Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
+  // Se já tivermos descarregado esta página, devolvemos instantaneamente da RAM
+  if (_apiCache.containsKey(url)) {
+    var list = _apiCache[url]!;
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
+    return list;
+  }
+
   try {
     final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
     List<Map<String, String>> list = []; Set<String> vistos = {};
@@ -174,11 +186,14 @@ Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterTy
     for (var match in exp.allMatches(res.body)) {
       String id = match.group(3)!;
       String tipo = match.group(2)!;
-      if (filterType != null && tipo != filterType) continue; 
       if (!vistos.contains(id)) {
         vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
       }
     }
+    
+    _apiCache[url] = list; // Guarda no Cache
+    
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
     return list;
   } catch (e) { return []; }
 }
@@ -421,24 +436,24 @@ class _CategoryTabState extends State<CategoryTab> with AutomaticKeepAliveClient
           _buildAd(_c1, 50), 
           
           if (widget.type == 'filmes') ...[
-            SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes"),
-            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação", filterType: "filmes"),
+            SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]", filterType: "filmes"),
+            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/genre/4/[PAGE]", filterType: "filmes"),
             _buildAd(_c2, 250), 
-            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia", filterType: "filmes"),
-            SectionWidget(title: "Terror", urlPattern: "$smartPlayUrl/search/[PAGE]?search=terror", filterType: "filmes"),
+            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/genre/12/[PAGE]", filterType: "filmes"),
+            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/genre/8/[PAGE]", filterType: "filmes"),
+            SectionWidget(title: "Terror", urlPattern: "$smartPlayUrl/genre/9/[PAGE]", filterType: "filmes"),
           ] else if (widget.type == 'series') ...[
-            SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series"),
-            SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ação", filterType: "series"),
+            SectionWidget(title: "Séries em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]", filterType: "series"),
+            SectionWidget(title: "Action & Adventure", urlPattern: "$smartPlayUrl/genre/53/[PAGE]", filterType: "series"),
             _buildAd(_c2, 250),
-            SectionWidget(title: "Drama", urlPattern: "$smartPlayUrl/search/[PAGE]?search=drama", filterType: "series"),
-            SectionWidget(title: "Ficção Científica", urlPattern: "$smartPlayUrl/search/[PAGE]?search=ficção", filterType: "series"),
-            SectionWidget(title: "Comédia", urlPattern: "$smartPlayUrl/search/[PAGE]?search=comédia", filterType: "series"),
+            SectionWidget(title: "Sci-Fi & Fantasy", urlPattern: "$smartPlayUrl/genre/54/[PAGE]", filterType: "series"),
+            SectionWidget(title: "Drama", urlPattern: "$smartPlayUrl/genre/51/[PAGE]", filterType: "series"),
+            SectionWidget(title: "Doramas", urlPattern: "$smartPlayUrl/genre/58/[PAGE]", filterType: "series"),
           ] else if (widget.type == 'animes') ...[
-            SectionWidget(title: "Animes Recentes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes"),
-            SectionWidget(title: "Shounen", urlPattern: "$smartPlayUrl/search/[PAGE]?search=shounen", filterType: "animes"),
+            SectionWidget(title: "Animação", urlPattern: "$smartPlayUrl/genre/6/[PAGE]", filterType: "animes"),
+            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/genre/5/[PAGE]", filterType: "animes"),
             _buildAd(_c2, 250),
-            SectionWidget(title: "Aventura", urlPattern: "$smartPlayUrl/search/[PAGE]?search=aventura", filterType: "animes"),
-            SectionWidget(title: "Isekai", urlPattern: "$smartPlayUrl/search/[PAGE]?search=isekai", filterType: "animes"),
+            SectionWidget(title: "Kids", urlPattern: "$smartPlayUrl/genre/41/[PAGE]", filterType: "animes"),
           ],
           const SizedBox(height: 40),
         ],
@@ -562,7 +577,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER
+// TELA DO PLAYER (INTELIGÊNCIA AUTO-SELECÇÃO + NOVO CHEWIE UI)
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -712,11 +727,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {}
   }
 
+  // =====================================
+  // A MÁGICA DA AUTO-SELECÇÃO INTELIGENTE
+  // =====================================
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
-    } else {
-      showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))));
     }
 
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
@@ -724,8 +740,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     try {
       final res = await http.post(Uri.parse(urlApi), headers: {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json", "Referer": smartPlayUrl}, body: json.encode(payload));
-      
-      if (isParaDownload) Navigator.pop(context); 
       
       var data = json.decode(res.body);
       if (data['success'] == true && data['players'] != null) {
@@ -747,76 +761,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
             else if (url.toLowerCase().contains("/leg/")) idioma = "Legendado";
             else idioma = "Opção";
           }
-
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
-        if (!isParaDownload) setState(() => isServerLoading = false);
-        _mostrarModalServidores(servers, nomeVideo, isParaDownload);
+        // ALGORITMO DE ESCOLHA AUTOMÁTICA
+        Map? serverEscolhido;
+
+        // 1. Tenta MP4 + Dublado
+        serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
+        
+        // 2. Tenta qualquer MP4 (Melhor desempenho)
+        serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
+        
+        // 3. Tenta qualquer Dublado (M3U8)
+        serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
+        
+        // 4. Se não achar nada do que queremos, pega o primeiro que funcionar
+        serverEscolhido ??= servers.first;
+
+        if (isParaDownload) {
+          DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("A transferir automaticamente: ${serverEscolhido['idioma']}..."), backgroundColor: Colors.green));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("A reproduzir: ${serverEscolhido['idioma']}..."), duration: const Duration(seconds: 2)));
+          _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
+        }
+
       }
     } catch (e) { 
-      if (isParaDownload) Navigator.pop(context);
       if (!isParaDownload) setState(() { isServerLoading = false; isPlaying = false; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao conectar ao servidor."))); 
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao ligar ao servidor."))); 
     }
-  }
-
-  void _mostrarModalServidores(List<Map> servers, String titulo, bool isParaDownload) {
-    showModalBottomSheet(
-      context: context, 
-      isDismissible: false, enableDrag: false,
-      backgroundColor: const Color(0xFF1F1F1F),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(isParaDownload ? "Servidores para Download:" : "Selecione o servidor", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () { 
-                    Navigator.pop(ctx); 
-                    if (!isParaDownload && _chewieController == null) setState(() { isPlaying = false; isServerLoading = false; }); 
-                  })
-                ],
-              ),
-              const SizedBox(height: 5),
-              ...servers.map((s) {
-                if (isParaDownload && !s['isMp4']) return const SizedBox.shrink(); 
-                return Card(
-                  color: s['isMp4'] ? const Color(0xFF153a1d) : Colors.black,
-                  shape: RoundedRectangleBorder(side: BorderSide(color: s['isMp4'] ? Colors.green : Colors.grey[800]!), borderRadius: BorderRadius.circular(8)),
-                  child: ListTile(
-                    title: Text(s['idioma'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                    subtitle: Text(s['isMp4'] ? "Servidor Recomendado" : "Servidor Alternativo", style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      if (isParaDownload) {
-                        DownloadManager.startDownload(s['url'], titulo, true);
-                      } else {
-                        _iniciarExoPlayer(s['url'], titulo);
-                      }
-                    },
-                  ),
-                );
-              }).toList()
-            ],
-          ),
-        );
-      }
-    );
   }
 
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
-
-    setState(() { isPlaying = true; isServerLoading = true; });
-
-    await Future.delayed(const Duration(milliseconds: 100));
 
     _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"});
     
@@ -827,10 +807,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
       }
 
+      // PLAYER PREMIUM / CRUNCHYROLL STYLE (Ocultação rápida, cor forte, sem botões inúteis)
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
-        autoPlay: true, looping: false, aspectRatio: 16 / 9, allowPlaybackSpeedChanging: true,
-        materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), backgroundColor: Colors.grey[800]!, bufferedColor: Colors.white54),
+        autoPlay: true, looping: false, aspectRatio: 16 / 9, 
+        allowPlaybackSpeedChanging: true, 
+        showControlsOnInitialize: false,
+        hideControlsTimer: const Duration(seconds: 2), // Esconde os controlos rápido
+        materialProgressColors: ChewieProgressColors(
+          playedColor: const Color(0xFFE50914), 
+          handleColor: const Color(0xFFE50914), 
+          backgroundColor: Colors.grey[900]!, 
+          bufferedColor: Colors.white38
+        ),
       );
       
       setState(() => isServerLoading = false);
