@@ -25,6 +25,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
 const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
 
+// IMAGENS CORRIGIDAS PARA CADA GÊNERO (Sem Animes em Documentários)
 const List<Map<String, String>> officialGenres = [
   {"nome": "Ação", "slug": "4", "img": "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg"},
   {"nome": "Action & Adventure", "slug": "53", "img": "https://image.tmdb.org/t/p/w500/2rmK7mnchw9Xr3XdiTFSxTTLXqv.jpg"},
@@ -56,6 +57,26 @@ String cleanTitle(String input) {
   } catch (e) { return input; }
 }
 
+// ==========================================
+// FUNÇÕES GLOBAIS DE UI (SKELETONS & CABEÇALHOS)
+// ==========================================
+Widget _buildCategoryHeader(String title) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 20),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(height: 1, width: 40, color: Colors.grey[800]),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(title.toUpperCase(), style: GoogleFonts.bebasNeue(fontSize: 32, color: Colors.white, letterSpacing: 1)),
+        ),
+        Container(height: 1, width: 40, color: Colors.grey[800]),
+      ],
+    ),
+  );
+}
+
 Widget _buildGridSkeleton() {
   return GridView.builder(
     padding: const EdgeInsets.all(10), 
@@ -78,12 +99,18 @@ Widget _buildHorizontalSkeleton() {
 Widget _buildCarouselSkeleton() {
   return Shimmer.fromColors(
     baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!,
-    child: Container(height: 200, margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12))),
+    child: Container(height: 250, margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12))),
   );
 }
 
+// ==========================================
+// MOTOR DE DOWNLOAD COM BADGE
+// ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
+  static ValueNotifier<int> activeDownloadsCount = ValueNotifier(0);
+  static ValueNotifier<bool> showFloatingOverlay = ValueNotifier(false);
+  
   static String currentTitle = "";
   static CancelToken? cancelToken;
 
@@ -93,6 +120,8 @@ class DownloadManager {
 
     currentTitle = cleanTitle(title);
     progress.value = 0.0;
+    activeDownloadsCount.value = 1;
+    showFloatingOverlay.value = true;
     cancelToken = CancelToken();
 
     try {
@@ -105,12 +134,18 @@ class DownloadManager {
         if (total != -1) progress.value = rec / total;
       });
       progress.value = -2.0; 
+      activeDownloadsCount.value = 0;
       _salvarHistorico(savePath);
-      Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0);
+      Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
     } catch (e) {
-      if (e is DioException && CancelToken.isCancel(e)) { progress.value = -1.0; } 
-      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () => progress.value = -1.0); }
+      activeDownloadsCount.value = 0;
+      if (e is DioException && CancelToken.isCancel(e)) { progress.value = -1.0; showFloatingOverlay.value = false; } 
+      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); }
     }
+  }
+
+  static void hideOverlay() {
+    showFloatingOverlay.value = false;
   }
 
   static void confirmCancelDownload(BuildContext context) {
@@ -124,7 +159,13 @@ class DownloadManager {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Não", style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () { cancelToken?.cancel(); progress.value = -1.0; Navigator.pop(ctx); },
+            onPressed: () { 
+              cancelToken?.cancel(); 
+              progress.value = -1.0; 
+              activeDownloadsCount.value = 0;
+              showFloatingOverlay.value = false;
+              Navigator.pop(ctx); 
+            },
             child: const Text("Sim", style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -137,30 +178,6 @@ class DownloadManager {
     List<String> files = prefs.getStringList('downloads') ?? [];
     if (!files.contains(path)) { files.add(path); prefs.setStringList('downloads', files); }
   }
-}
-
-final Map<String, List<Map<String, String>>> _apiCache = {};
-
-Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
-  if (_apiCache.containsKey(url)) {
-    var list = _apiCache[url]!;
-    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
-    return list;
-  }
-  try {
-    final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
-    List<Map<String, String>> list = []; Set<String> vistos = {};
-    RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
-    for (var match in exp.allMatches(res.body)) {
-      String id = match.group(3)!; String tipo = match.group(2)!;
-      if (!vistos.contains(id)) {
-        vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
-      }
-    }
-    _apiCache[url] = list;
-    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
-    return list;
-  } catch (e) { return []; }
 }
 
 class CDcineApp extends StatelessWidget {
@@ -191,39 +208,80 @@ class DraggableDownloadOverlay extends StatefulWidget {
 class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
   double bottomOffset = 80; double leftOffset = 20;
   @override Widget build(BuildContext context) {
-    return ValueListenableBuilder<double>(
-      valueListenable: DownloadManager.progress,
-      builder: (context, val, _) {
-        if (val == -1.0) return const SizedBox.shrink();
-        Color bgColor = Colors.grey[900]!; String text = "A transferir: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
-        Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
-        if (val == -2.0) { bgColor = Colors.green[800]!; text = "Transferência Concluída"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
-        else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro na Transferência"; icon = const Icon(Icons.error, color: Colors.white); }
+    return ValueListenableBuilder<bool>(
+      valueListenable: DownloadManager.showFloatingOverlay,
+      builder: (context, show, child) {
+        if (!show) return const SizedBox.shrink();
         
-        return Positioned(
-          bottom: bottomOffset, left: leftOffset,
-          child: GestureDetector(
-            onPanUpdate: (details) { setState(() { bottomOffset -= details.delta.dy; leftOffset += details.delta.dx; }); },
-            onTap: () { if (navigatorKey.currentState != null) navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => const DownloadsScreen())); },
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.85, padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)]),
-                child: Row(
-                  children: [
-                    icon, const SizedBox(width: 15), 
-                    Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                    if (val >= 0.0 && val <= 1.0) IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => DownloadManager.confirmCancelDownload(context))
-                  ],
+        return ValueListenableBuilder<double>(
+          valueListenable: DownloadManager.progress,
+          builder: (context, val, _) {
+            if (val == -1.0) return const SizedBox.shrink();
+            Color bgColor = Colors.grey[900]!; String text = "A baixar: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
+            Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
+            if (val == -2.0) { bgColor = Colors.green[800]!; text = "Download Concluído"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
+            else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro no Download"; icon = const Icon(Icons.error, color: Colors.white); }
+            
+            return Positioned(
+              bottom: bottomOffset, left: leftOffset,
+              child: GestureDetector(
+                onPanUpdate: (details) { setState(() { bottomOffset -= details.delta.dy; leftOffset += details.delta.dx; }); },
+                onTap: () { if (navigatorKey.currentState != null) navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => const DownloadsScreen())); },
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.85, padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 10)]),
+                    child: Row(
+                      children: [
+                        icon, const SizedBox(width: 15), 
+                        Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey), 
+                          onPressed: () {
+                            if (val >= 0.0 && val <= 1.0) {
+                              DownloadManager.hideOverlay(); // Apenas esconde visualmente
+                            } else {
+                              DownloadManager.progress.value = -1.0;
+                              DownloadManager.showFloatingOverlay.value = false;
+                            }
+                          }
+                        )
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
-      },
+      }
     );
   }
+}
+
+final Map<String, List<Map<String, String>>> _apiCache = {};
+
+Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterType}) async {
+  if (_apiCache.containsKey(url)) {
+    var list = _apiCache[url]!;
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
+    return list;
+  }
+  try {
+    final res = await http.get(Uri.parse(url), headers: {"User-Agent": "Mozilla/5.0"});
+    List<Map<String, String>> list = []; Set<String> vistos = {};
+    RegExp exp = RegExp(r'''<article class="item[^>]*>.*?<img[^>]*src=["\']([^"\']+)["\'].*?<a href="/posts/([^/]+)/post/(\d+)">([^<]+)</a>''', dotAll: true);
+    for (var match in exp.allMatches(res.body)) {
+      String id = match.group(3)!; String tipo = match.group(2)!;
+      if (!vistos.contains(id)) {
+        vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
+      }
+    }
+    _apiCache[url] = list;
+    if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
+    return list;
+  } catch (e) { return []; }
 }
 
 // ==========================================
@@ -240,31 +298,38 @@ class _MainScreenState extends State<MainScreen> {
   bool isSearching = false; String searchQuery = "";
 
   void _onSearchSubmit(String val) { setState(() { searchQuery = val; isSearching = val.isNotEmpty; }); }
-  void _clearSearch() { setState(() { _searchCtrl.clear(); searchQuery = ""; isSearching = false; }); }
+  void _clearSearch() { 
+    FocusScope.of(context).unfocus(); // Esconde o teclado
+    setState(() { _searchCtrl.clear(); searchQuery = ""; isSearching = false; }); 
+  }
 
-  final List<Widget> _views = [
-    const InicioTab(),
-    const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", title: "Filmes"),
-    const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", title: "Séries"),
-    const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", title: "Animes"),
-    const GenerosView(),
-  ];
+  void _changeTab(int index) {
+    setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; });
+  }
 
   @override Widget build(BuildContext context) {
+    final List<Widget> views = [
+      InicioTab(onNavigate: _changeTab), // Passamos o callback para o Inicio usar atalhos
+      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", title: "Filmes"),
+      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", title: "Séries"),
+      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", title: "Animes"),
+      const GenerosView(),
+    ];
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        if (isSearching) { _clearSearch(); } else if (_currentIndex != 0) { setState(() => _currentIndex = 0); } else { SystemNavigator.pop(); }
+        if (isSearching) { _clearSearch(); } else if (_currentIndex != 0) { _changeTab(0); } else { SystemNavigator.pop(); }
       },
       child: Scaffold(
         drawer: Drawer(
-          width: 250, backgroundColor: const Color(0xFF121212),
+          width: 220, backgroundColor: const Color(0xFF121212),
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const DrawerHeader(decoration: BoxDecoration(color: Color(0xFFE50914)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Text("CDCINE PRO", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 2)), Text("O melhor conteúdo, sem limites.", style: TextStyle(color: Colors.white70, fontSize: 12))])),
-              ListTile(leading: const Icon(Icons.send, color: Colors.blueAccent), title: const Text('O Nosso Telegram', style: TextStyle(color: Colors.white)), onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }),
+              const DrawerHeader(decoration: BoxDecoration(color: Color(0xFFE50914)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))])),
+              ListTile(leading: const Icon(Icons.send, color: Colors.blueAccent), title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }),
             ],
           ),
         ),
@@ -280,7 +345,25 @@ class _MainScreenState extends State<MainScreen> {
           title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)),
           centerTitle: true,
           actions: [
-            IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen()))),
+            ValueListenableBuilder<int>(
+              valueListenable: DownloadManager.activeDownloadsCount,
+              builder: (context, count, child) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () { DownloadManager.showFloatingOverlay.value = true; Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen())); }),
+                    if (count > 0)
+                      Positioned(
+                        right: 8, top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                  ],
+                );
+              }
+            ),
             const SizedBox(width: 5),
           ],
           bottom: PreferredSize(
@@ -305,17 +388,18 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
         ),
-        body: isSearching ? SearchResults(query: searchQuery) : _views[_currentIndex],
+        body: isSearching ? SearchResults(query: searchQuery) : views[_currentIndex],
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed,
           selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600],
+          selectedFontSize: 10, unselectedFontSize: 10,
           currentIndex: _currentIndex,
-          onTap: (index) { setState(() { _currentIndex = index; isSearching = false; }); },
+          onTap: _changeTab,
           items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Início"),
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"),
             BottomNavigationBarItem(icon: Icon(Icons.movie_creation_outlined), label: "Filmes"),
-            BottomNavigationBarItem(icon: Icon(Icons.play_arrow), label: "Séries"),
-            BottomNavigationBarItem(icon: Icon(Icons.album), label: "Animes"),
+            BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: "Séries"),
+            BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"),
             BottomNavigationBarItem(icon: Icon(Icons.format_list_bulleted), label: "Gêneros"),
           ],
         ),
@@ -325,10 +409,11 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 // ==========================================
-// ABA 0: INÍCIO (Carrossel + Secções, Sem anúncio gigante no topo)
+// ABA 0: INÍCIO (Atalhos e Carrossel)
 // ==========================================
 class InicioTab extends StatefulWidget {
-  const InicioTab({super.key});
+  final Function(int) onNavigate;
+  const InicioTab({super.key, required this.onNavigate});
   @override State<InicioTab> createState() => _InicioTabState();
 }
 class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixin {
@@ -352,7 +437,8 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
             Column(
               children: [
                 CarouselSlider(
-                  options: CarouselOptions(height: 200, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.85, aspectRatio: 16/9, onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)),
+                  // CORREÇÃO CARROSSEL CORTADO: Ajuste do viewportFraction
+                  options: CarouselOptions(height: 220, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.45, onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)),
                   items: carouselItems.map((item) {
                     return GestureDetector(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
@@ -361,21 +447,25 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                         decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), image: DecorationImage(image: NetworkImage(item['imagem']), fit: BoxFit.cover, alignment: Alignment.topCenter)),
                         child: Container(
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: const LinearGradient(colors: [Colors.transparent, Colors.black87], begin: Alignment.center, end: Alignment.bottomCenter)),
-                          alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(15),
-                          child: Text(item['titulo'], maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          alignment: Alignment.bottomCenter, padding: const EdgeInsets.all(10),
+                          child: Text(item['titulo'], textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     );
                   }).toList(),
                 ),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: carouselItems.asMap().entries.map((entry) { return Container(width: 8.0, height: 8.0, margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(_currentCarouselIndex == entry.key ? 0.9 : 0.4))); }).toList()),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: carouselItems.asMap().entries.map((entry) { return Container(width: 6.0, height: 6.0, margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(_currentCarouselIndex == entry.key ? 0.9 : 0.3))); }).toList()),
               ],
             ),
           
-          SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
           SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]"),
-          SectionWidget(title: "Ação", urlPattern: "$smartPlayUrl/genre/4/[PAGE]"),
-          SectionWidget(title: "Séries Animadas", urlPattern: "$smartPlayUrl/genre/6/[PAGE]"),
+          SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
+          
+          // ATALHOS PARA AS ABAS INFERIORES
+          SectionWidget(title: "Filmes", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", onSeeAll: () => widget.onNavigate(1)),
+          SectionWidget(title: "Séries", urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", onSeeAll: () => widget.onNavigate(2)),
+          SectionWidget(title: "Animes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", onSeeAll: () => widget.onNavigate(3)),
+          
           const SizedBox(height: 40),
         ],
       ),
@@ -384,7 +474,7 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
 }
 
 // ==========================================
-// ABA PURA (FILMES, SÉRIES, ANIMES) - Só Grid
+// ABA PURA (FILMES, SÉRIES, ANIMES) - Grelha e Botões no fundo
 // ==========================================
 class PaginatedCategoryView extends StatefulWidget {
   final String urlPattern; final String filterType; final String title;
@@ -407,23 +497,30 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
   @override Widget build(BuildContext context) {
     super.build(context);
     if (loading && items.isEmpty) return _buildGridSkeleton();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Row(children: [Container(width: 4, height: 22, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold))]),
+    
+    // USO DE CUSTOM SCROLL VIEW PARA ROLAGEM PERFEITA
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10),
+            delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length),
+          ),
         ),
-        Expanded(child: GridView.builder(padding: const EdgeInsets.all(10), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), itemCount: items.length, itemBuilder: (c, i) => PosterCard(item: items[i]))),
-        if (items.isNotEmpty) Container(height: 60, width: double.infinity, child: InAppWebView(initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true))),
-        Container(
-          color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
-              ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
-            ],
+        if (items.isNotEmpty) SliverToBoxAdapter(child: Container(height: 60, margin: const EdgeInsets.symmetric(vertical: 20), child: InAppWebView(initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)))),
+        SliverToBoxAdapter(
+          child: Container(
+            color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
+                Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
+              ],
+            ),
           ),
         )
       ],
@@ -432,7 +529,7 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
 }
 
 // ==========================================
-// ABA DE GÊNEROS COM IMAGENS DE FUNDO
+// ABA DE GÊNEROS COM IMAGENS REAIS
 // ==========================================
 class GenerosView extends StatelessWidget {
   const GenerosView({super.key});
@@ -440,10 +537,7 @@ class GenerosView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-          child: Row(children: [Container(width: 4, height: 22, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Gêneros", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold))]),
-        ),
+        _buildCategoryHeader("Gêneros"),
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.all(10),
@@ -474,8 +568,8 @@ class GenerosView extends StatelessWidget {
 }
 
 class SectionWidget extends StatefulWidget {
-  final String title; final String urlPattern; final String? filterType;
-  const SectionWidget({super.key, required this.title, required this.urlPattern, this.filterType});
+  final String title; final String urlPattern; final String? filterType; final VoidCallback? onSeeAll;
+  const SectionWidget({super.key, required this.title, required this.urlPattern, this.filterType, this.onSeeAll});
   @override State<SectionWidget> createState() => _SectionWidgetState();
 }
 class _SectionWidgetState extends State<SectionWidget> {
@@ -498,7 +592,7 @@ class _SectionWidgetState extends State<SectionWidget> {
             children: [
               Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))]),
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => GridScreen(title: widget.title, urlPattern: widget.urlPattern, filterType: widget.filterType))),
+                onTap: widget.onSeeAll ?? () => Navigator.push(context, MaterialPageRoute(builder: (c) => GridScreen(title: widget.title, urlPattern: widget.urlPattern, filterType: widget.filterType))),
                 child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)), child: const Text("VER MAIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))),
               )
             ],
@@ -529,19 +623,26 @@ class _GridScreenState extends State<GridScreen> {
   void _changePage(int direction) { if (page + direction > 0) { setState(() { page += direction; items.clear(); }); _fetch(); } }
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: loading && items.isEmpty ? _buildGridSkeleton() : Column(
-        children: [
-          Expanded(child: GridView.builder(padding: const EdgeInsets.all(10), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), itemCount: items.length, itemBuilder: (c, i) => PosterCard(item: items[i]))),
-          Container(
-            color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[800]), onPressed: page > 1 ? () => _changePage(-1) : null, child: const Icon(Icons.arrow_back, color: Colors.white)),
-                Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, child: const Icon(Icons.arrow_forward, color: Colors.white)),
-              ],
+      appBar: AppBar(title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 28, letterSpacing: 1)), centerTitle: true),
+      body: loading && items.isEmpty ? _buildGridSkeleton() : CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)),
+          ),
+          if (items.isNotEmpty) SliverToBoxAdapter(child: Container(height: 250, margin: const EdgeInsets.symmetric(vertical: 20), child: InAppWebView(initialData: InAppWebViewInitialData(data: _c2, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)))),
+          SliverToBoxAdapter(
+            child: Container(
+              color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
+                  Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
+                ],
+              ),
             ),
           )
         ],
@@ -550,9 +651,6 @@ class _GridScreenState extends State<GridScreen> {
   }
 }
 
-// ==========================================
-// RESULTADOS DE PESQUISA (Global e Sem Filtro)
-// ==========================================
 class SearchResults extends StatelessWidget {
   final String query;
   const SearchResults({super.key, required this.query});
@@ -582,18 +680,21 @@ class SearchResults extends StatelessWidget {
       builder: (c, AsyncSnapshot<List> snapshot) {
         if (!snapshot.hasData) return _buildGridSkeleton();
         if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
-        return GridView.builder(
-          padding: const EdgeInsets.all(10), 
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
-          itemCount: snapshot.data!.length, 
-          itemBuilder: (c, i) => PosterCard(item: snapshot.data![i])
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _buildCategoryHeader("Resultados")),
+            SliverPadding(
+              padding: const EdgeInsets.all(10),
+              sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)),
+            )
+          ],
         );
       },
     );
   }
 }
 
-// CARTÃO PREMIUM
+// CARTÃO PREMIUM SEM DADOS FALSOS
 class PosterCard extends StatelessWidget {
   final dynamic item; const PosterCard({super.key, required this.item});
   @override Widget build(BuildContext context) {
@@ -615,7 +716,7 @@ class PosterCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(item['titulo'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text("${item['tipo'].toString().toUpperCase()} | DUB", style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w600)),
+          Text("${item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -693,7 +794,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _fetchRecomendacoes() async {
-    var res = await fetchScraperData("$smartPlayUrl/posts/${widget.item['tipo']}/1"); 
+    var res = await fetchScraperData("$smartPlayUrl/posts/${widget.item['tipo']}/1", filterType: widget.item['tipo']);
     if(mounted) setState(() { recomendacoes = res.where((e) => e['id'] != widget.item['id']).take(6).toList(); });
   }
 
@@ -703,7 +804,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (_extracaoStatus == 0) {
         var dadosJs = await webExtrator!.evaluateJavascript(source: """
           (function() {
-            var data = {sinopse: "Sinopse não disponível", backdrop: ""};
+            var data = {sinopse: "Sinopse indisponível", backdrop: ""};
             var syn = document.querySelector('.synopsis'); if(syn) data.sinopse = syn.innerText;
             var bg = document.querySelector('.backdrop img'); if(bg) data.backdrop = bg.src;
             return JSON.stringify(data);
@@ -725,7 +826,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           List temp = [];
           for (int i = 0; i < sList.length; i++) {
             String id = sList[i]['ID']?.toString() ?? sList[i]['id']?.toString() ?? "";
-            String nome = sList[i]['nome']?.toString() ?? sList[i]['name']?.toString() ?? "Season ${i + 1}";
+            String nome = sList[i]['nome']?.toString() ?? sList[i]['name']?.toString() ?? "Temporada ${i + 1}";
             if (id.isNotEmpty) temp.add({"id": id, "nome": cleanTitle(nome)});
           }
           if (temp.isNotEmpty && mounted) {
@@ -781,7 +882,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar a transferência...", style: TextStyle(color: Colors.white)), backgroundColor: Colors.blue));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar transferência..."), backgroundColor: Colors.blue));
     }
 
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
@@ -812,6 +913,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
+        // INTELIGÊNCIA: Se não for download forçado, escolhe o melhor e toca direto.
         Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
@@ -841,7 +943,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
       }
 
-      // PLAYER CRUNCHYROLL/NETFLIX
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: true, looping: false, aspectRatio: 16 / 9, 
@@ -925,9 +1026,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       )
                     ),
                   
-                  if (!isPlaying && widget.item['tipo'] != 'filmes')
-                    const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-                  
+                  // ANIMAÇÃO GIRATÓRIA LIMPA NO CENTRO
                   if (isPlaying && isServerLoading)
                     Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
@@ -943,7 +1042,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
           SizedBox(height: 1, width: 1, child: InAppWebView(initialSettings: InAppWebViewSettings(javaScriptEnabled: true), initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")), onWebViewCreated: (c) => webExtrator = c, onLoadStop: (c, u) { _onExtratorLoaded(); })),
 
-          // 2. INFORMAÇÕES
           Expanded(
             child: !isDataLoaded 
               ? _buildPlayerSkeleton()
@@ -968,7 +1066,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      Text("${widget.item['tipo'].toString().toUpperCase()} | DUB 2026", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                      Text("${widget.item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 15),
 
                       GestureDetector(
@@ -987,46 +1085,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              dropdownColor: Colors.grey[900], value: tempSelecionada,
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                              items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
-                              onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } },
+                      if (widget.item['tipo'] != 'filmes') ...[
+                        if (temporadas.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                dropdownColor: Colors.grey[900], value: tempSelecionada,
+                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                                items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
+                                onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } },
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 15),
-                      ],
-
-                      if (widget.item['tipo'] != 'filmes' && episodios.isNotEmpty) ...[
-                        SizedBox(
-                          height: 45,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal, itemCount: episodios.length,
-                            itemBuilder: (ctx, i) {
-                              var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
-                              return GestureDetector(
-                                onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
-                                onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true), 
-                                child: Container(
-                                  width: 45, margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)),
-                                  child: Center(
-                                    child: isAtivo 
-                                      ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) 
-                                      : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))
+                        const SizedBox(height: 10),
+                        
+                        if (episodios.isEmpty)
+                          SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right:10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
+                        else
+                          SizedBox(
+                            height: 45,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal, itemCount: episodios.length,
+                              itemBuilder: (ctx, i) {
+                                var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
+                                return GestureDetector(
+                                  onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
+                                  onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true), 
+                                  child: Container(
+                                    width: 45, margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)),
+                                    child: Center(
+                                      child: isAtivo 
+                                        ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) 
+                                        : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
-                        ),
                         const SizedBox(height: 8),
-                        const Text("Dica: Pressione o botão do episódio para transferir.", style: TextStyle(color: Colors.grey, fontSize: 10, fontStyle: FontStyle.italic)),
+                        Container(
+                          padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
+                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Pressione num episódio para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
+                        ),
                       ],
 
                       if (recomendacoes.isNotEmpty) ...[
@@ -1039,18 +1142,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             scrollDirection: Axis.horizontal, itemCount: recomendacoes.length,
                             itemBuilder: (ctx, i) {
                               var rec = recomendacoes[i];
-                              return Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec));
+                              return GestureDetector(
+                                onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))),
+                                child: Container(
+                                  width: 105, margin: const EdgeInsets.only(right: 10),
+                                  child: PosterCard(item: rec),
+                                ),
+                              );
                             },
                           ),
                         )
                       ]
-                    
                     ],
                   ),
-                ),
-              ),  
-           
-              
+                )
         ],
       ),
     );
@@ -1084,7 +1189,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void carregar() async { final prefs = await SharedPreferences.getInstance(); setState(() => files = prefs.getStringList('downloads') ?? []); }
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("As Minhas Transferências")),
+      appBar: AppBar(title: const Text("Transferências")),
       body: Column(
         children: [
           ValueListenableBuilder<double>(
@@ -1107,13 +1212,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           const Divider(color: Colors.white24),
           Expanded(
             child: files.isEmpty 
-              ? const Center(child: Text("Nenhuma transferência concluída.", style: TextStyle(color: Colors.grey))) 
+              ? const Center(child: Text("Nenhuma transferência.", style: TextStyle(color: Colors.grey))) 
               : ListView.builder(itemCount: files.length, itemBuilder: (c, i) {
                   String name = files[i].split('/').last.replaceAll('CDCINE_', '');
                   return ListTile(
                     leading: const Icon(Icons.video_file, color: Colors.greenAccent, size: 40), 
                     title: Text(name, style: const TextStyle(color: Colors.white)), 
-                    subtitle: const Text("Guardado na Galeria - Clique para ver"), 
+                    subtitle: const Text("Guardado - Clique para ver"), 
                     trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { final prefs = await SharedPreferences.getInstance(); files.removeAt(i); prefs.setStringList('downloads', files); setState(() {}); }),
                     onTap: () { OpenFilex.open(files[i]); },
                   );
