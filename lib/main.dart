@@ -25,7 +25,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
 const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
 
-// IMAGENS CORRIGIDAS PARA CADA GÊNERO (Sem Animes em Documentários)
 const List<Map<String, String>> officialGenres = [
   {"nome": "Ação", "slug": "4", "img": "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg"},
   {"nome": "Action & Adventure", "slug": "53", "img": "https://image.tmdb.org/t/p/w500/2rmK7mnchw9Xr3XdiTFSxTTLXqv.jpg"},
@@ -51,15 +50,22 @@ void main() async {
 String cleanTitle(String input) {
   try {
     String text = Uri.decodeFull(input);
-    Map<String, String> ents = {'&amp;':'&', '&#039;':"'", '&quot;':'"', '&#8211;':'-', '&#8217;':"'", '&lt;':'<', '&gt;':'>', '&aacute;':'á', '&Aacute;':'Á', '&atilde;':'ã', '&Atilde;':'Ã', '&acirc;':'â', '&Acirc;':'Â', '&agrave;':'à', '&Agrave;':'À', '&eacute;':'é', '&Eacute;':'É', '&ecirc;':'ê', '&Ecirc;':'Ê', '&iacute;':'í', '&Iacute;':'Í', '&oacute;':'ó', '&Oacute;':'Ó', '&otilde;':'õ', '&Otilde;':'Õ', '&ocirc;':'ô', '&Ocirc;':'Ô', '&uacute;':'ú', '&Uacute;':'Ú', '&ccedil;':'ç', '&Ccedil;':'Ç', '&ntilde;':'ñ', '&Ntilde;':'Ñ', '&iexcl;':'í'};
+    Map<String, String> ents = {
+      '&amp;':'&', '&#039;':"'", '&quot;':'"', '&#8211;':'-', '&#8217;':"'", 
+      '&lt;':'<', '&gt;':'>', '&aacute;':'á', '&Aacute;':'Á', '&atilde;':'ã', 
+      '&Atilde;':'Ã', '&acirc;':'â', '&Acirc;':'Â', '&agrave;':'à', '&Agrave;':'À', 
+      '&eacute;':'é', '&Eacute;':'É', '&ecirc;':'ê', '&Ecirc;':'Ê', '&iacute;':'í', 
+      '&Iacute;':'Í', '&oacute;':'ó', '&Oacute;':'Ó', '&otilde;':'õ', '&Otilde;':'Õ', 
+      '&ocirc;':'ô', '&Ocirc;':'Ô', '&uacute;':'ú', '&Uacute;':'Ú', '&ccedil;':'ç', 
+      '&Ccedil;':'Ç', '&ntilde;':'ñ', '&Ntilde;':'Ñ', '&iexcl;':'í'
+    };
     ents.forEach((k, v) => text = text.replaceAll(k, v));
     return text.trim();
-  } catch (e) { return input; }
+  } catch (e) {
+    return input;
+  }
 }
 
-// ==========================================
-// FUNÇÕES GLOBAIS DE UI (SKELETONS & CABEÇALHOS)
-// ==========================================
 Widget _buildCategoryHeader(String title) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -82,7 +88,13 @@ Widget _buildGridSkeleton() {
     padding: const EdgeInsets.all(10), 
     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
     itemCount: 12, 
-    itemBuilder: (c, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))
+    itemBuilder: (c, i) {
+      return Shimmer.fromColors(
+        baseColor: Colors.grey[900]!, 
+        highlightColor: Colors.grey[800]!, 
+        child: Container(decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))
+      );
+    }
   );
 }
 
@@ -90,8 +102,16 @@ Widget _buildHorizontalSkeleton() {
   return SizedBox(
     height: 160,
     child: ListView.builder(
-      scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: 5,
-      itemBuilder: (c, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(width: 105, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))),
+      scrollDirection: Axis.horizontal, 
+      padding: const EdgeInsets.symmetric(horizontal: 10), 
+      itemCount: 5,
+      itemBuilder: (c, i) {
+        return Shimmer.fromColors(
+          baseColor: Colors.grey[900]!, 
+          highlightColor: Colors.grey[800]!, 
+          child: Container(width: 105, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))
+        );
+      }
     ),
   );
 }
@@ -103,9 +123,6 @@ Widget _buildCarouselSkeleton() {
   );
 }
 
-// ==========================================
-// MOTOR DE DOWNLOAD COM BADGE
-// ==========================================
 class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static ValueNotifier<int> activeDownloadsCount = ValueNotifier(0);
@@ -139,8 +156,13 @@ class DownloadManager {
       Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
     } catch (e) {
       activeDownloadsCount.value = 0;
-      if (e is DioException && CancelToken.isCancel(e)) { progress.value = -1.0; showFloatingOverlay.value = false; } 
-      else { progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); }
+      if (e is DioException && CancelToken.isCancel(e)) { 
+        progress.value = -1.0; 
+        showFloatingOverlay.value = false; 
+      } else { 
+        progress.value = -3.0; 
+        Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); 
+      }
     }
   }
 
@@ -154,7 +176,7 @@ class DownloadManager {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1F1F1F),
         title: const Text("Cancelar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text("Deseja cancelar o download?", style: TextStyle(color: Colors.white70)),
+        content: const Text("Deseja cancelar a transferência?", style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Não", style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -176,7 +198,10 @@ class DownloadManager {
   static void _salvarHistorico(String path) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> files = prefs.getStringList('downloads') ?? [];
-    if (!files.contains(path)) { files.add(path); prefs.setStringList('downloads', files); }
+    if (!files.contains(path)) { 
+      files.add(path); 
+      prefs.setStringList('downloads', files); 
+    }
   }
 }
 
@@ -206,7 +231,9 @@ class DraggableDownloadOverlay extends StatefulWidget {
   @override State<DraggableDownloadOverlay> createState() => _DraggableDownloadOverlayState();
 }
 class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
-  double bottomOffset = 80; double leftOffset = 20;
+  double bottomOffset = 80; 
+  double leftOffset = 20;
+  
   @override Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: DownloadManager.showFloatingOverlay,
@@ -217,10 +244,19 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
           valueListenable: DownloadManager.progress,
           builder: (context, val, _) {
             if (val == -1.0) return const SizedBox.shrink();
-            Color bgColor = Colors.grey[900]!; String text = "A baixar: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
+            Color bgColor = Colors.grey[900]!; 
+            String text = "A transferir: ${DownloadManager.currentTitle} ${(val * 100).toStringAsFixed(0)}%";
             Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
-            if (val == -2.0) { bgColor = Colors.green[800]!; text = "Download Concluído"; icon = const Icon(Icons.check_circle, color: Colors.white); } 
-            else if (val == -3.0) { bgColor = Colors.red[800]!; text = "Erro no Download"; icon = const Icon(Icons.error, color: Colors.white); }
+            
+            if (val == -2.0) { 
+              bgColor = Colors.green[800]!; 
+              text = "Transferência Concluída"; 
+              icon = const Icon(Icons.check_circle, color: Colors.white); 
+            } else if (val == -3.0) { 
+              bgColor = Colors.red[800]!; 
+              text = "Erro na Transferência"; 
+              icon = const Icon(Icons.error, color: Colors.white); 
+            }
             
             return Positioned(
               bottom: bottomOffset, left: leftOffset,
@@ -240,7 +276,7 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
                           icon: const Icon(Icons.close, color: Colors.grey), 
                           onPressed: () {
                             if (val >= 0.0 && val <= 1.0) {
-                              DownloadManager.hideOverlay(); // Apenas esconde visualmente
+                              DownloadManager.hideOverlay();
                             } else {
                               DownloadManager.progress.value = -1.0;
                               DownloadManager.showFloatingOverlay.value = false;
@@ -275,18 +311,18 @@ Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterTy
     for (var match in exp.allMatches(res.body)) {
       String id = match.group(3)!; String tipo = match.group(2)!;
       if (!vistos.contains(id)) {
-        vistos.add(id); list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
+        vistos.add(id); 
+        list.add({"imagem": match.group(1)!, "tipo": tipo, "id": id, "titulo": cleanTitle(match.group(4)!)});
       }
     }
     _apiCache[url] = list;
     if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
     return list;
-  } catch (e) { return []; }
+  } catch (e) { 
+    return []; 
+  }
 }
 
-// ==========================================
-// TELA PRINCIPAL (BOTTOM NAVIGATION BAR)
-// ==========================================
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
   @override State<MainScreen> createState() => _MainScreenState();
@@ -295,32 +331,54 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
   final TextEditingController _searchCtrl = TextEditingController();
-  bool isSearching = false; String searchQuery = "";
+  bool isSearching = false; 
+  String searchQuery = "";
 
-  void _onSearchSubmit(String val) { setState(() { searchQuery = val; isSearching = val.isNotEmpty; }); }
+  void _onSearchSubmit(String val) { 
+    setState(() { 
+      searchQuery = val; 
+      isSearching = val.isNotEmpty; 
+    }); 
+  }
+  
   void _clearSearch() { 
-    FocusScope.of(context).unfocus(); // Esconde o teclado
-    setState(() { _searchCtrl.clear(); searchQuery = ""; isSearching = false; }); 
+    FocusScope.of(context).unfocus();
+    setState(() { 
+      _searchCtrl.clear(); 
+      searchQuery = ""; 
+      isSearching = false; 
+    }); 
   }
 
   void _changeTab(int index) {
-    setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; });
+    setState(() { 
+      _currentIndex = index; 
+      isSearching = false; 
+      _searchCtrl.clear(); 
+      searchQuery = ""; 
+    });
   }
 
   @override Widget build(BuildContext context) {
     final List<Widget> views = [
-      InicioTab(onNavigate: _changeTab), // Passamos o callback para o Inicio usar atalhos
-      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", title: "Filmes"),
-      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", title: "Séries"),
-      const PaginatedCategoryView(urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", title: "Animes"),
-      const GenerosView(),
+      InicioTab(key: const ValueKey("inicio"), onNavigate: _changeTab),
+      const PaginatedCategoryView(key: ValueKey("filmes"), urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", title: "Filmes"),
+      const PaginatedCategoryView(key: ValueKey("series"), urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", title: "Séries"),
+      const PaginatedCategoryView(key: ValueKey("animes"), urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", title: "Animes"),
+      const GenerosView(key: ValueKey("generos")),
     ];
 
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        if (isSearching) { _clearSearch(); } else if (_currentIndex != 0) { _changeTab(0); } else { SystemNavigator.pop(); }
+        if (isSearching) { 
+          _clearSearch(); 
+        } else if (_currentIndex != 0) { 
+          _changeTab(0); 
+        } else { 
+          SystemNavigator.pop(); 
+        }
       },
       child: Scaffold(
         drawer: Drawer(
@@ -328,8 +386,22 @@ class _MainScreenState extends State<MainScreen> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              const DrawerHeader(decoration: BoxDecoration(color: Color(0xFFE50914)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))])),
-              ListTile(leading: const Icon(Icons.send, color: Colors.blueAccent), title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }),
+              const DrawerHeader(
+                decoration: BoxDecoration(color: Color(0xFFE50914)), 
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  mainAxisAlignment: MainAxisAlignment.end, 
+                  children: [
+                    Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), 
+                    Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))
+                  ]
+                )
+              ),
+              ListTile(
+                leading: const Icon(Icons.send, color: Colors.blueAccent), 
+                title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), 
+                onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }
+              ),
             ],
           ),
         ),
@@ -351,12 +423,20 @@ class _MainScreenState extends State<MainScreen> {
                 return Stack(
                   alignment: Alignment.center,
                   children: [
-                    IconButton(icon: const Icon(Icons.download, color: Colors.white), tooltip: "Downloads", onPressed: () { DownloadManager.showFloatingOverlay.value = true; Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen())); }),
+                    IconButton(
+                      icon: const Icon(Icons.download, color: Colors.white), 
+                      tooltip: "Downloads", 
+                      onPressed: () { 
+                        DownloadManager.showFloatingOverlay.value = true; 
+                        Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen())); 
+                      }
+                    ),
                     if (count > 0)
                       Positioned(
                         right: 8, top: 8,
                         child: Container(
-                          padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          padding: const EdgeInsets.all(4), 
+                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                           child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       )
@@ -373,9 +453,11 @@ class _MainScreenState extends State<MainScreen> {
               child: SizedBox(
                 height: 42,
                 child: TextField(
-                  controller: _searchCtrl, style: const TextStyle(color: Colors.white, fontSize: 14),
+                  controller: _searchCtrl, 
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: "Procurar conteúdo...", hintStyle: const TextStyle(color: Colors.grey),
+                    hintText: "Procurar conteúdo...", 
+                    hintStyle: const TextStyle(color: Colors.grey),
                     filled: true, fillColor: Colors.grey[900],
                     prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
                     suffixIcon: isSearching ? IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 18), onPressed: _clearSearch) : null,
@@ -388,7 +470,12 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
         ),
-        body: isSearching ? SearchResults(query: searchQuery) : views[_currentIndex],
+        body: isSearching 
+          ? SearchResults(query: searchQuery) 
+          : IndexedStack(
+              index: _currentIndex,
+              children: views,
+            ),
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed,
           selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600],
@@ -408,9 +495,6 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// ==========================================
-// ABA 0: INÍCIO (Atalhos e Carrossel)
-// ==========================================
 class InicioTab extends StatefulWidget {
   final Function(int) onNavigate;
   const InicioTab({super.key, required this.onNavigate});
@@ -437,8 +521,10 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
             Column(
               children: [
                 CarouselSlider(
-                  // CORREÇÃO CARROSSEL CORTADO: Ajuste do viewportFraction
-                  options: CarouselOptions(height: 220, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.45, onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)),
+                  options: CarouselOptions(
+                    height: 220, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.45, 
+                    onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)
+                  ),
                   items: carouselItems.map((item) {
                     return GestureDetector(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
@@ -454,14 +540,18 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                     );
                   }).toList(),
                 ),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: carouselItems.asMap().entries.map((entry) { return Container(width: 6.0, height: 6.0, margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(_currentCarouselIndex == entry.key ? 0.9 : 0.3))); }).toList()),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center, 
+                  children: carouselItems.asMap().entries.map((entry) { 
+                    return Container(width: 6.0, height: 6.0, margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(_currentCarouselIndex == entry.key ? 0.9 : 0.3))); 
+                  }).toList()
+                ),
               ],
             ),
           
           SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]"),
           SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
           
-          // ATALHOS PARA AS ABAS INFERIORES
           SectionWidget(title: "Filmes", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", onSeeAll: () => widget.onNavigate(1)),
           SectionWidget(title: "Séries", urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", onSeeAll: () => widget.onNavigate(2)),
           SectionWidget(title: "Animes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", onSeeAll: () => widget.onNavigate(3)),
@@ -473,9 +563,6 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
   }
 }
 
-// ==========================================
-// ABA PURA (FILMES, SÉRIES, ANIMES) - Grelha e Botões no fundo
-// ==========================================
 class PaginatedCategoryView extends StatefulWidget {
   final String urlPattern; final String filterType; final String title;
   const PaginatedCategoryView({super.key, required this.urlPattern, required this.filterType, required this.title});
@@ -498,7 +585,6 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
     super.build(context);
     if (loading && items.isEmpty) return _buildGridSkeleton();
     
-    // USO DE CUSTOM SCROLL VIEW PARA ROLAGEM PERFEITA
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
@@ -509,16 +595,35 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
             delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length),
           ),
         ),
-        if (items.isNotEmpty) SliverToBoxAdapter(child: Container(height: 60, margin: const EdgeInsets.symmetric(vertical: 20), child: InAppWebView(initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)))),
+        if (items.isNotEmpty) 
+          SliverToBoxAdapter(
+            child: Container(
+              height: 60, margin: const EdgeInsets.symmetric(vertical: 20), 
+              child: InAppWebView(
+                initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), 
+                initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)
+              )
+            )
+          ),
         SliverToBoxAdapter(
           child: Container(
             color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), 
+                  onPressed: page > 1 ? () => _changePage(-1) : null, 
+                  icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), 
+                  label: const Text("Anterior", style: TextStyle(color: Colors.white))
+                ),
                 Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), 
+                  onPressed: items.length >= 10 ? () => _changePage(1) : null, 
+                  icon: const Text("Próxima", style: TextStyle(color: Colors.white)), 
+                  label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)
+                ),
               ],
             ),
           ),
@@ -528,9 +633,6 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
   }
 }
 
-// ==========================================
-// ABA DE GÊNEROS COM IMAGENS REAIS
-// ==========================================
 class GenerosView extends StatelessWidget {
   const GenerosView({super.key});
   @override Widget build(BuildContext context) {
@@ -580,7 +682,23 @@ class _SectionWidgetState extends State<SectionWidget> {
     if (mounted) setState(() { items = res; loading = false; }); 
   }
   @override Widget build(BuildContext context) {
-    if (loading) { return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))), _buildHorizontalSkeleton()]); }
+    if (loading) { 
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start, 
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
+            child: Shimmer.fromColors(
+              baseColor: Colors.grey[900]!, 
+              highlightColor: Colors.grey[800]!, 
+              child: Container(height: 20, width: 100, color: Colors.black)
+            )
+          ), 
+          _buildHorizontalSkeleton()
+        ]
+      ); 
+    }
+    
     if (items.isEmpty) return const SizedBox.shrink();
     
     return Column(
@@ -590,17 +708,31 @@ class _SectionWidgetState extends State<SectionWidget> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))]),
+              Row(
+                children: [
+                  Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), 
+                  Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
+                ]
+              ),
               GestureDetector(
                 onTap: widget.onSeeAll ?? () => Navigator.push(context, MaterialPageRoute(builder: (c) => GridScreen(title: widget.title, urlPattern: widget.urlPattern, filterType: widget.filterType))),
-                child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)), child: const Text("VER MAIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), 
+                  decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)), 
+                  child: const Text("VER MAIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
+                ),
               )
             ],
           ),
         ),
         SizedBox(
           height: 160,
-          child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: items.length, itemBuilder: (c, i) => Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: items[i]))),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal, 
+            padding: const EdgeInsets.symmetric(horizontal: 10), 
+            itemCount: items.length, 
+            itemBuilder: (c, i) => Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: items[i]))
+          ),
         ),
       ],
     );
@@ -621,6 +753,7 @@ class _GridScreenState extends State<GridScreen> {
     if(mounted) setState(() { items = newItems; loading = false; });
   }
   void _changePage(int direction) { if (page + direction > 0) { setState(() { page += direction; items.clear(); }); _fetch(); } }
+  
   @override Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 28, letterSpacing: 1)), centerTitle: true),
@@ -629,18 +762,40 @@ class _GridScreenState extends State<GridScreen> {
           SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
+              delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)
+            ),
           ),
-          if (items.isNotEmpty) SliverToBoxAdapter(child: Container(height: 250, margin: const EdgeInsets.symmetric(vertical: 20), child: InAppWebView(initialData: InAppWebViewInitialData(data: _c2, baseUrl: WebUri("https://www.highperformanceformat.com")), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)))),
+          if (items.isNotEmpty) 
+            SliverToBoxAdapter(
+              child: Container(
+                height: 250, margin: const EdgeInsets.symmetric(vertical: 20), 
+                child: InAppWebView(
+                  initialData: InAppWebViewInitialData(data: _c2, baseUrl: WebUri("https://www.highperformanceformat.com")), 
+                  initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)
+                )
+              )
+            ),
           SliverToBoxAdapter(
             child: Container(
               color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), 
+                    onPressed: page > 1 ? () => _changePage(-1) : null, 
+                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), 
+                    label: const Text("Anterior", style: TextStyle(color: Colors.white))
+                  ),
                   Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), 
+                    onPressed: items.length >= 10 ? () => _changePage(1) : null, 
+                    icon: const Text("Próxima", style: TextStyle(color: Colors.white)), 
+                    label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)
+                  ),
                 ],
               ),
             ),
@@ -685,7 +840,10 @@ class SearchResults extends StatelessWidget {
             SliverToBoxAdapter(child: _buildCategoryHeader("Resultados")),
             SliverPadding(
               padding: const EdgeInsets.all(10),
-              sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
+                delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)
+              ),
             )
           ],
         );
@@ -694,7 +852,6 @@ class SearchResults extends StatelessWidget {
   }
 }
 
-// CARTÃO PREMIUM SEM DADOS FALSOS
 class PosterCard extends StatelessWidget {
   final dynamic item; const PosterCard({super.key, required this.item});
   @override Widget build(BuildContext context) {
@@ -716,7 +873,7 @@ class PosterCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(item['titulo'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text("${item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w600)),
+          Text("${item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -724,7 +881,7 @@ class PosterCard extends StatelessWidget {
 }
 
 // ==========================================
-// TELA DO PLAYER (SKELETON INICIAL E ABR NATIVO)
+// TELA DO PLAYER
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -804,7 +961,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (_extracaoStatus == 0) {
         var dadosJs = await webExtrator!.evaluateJavascript(source: """
           (function() {
-            var data = {sinopse: "Sinopse indisponível", backdrop: ""};
+            var data = {sinopse: "Sinopse não disponível", backdrop: ""};
             var syn = document.querySelector('.synopsis'); if(syn) data.sinopse = syn.innerText;
             var bg = document.querySelector('.backdrop img'); if(bg) data.backdrop = bg.src;
             return JSON.stringify(data);
@@ -881,8 +1038,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar transferência..."), backgroundColor: Colors.blue));
     }
 
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
@@ -913,7 +1068,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
-        // INTELIGÊNCIA: Se não for download forçado, escolhe o melhor e toca direto.
         Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
@@ -999,7 +1153,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: const Color(0xFF0F0F13),
       body: Column(
         children: [
-          // 1. ÁREA DO VÍDEO (FIXA NO TOPO)
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             color: Colors.black,
@@ -1026,7 +1179,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       )
                     ),
                   
-                  // ANIMAÇÃO GIRATÓRIA LIMPA NO CENTRO
+                  if (!isPlaying && widget.item['tipo'] != 'filmes')
+                    const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+                  
                   if (isPlaying && isServerLoading)
                     Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
@@ -1085,21 +1240,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      if (widget.item['tipo'] != 'filmes') ...[
-                        if (temporadas.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                dropdownColor: Colors.grey[900], value: tempSelecionada,
-                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                                items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
-                                onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } },
-                              ),
+                      if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              dropdownColor: Colors.grey[900], value: tempSelecionada,
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                              items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
+                              onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } },
                             ),
                           ),
+                        ),
                         const SizedBox(height: 10),
-                        
+                      ],
+
+                      if (widget.item['tipo'] != 'filmes') ...[
                         if (episodios.isEmpty)
                           SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right:10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
                         else
@@ -1128,7 +1284,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
-                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Pressione num episódio para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
+                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Pressione o botão do episódio para fazer download.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
                         ),
                       ],
 
@@ -1144,19 +1300,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               var rec = recomendacoes[i];
                               return GestureDetector(
                                 onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))),
-                                child: Container(
-                                  width: 105, margin: const EdgeInsets.only(right: 10),
-                                  child: PosterCard(item: rec),
-                                ),
+                                child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec)),
                               );
                             },
                           ),
                         )
-                       ]
+                      ]
                     ],
                   ),
-                ),
-              ),    
+                )
         ],
       ),
     );
@@ -1190,7 +1342,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   void carregar() async { final prefs = await SharedPreferences.getInstance(); setState(() => files = prefs.getStringList('downloads') ?? []); }
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Transferências")),
+      appBar: AppBar(title: const Text("As Minhas Transferências")),
       body: Column(
         children: [
           ValueListenableBuilder<double>(
@@ -1213,13 +1365,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           const Divider(color: Colors.white24),
           Expanded(
             child: files.isEmpty 
-              ? const Center(child: Text("Nenhuma transferência.", style: TextStyle(color: Colors.grey))) 
+              ? const Center(child: Text("Nenhuma transferência concluída.", style: TextStyle(color: Colors.grey))) 
               : ListView.builder(itemCount: files.length, itemBuilder: (c, i) {
                   String name = files[i].split('/').last.replaceAll('CDCINE_', '');
                   return ListTile(
                     leading: const Icon(Icons.video_file, color: Colors.greenAccent, size: 40), 
                     title: Text(name, style: const TextStyle(color: Colors.white)), 
-                    subtitle: const Text("Guardado - Clique para ver"), 
+                    subtitle: const Text("Guardado na Galeria - Clique para ver"), 
                     trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { final prefs = await SharedPreferences.getInstance(); files.removeAt(i); prefs.setStringList('downloads', files); setState(() {}); }),
                     onTap: () { OpenFilex.open(files[i]); },
                   );
