@@ -31,37 +31,34 @@ const String vastAdHtml = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css" />
+    <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css"/>
     <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }
-        #video-id { width: 100%; height: 100%; display: block; background-color: black; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; background: black; overflow: hidden; }
+        #fp-video { width: 100%; height: 100%; display: block; }
     </style>
 </head>
 <body>
-    <video id="video-id"></video>
+    <video id="fp-video" playsinline>
+        <source src="data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tAAAADmZyZWUAAAAIbWRhdA==" type="video/mp4"/>
+    </video>
     <script>
-        var player = fluidPlayer('video-id', {
+        var player = fluidPlayer('fp-video', {
             layoutControls: {
                 autoPlay: true,
-                mute: false,
+                fillToContainer: true,
                 allowTheatre: false,
-                playPauseAnimation: false,
                 allowDownload: false,
                 playButtonShowing: false,
-                fillToContainer: true,
-                posterImage: ''
+                playPauseAnimation: false,
+                mute: false
             },
             vastOptions: {
-                adList: [
-                    {
-                        roll: 'preRoll',
-                        vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069'
-                    }
-                ],
-                adCancelOffset: 0,
-                skipButtonCaption: 'Pular anúncio em [seconds]',
-                skipButtonClickCaption: 'Pular anúncio',
+                adList: [{
+                    roll: 'preRoll',
+                    vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069'
+                }],
                 allowVPAID: true,
                 showProgressbarMarkers: false
             }
@@ -71,18 +68,17 @@ const String vastAdHtml = """
         function finishAd() {
             if (!isDone) {
                 isDone = true;
-                window.flutter_inappwebview.callHandler('adFinished');
+                try { window.flutter_inappwebview.callHandler('adFinished'); } catch(e) {}
             }
         }
 
-        player.on('vast.adEnd', finishAd);
-        player.on('vast.adSkip', finishAd);
+        player.on('vast.adEnd',   finishAd);
+        player.on('vast.adSkip',  finishAd);
         player.on('vast.adError', finishAd);
-        player.on('vast.noAd', finishAd);
+        player.on('vast.noAd',    finishAd);
 
-        setTimeout(function() {
-            if (!document.querySelector('.fluid_vast_video_play')) finishAd();
-        }, 10000);
+        // Segurança: se em 15s nada aconteceu, avanca
+        setTimeout(finishAd, 15000);
     </script>
 </body>
 </html>
@@ -966,9 +962,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? savedEpNome;
   bool _autoPlayDisparado = false;
   
-  bool isShowingVastAd = false; 
-  String pendingVideoUrl = "";
-  String pendingVideoTitle = "";
+  bool isShowingVastAd = false;
+  Timer? _midRollTimer;
+  bool _midRollDisparado = false;
 
   @override void initState() { 
     super.initState(); 
@@ -979,6 +975,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override void dispose() {
     _saveTimer?.cancel();
+    _midRollTimer?.cancel();
     _videoPlayerController?.dispose();
     _chewieController?.dispose();
     super.dispose();
@@ -1145,11 +1142,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isParaDownload) {
           DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
         } else {
-          setState(() {
-            isShowingVastAd = true;
-            pendingVideoUrl = serverEscolhido!['url'];
-            pendingVideoTitle = nomeVideo;
-          });
+          // Inicia o vídeo direto — anúncio midRoll será exibido após 30s de reprodução
+          _iniciarExoPlayer(serverEscolhido!['url'], nomeVideo);
         }
       }
     } catch (e) { 
@@ -1179,6 +1173,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     
     setState(() => isServerLoading = false);
     _iniciarSalvamentoContinuo();
+
+    // MidRoll: exibe anúncio após 30s de reprodução, uma única vez por vídeo
+    if (!_midRollDisparado) {
+      _midRollTimer?.cancel();
+      _midRollTimer = Timer(const Duration(seconds: 30), () {
+        if (mounted && _videoPlayerController != null && _videoPlayerController!.value.isPlaying) {
+          _midRollDisparado = true;
+          _videoPlayerController!.pause();
+          setState(() => isShowingVastAd = true);
+        }
+      });
+    }
   }
 
   void _salvarHistoricoGeral() async {
@@ -1233,45 +1239,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
                   Container(color: Colors.black.withOpacity(0.6)),
                   
+                  // Camadas do player (sempre visíveis por baixo)
+                  if (!isPlaying && widget.item['tipo'] == 'filmes')
+                    Center(
+                      child: IconButton(
+                        icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
+                        onPressed: () {
+                          if (!_autoPlayDisparado && savedPositionSeconds > 0) {
+                            _autoPlayDisparado = true;
+                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                          } else {
+                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                          }
+                        }
+                      )
+                    ),
+                  
+                  if (!isPlaying && widget.item['tipo'] != 'filmes')
+                    const Center(child: Text("Selecione um episodio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+                  
+                  if (isPlaying && isServerLoading)
+                    Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
+
+                  if (isPlaying && !isServerLoading && _chewieController != null)
+                    Chewie(controller: _chewieController!),
+
+                  if (!isPlaying)
+                    Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+
+                  // Overlay do anuncio midRoll — aparece POR CIMA do Chewie, pausa o vídeo
                   if (isShowingVastAd)
                     InAppWebView(
                       initialData: InAppWebViewInitialData(data: vastAdHtml),
-                      initialSettings: InAppWebViewSettings(mediaPlaybackRequiresUserGesture: false, allowsInlineMediaPlayback: true, transparentBackground: true),
+                      initialSettings: InAppWebViewSettings(
+                        mediaPlaybackRequiresUserGesture: false,
+                        allowsInlineMediaPlayback: true,
+                        transparentBackground: false,
+                      ),
                       onWebViewCreated: (controller) {
                         controller.addJavaScriptHandler(handlerName: 'adFinished', callback: (args) {
-                          setState(() { isShowingVastAd = false; });
-                          _iniciarExoPlayer(pendingVideoUrl, pendingVideoTitle);
+                          setState(() => isShowingVastAd = false);
+                          _videoPlayerController?.play();
                         });
                       },
-                    )
-                  else ...[
-                    if (!isPlaying && widget.item['tipo'] == 'filmes')
-                      Center(
-                        child: IconButton(
-                          icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
-                          onPressed: () {
-                            if (!_autoPlayDisparado && savedPositionSeconds > 0) {
-                              _autoPlayDisparado = true;
-                              _abrirServidores(widget.item['id'], widget.item['titulo'], false);
-                            } else {
-                              _abrirServidores(widget.item['id'], widget.item['titulo'], false);
-                            }
-                          }
-                        )
-                      ),
-                    
-                    if (!isPlaying && widget.item['tipo'] != 'filmes')
-                      const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-                    
-                    if (isPlaying && isServerLoading)
-                      Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
-
-                    if (isPlaying && !isServerLoading && _chewieController != null)
-                      Chewie(controller: _chewieController!),
-
-                    if (!isPlaying)
-                      Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
-                  ]
+                    ),
                 ],
               ),
             ),
