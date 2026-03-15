@@ -22,10 +22,7 @@ const String telegramUrl = "https://t.me/hackermol";
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
-const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
-
-// INTEGRAÇÃO VAST - SCRIPT DO FLUID PLAYER
+// VAST HTML5 PLAYER (Configuração idêntica ao testador VAST padrão)
 const String vastAdHtml = """
 <!DOCTYPE html>
 <html lang="en">
@@ -34,43 +31,32 @@ const String vastAdHtml = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css" />
     <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }
-        #video-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
-        video { width: 100%; height: 100%; }
-    </style>
+    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }</style>
 </head>
 <body>
-    <div id="video-container">
-        <video id="video-id" playsinline>
-            <source src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthAHAAABtwAEAQAA" type="video/mp4"/>
-        </video>
-    </div>
+    <video id="video-id"><source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4"/></video>
     <script>
         var player = fluidPlayer('video-id', {
-            layoutControls: {
-                controlBar: { autoHideTimeout: 1, animated: false, playbackRates: [] },
-                htmlOnPauseBlock: { html: null, height: null, width: null },
-                autoPlay: true, mute: false, allowTheatre: false, playPauseAnimation: false, playbackRateEnabled: false, allowDownload: false, playButtonShowing: false, fillToContainer: true, posterImage: ''
-            },
-            vastOptions: {
-                allowVPAID: false,
-                adList: [{ roll: 'preRoll', vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069' }]
-            }
+            layoutControls: { autoPlay: true, mute: false, allowTheatre: false, playPauseAnimation: false, allowDownload: false, playButtonShowing: false, fillToContainer: true },
+            vastOptions: { adList: [{ roll: 'preRoll', vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069' }] }
         });
         
-        var isAdFinished = false;
+        var isDone = false;
         function finishAd() {
-            if(!isAdFinished) {
-                isAdFinished = true;
-                try { player.pause(); } catch(e){}
+            if(!isDone) {
+                isDone = true;
                 window.flutter_inappwebview.callHandler('adFinished');
             }
         }
 
-        player.on('playing', function() { finishAd(); });
-        player.on('error', function() { finishAd(); });
-        setTimeout(function() { finishAd(); }, 35000); // Segurança (Força o fim aos 35s)
+        player.on('vast.adEnd', finishAd);
+        player.on('vast.adSkip', finishAd);
+        player.on('vast.adError', finishAd);
+        
+        // Se a tag VAST não carregar em 8 segundos por culpa da rede, ele fecha o anúncio e abre o filme
+        setTimeout(function(){ 
+           if(!document.querySelector('.fluid_vast_video_play')) finishAd(); 
+        }, 8000);
     </script>
 </body>
 </html>
@@ -164,7 +150,6 @@ class DownloadManager {
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static ValueNotifier<int> activeDownloadsCount = ValueNotifier(0);
   static ValueNotifier<bool> showFloatingOverlay = ValueNotifier(false);
-  
   static String currentTitle = "";
   static CancelToken? cancelToken;
 
@@ -279,13 +264,9 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
             Widget icon = SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: val, color: const Color(0xFFE50914), strokeWidth: 3));
             
             if (val == -2.0) { 
-              bgColor = Colors.green[800]!; 
-              text = "Transferência Concluída"; 
-              icon = const Icon(Icons.check_circle, color: Colors.white); 
+              bgColor = Colors.green[800]!; text = "Transferência Concluída"; icon = const Icon(Icons.check_circle, color: Colors.white); 
             } else if (val == -3.0) { 
-              bgColor = Colors.red[800]!; 
-              text = "Erro na Transferência"; 
-              icon = const Icon(Icons.error, color: Colors.white); 
+              bgColor = Colors.red[800]!; text = "Erro na Transferência"; icon = const Icon(Icons.error, color: Colors.white); 
             }
             
             return Positioned(
@@ -344,9 +325,7 @@ Future<List<Map<String, String>>> fetchScraperData(String url, {String? filterTy
     _apiCache[url] = list;
     if (filterType != null) return list.where((e) => e['tipo'] == filterType).toList();
     return list;
-  } catch (e) { 
-    return []; 
-  }
+  } catch (e) { return []; }
 }
 
 class MainScreen extends StatefulWidget {
@@ -360,15 +339,11 @@ class _MainScreenState extends State<MainScreen> {
   bool isSearching = false; 
   String searchQuery = "";
 
-  void _onSearchSubmit(String val) { 
-    setState(() { searchQuery = val; isSearching = val.isNotEmpty; }); 
-  }
-  
+  void _onSearchSubmit(String val) { setState(() { searchQuery = val; isSearching = val.isNotEmpty; }); }
   void _clearSearch() { 
     FocusScope.of(context).unfocus();
     setState(() { _searchCtrl.clear(); searchQuery = ""; isSearching = false; }); 
   }
-
   void _changeTab(int index) {
     setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; });
   }
@@ -386,13 +361,7 @@ class _MainScreenState extends State<MainScreen> {
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        if (isSearching) { 
-          _clearSearch(); 
-        } else if (_currentIndex != 0) { 
-          _changeTab(0); 
-        } else { 
-          SystemNavigator.pop(); 
-        }
+        if (isSearching) { _clearSearch(); } else if (_currentIndex != 0) { _changeTab(0); } else { SystemNavigator.pop(); }
       },
       child: Scaffold(
         drawer: Drawer(
@@ -406,8 +375,7 @@ class _MainScreenState extends State<MainScreen> {
                     const DrawerHeader(
                       decoration: BoxDecoration(color: Color(0xFFE50914)), 
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start, 
-                        mainAxisAlignment: MainAxisAlignment.end, 
+                        crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, 
                         children: [
                           Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), 
                           Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))
@@ -422,14 +390,15 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
               ),
+              // DMCA MENSAGEM PROFISSIONAL E BONITA
               Container(
                 padding: const EdgeInsets.all(16), width: double.infinity, color: Colors.black,
                 child: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [Icon(Icons.shield, color: Colors.grey, size: 16), SizedBox(width: 8), Text("DMCA / Direitos de Autor", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12))]),
+                    Row(children: [Icon(Icons.gavel_outlined, color: Colors.white70, size: 16), SizedBox(width: 8), Text("Aviso Legal (DMCA)", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12))]),
                     SizedBox(height: 8),
-                    Text("Nós não hospedamos ficheiros. O conteúdo é acedido através de motores de busca públicos em servidores de terceiros. Para denúncias, contacte-nos no Telegram: @hackermol", style: TextStyle(color: Colors.white54, fontSize: 10, height: 1.5)),
+                    Text("Este aplicativo atua apenas como um agregador de links, indexando conteúdo já disponível publicamente na internet. Não armazenamos nem hospedamos qualquer ficheiro audiovisual nos nossos servidores.\n\nPara denúncias ou remoção de conteúdo, contacte o suporte oficial no Telegram: @hackermol", style: TextStyle(color: Colors.grey, fontSize: 10, height: 1.5)),
                   ],
                 ),
               )
@@ -457,17 +426,13 @@ class _MainScreenState extends State<MainScreen> {
                     IconButton(
                       icon: const Icon(Icons.download, color: Colors.white), 
                       tooltip: "Downloads", 
-                      onPressed: () { 
-                        DownloadManager.showFloatingOverlay.value = true; 
-                        Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen())); 
-                      }
+                      onPressed: () { DownloadManager.showFloatingOverlay.value = true; Navigator.push(context, MaterialPageRoute(builder: (c) => const DownloadsScreen())); }
                     ),
                     if (count > 0)
                       Positioned(
                         right: 8, top: 8,
                         child: Container(
-                          padding: const EdgeInsets.all(4), 
-                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                           child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       )
@@ -484,11 +449,9 @@ class _MainScreenState extends State<MainScreen> {
               child: SizedBox(
                 height: 42,
                 child: TextField(
-                  controller: _searchCtrl, 
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  controller: _searchCtrl, style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: "Procurar conteúdo...", 
-                    hintStyle: const TextStyle(color: Colors.grey),
+                    hintText: "Procurar conteúdo...", hintStyle: const TextStyle(color: Colors.grey),
                     filled: true, fillColor: Colors.grey[900],
                     prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20),
                     suffixIcon: isSearching ? IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 18), onPressed: _clearSearch) : null,
@@ -506,8 +469,7 @@ class _MainScreenState extends State<MainScreen> {
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed,
           selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600],
           selectedFontSize: 10, unselectedFontSize: 10,
-          currentIndex: _currentIndex,
-          onTap: _changeTab,
+          currentIndex: _currentIndex, onTap: _changeTab,
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"),
             BottomNavigationBarItem(icon: Icon(Icons.movie_creation_outlined), label: "Filmes"),
@@ -574,7 +536,6 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                 ),
               ],
             ),
-          
           SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]"),
           SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
           SectionWidget(title: "Filmes", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", onSeeAll: () => widget.onNavigate(1)),
@@ -592,7 +553,6 @@ class PaginatedCategoryView extends StatefulWidget {
   const PaginatedCategoryView({super.key, required this.urlPattern, required this.filterType, required this.title});
   @override State<PaginatedCategoryView> createState() => _PaginatedCategoryViewState();
 }
-
 class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with AutomaticKeepAliveClientMixin {
   List items = []; bool loading = true; int page = 1;
   @override bool get wantKeepAlive => true;
@@ -608,46 +568,22 @@ class _PaginatedCategoryViewState extends State<PaginatedCategoryView> with Auto
   @override Widget build(BuildContext context) {
     super.build(context);
     if (loading && items.isEmpty) return _buildGridSkeleton();
-    
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 10),
-          sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10),
-            delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length),
-          ),
+          sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)),
         ),
-        if (items.isNotEmpty) 
-          SliverToBoxAdapter(
-            child: Container(
-              height: 60, margin: const EdgeInsets.symmetric(vertical: 20), 
-              child: InAppWebView(
-                initialData: InAppWebViewInitialData(data: _c1, baseUrl: WebUri("https://www.highperformanceformat.com")), 
-                initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)
-              )
-            )
-          ),
         SliverToBoxAdapter(
           child: Container(
             color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), 
-                  onPressed: page > 1 ? () => _changePage(-1) : null, 
-                  icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), 
-                  label: const Text("Anterior", style: TextStyle(color: Colors.white))
-                ),
+                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
                 Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), 
-                  onPressed: items.length >= 10 ? () => _changePage(1) : null, 
-                  icon: const Text("Próxima", style: TextStyle(color: Colors.white)), 
-                  label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)
-                ),
+                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
               ],
             ),
           ),
@@ -707,20 +643,9 @@ class _SectionWidgetState extends State<SectionWidget> {
   }
   @override Widget build(BuildContext context) {
     if (loading) { 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start, 
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
-            child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))
-          ), 
-          _buildHorizontalSkeleton()
-        ]
-      ); 
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))), _buildHorizontalSkeleton()]); 
     }
-    
     if (items.isEmpty) return const SizedBox.shrink();
-    
     return Column(
       children: [
         Padding(
@@ -728,32 +653,15 @@ class _SectionWidgetState extends State<SectionWidget> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), 
-                  Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))
-                ]
-              ),
+              Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(widget.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))]),
               GestureDetector(
                 onTap: widget.onSeeAll ?? () => Navigator.push(context, MaterialPageRoute(builder: (c) => GridScreen(title: widget.title, urlPattern: widget.urlPattern, filterType: widget.filterType))),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), 
-                  decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)), 
-                  child: const Text("VER MAIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))
-                ),
+                child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(4)), child: const Text("VER MAIS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))),
               )
             ],
           ),
         ),
-        SizedBox(
-          height: 160,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal, 
-            padding: const EdgeInsets.symmetric(horizontal: 10), 
-            itemCount: items.length, 
-            itemBuilder: (c, i) => Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: items[i]))
-          ),
-        ),
+        SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: items.length, itemBuilder: (c, i) => Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: items[i])))),
       ],
     );
   }
@@ -782,10 +690,7 @@ class _GridScreenState extends State<GridScreen> {
           SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
-              delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)
-            ),
+            sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)),
           ),
           SliverToBoxAdapter(
             child: Container(
@@ -793,19 +698,9 @@ class _GridScreenState extends State<GridScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), 
-                    onPressed: page > 1 ? () => _changePage(-1) : null, 
-                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), 
-                    label: const Text("Anterior", style: TextStyle(color: Colors.white))
-                  ),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))),
                   Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), 
-                    onPressed: items.length >= 10 ? () => _changePage(1) : null, 
-                    icon: const Text("Próxima", style: TextStyle(color: Colors.white)), 
-                    label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)
-                  ),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14)),
                 ],
               ),
             ),
@@ -850,10 +745,7 @@ class SearchResults extends StatelessWidget {
             SliverToBoxAdapter(child: _buildCategoryHeader("Resultados")),
             SliverPadding(
               padding: const EdgeInsets.all(10),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
-                delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)
-              ),
+              sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)),
             )
           ],
         );
@@ -905,7 +797,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _saveTimer;
 
   bool isDataLoaded = false;
-  String sinopse = "";
+  String sinopse = "A processar...";
   String backdrop = "";
   List temporadas = []; List episodios = [];
   String? tempSelecionada; String epAtivoNome = "";
@@ -920,7 +812,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? savedEpId;
   String? savedEpNome;
   bool _autoPlayDisparado = false;
-  bool isShowingVastAd = false; // Controlo do Vídeo Anúncio
+  
+  bool isShowingVastAd = false; 
   String pendingVideoUrl = "";
   String pendingVideoTitle = "";
 
@@ -949,25 +842,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // Lógica de 3 anúncios por cada 24 horas
-  Future<bool> _shouldShowAd() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> adTimes = prefs.getStringList('ad_history') ?? [];
-    DateTime now = DateTime.now();
-    
-    adTimes.removeWhere((timeStr) {
-      DateTime t = DateTime.parse(timeStr);
-      return now.difference(t).inHours >= 24;
-    });
-
-    if (adTimes.length < 3) {
-      adTimes.add(now.toIso8601String());
-      await prefs.setStringList('ad_history', adTimes);
-      return true;
-    }
-    return false;
-  }
-
   void _iniciarSalvamentoContinuo() {
     _saveTimer?.cancel();
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
@@ -993,7 +867,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (_extracaoStatus == 0) {
         var dadosJs = await webExtrator!.evaluateJavascript(source: """
           (function() {
-            var data = {sinopse: "Sinopse não disponível", backdrop: ""};
+            var data = {sinopse: "Sinopse indisponível", backdrop: ""};
             var syn = document.querySelector('.synopsis'); if(syn) data.sinopse = syn.innerText;
             var bg = document.querySelector('.backdrop img'); if(bg) data.backdrop = bg.src;
             return JSON.stringify(data);
@@ -1070,7 +944,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
-    // RESOLUÇÃO: Reset de posição do vídeo caso o utilizador clique num episódio diferente.
+    // Reset da posição se for um episódio diferente
     if (savedEpId != null && savedEpId != idVideo) {
       savedPositionSeconds = 0;
     }
@@ -1099,38 +973,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         List<Map> servers = players.map((p) {
           String url = p["file"].toString().replaceAll("&amp;", "&");
           String tipo = p["type"]?.toString() ?? "Video";
-          String name = cleanTitle((p["title"] ?? "").toString());
-          String idioma = name;
-          if (idioma.isEmpty || idioma.toLowerCase() == "video") {
-            if (url.toLowerCase().contains("/dub/")) idioma = "Dublado";
-            else if (url.toLowerCase().contains("/leg/")) idioma = "Legendado";
-            else idioma = "Opção";
-          }
-          return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
+          return {"url": url, "tipo": tipo, "idioma": "Servidor", "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
-        Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
-        serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
-        serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
-        serverEscolhido ??= servers.first;
+        Map? serverEscolhido = servers.firstWhere((s) => s['isMp4'] == true, orElse: () => servers.first);
 
         if (isParaDownload) {
           DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
         } else {
-          bool showAd = await _shouldShowAd();
-          if (showAd) {
-            setState(() {
-              isShowingVastAd = true;
-              pendingVideoUrl = serverEscolhido!['url'];
-              pendingVideoTitle = nomeVideo;
-            });
-          } else {
-            _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
-          }
+          setState(() {
+            isShowingVastAd = true;
+            pendingVideoUrl = serverEscolhido['url'];
+            pendingVideoTitle = nomeVideo;
+          });
         }
       }
     } catch (e) { 
-      if (!isParaDownload) setState(() { isServerLoading = false; isPlaying = false; });
+      if (!isParaDownload) {
+        setState(() { isServerLoading = false; isPlaying = false; });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao reproduzir. O formato não é suportado ou o servidor falhou.")));
+      }
     }
   }
 
@@ -1159,6 +1021,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _iniciarSalvamentoContinuo();
     } catch (e) {
       setState(() { isPlaying = false; isServerLoading = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao reproduzir. Tente outro episódio ou servidor.")));
     }
   }
 
@@ -1214,7 +1077,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
                   Container(color: Colors.black.withOpacity(0.6)),
                   
-                  // REPRODUÇÃO VAST IN-STREAM
                   if (isShowingVastAd)
                     InAppWebView(
                       initialData: InAppWebViewInitialData(data: vastAdHtml),
@@ -1342,6 +1204,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               },
                             ),
                           ),
+                        const SizedBox(height: 15),
+                        const Text("Selecione um episódio acima", style: TextStyle(color: Colors.white54, fontSize: 14)),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
@@ -1369,8 +1233,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ]
                     ],
                   ),
-                ),
-              ), 
+                )
         ],
       ),
     );
