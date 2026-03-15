@@ -57,7 +57,7 @@ const String vastAdHtml = """
             vastOptions: {
                 adList: [{
                     roll: 'preRoll',
-                    vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069'
+                    vastTag: 'https://vast.yomeno.xyz/vast?spot_id=1484231'
                 }],
                 allowVPAID: true,
                 showProgressbarMarkers: false
