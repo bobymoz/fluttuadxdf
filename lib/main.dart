@@ -1115,12 +1115,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.first;
 
+        if (serverEscolhido == null) return; // segurança extra
+
         if (isParaDownload) {
           DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
         } else {
           setState(() {
             isShowingVastAd = true;
-            pendingVideoUrl = serverEscolhido['url'];
+            pendingVideoUrl = serverEscolhido!['url'];
             pendingVideoTitle = nomeVideo;
           });
         }
