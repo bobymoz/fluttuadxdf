@@ -18,12 +18,63 @@ import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
-const String telegramUrl = "https://t.me/cdcine";
+const String telegramUrl = "https://t.me/hackermol";
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
 const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
+
+// INTEGRAÇÃO VAST - SCRIPT DO FLUID PLAYER
+const String vastAdHtml = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css" />
+    <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }
+        #video-container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        video { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video-id" playsinline>
+            <source src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthAHAAABtwAEAQAA" type="video/mp4"/>
+        </video>
+    </div>
+    <script>
+        var player = fluidPlayer('video-id', {
+            layoutControls: {
+                controlBar: { autoHideTimeout: 1, animated: false, playbackRates: [] },
+                htmlOnPauseBlock: { html: null, height: null, width: null },
+                autoPlay: true, mute: false, allowTheatre: false, playPauseAnimation: false, playbackRateEnabled: false, allowDownload: false, playButtonShowing: false, fillToContainer: true, posterImage: ''
+            },
+            vastOptions: {
+                allowVPAID: false,
+                adList: [{ roll: 'preRoll', vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069' }]
+            }
+        });
+        
+        var isAdFinished = false;
+        function finishAd() {
+            if(!isAdFinished) {
+                isAdFinished = true;
+                try { player.pause(); } catch(e){}
+                window.flutter_inappwebview.callHandler('adFinished');
+            }
+        }
+
+        player.on('playing', function() { finishAd(); });
+        player.on('error', function() { finishAd(); });
+        setTimeout(function() { finishAd(); }, 35000); // Segurança (Força o fim aos 35s)
+    </script>
+</body>
+</html>
+""";
 
 const List<Map<String, String>> officialGenres = [
   {"nome": "Ação", "slug": "4", "img": "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg"},
@@ -88,13 +139,7 @@ Widget _buildGridSkeleton() {
     padding: const EdgeInsets.all(10), 
     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
     itemCount: 12, 
-    itemBuilder: (c, i) {
-      return Shimmer.fromColors(
-        baseColor: Colors.grey[900]!, 
-        highlightColor: Colors.grey[800]!, 
-        child: Container(decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))
-      );
-    }
+    itemBuilder: (c, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))
   );
 }
 
@@ -102,16 +147,8 @@ Widget _buildHorizontalSkeleton() {
   return SizedBox(
     height: 160,
     child: ListView.builder(
-      scrollDirection: Axis.horizontal, 
-      padding: const EdgeInsets.symmetric(horizontal: 10), 
-      itemCount: 5,
-      itemBuilder: (c, i) {
-        return Shimmer.fromColors(
-          baseColor: Colors.grey[900]!, 
-          highlightColor: Colors.grey[800]!, 
-          child: Container(width: 105, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))
-        );
-      }
+      scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 10), itemCount: 5,
+      itemBuilder: (c, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(width: 105, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)))),
     ),
   );
 }
@@ -157,18 +194,14 @@ class DownloadManager {
     } catch (e) {
       activeDownloadsCount.value = 0;
       if (e is DioException && CancelToken.isCancel(e)) { 
-        progress.value = -1.0; 
-        showFloatingOverlay.value = false; 
+        progress.value = -1.0; showFloatingOverlay.value = false; 
       } else { 
-        progress.value = -3.0; 
-        Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); 
+        progress.value = -3.0; Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); 
       }
     }
   }
 
-  static void hideOverlay() {
-    showFloatingOverlay.value = false;
-  }
+  static void hideOverlay() { showFloatingOverlay.value = false; }
 
   static void confirmCancelDownload(BuildContext context) {
     showDialog(
@@ -198,10 +231,7 @@ class DownloadManager {
   static void _salvarHistorico(String path) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> files = prefs.getStringList('downloads') ?? [];
-    if (!files.contains(path)) { 
-      files.add(path); 
-      prefs.setStringList('downloads', files); 
-    }
+    if (!files.contains(path)) { files.add(path); prefs.setStringList('downloads', files); }
   }
 }
 
@@ -275,12 +305,8 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.grey), 
                           onPressed: () {
-                            if (val >= 0.0 && val <= 1.0) {
-                              DownloadManager.hideOverlay();
-                            } else {
-                              DownloadManager.progress.value = -1.0;
-                              DownloadManager.showFloatingOverlay.value = false;
-                            }
+                            if (val >= 0.0 && val <= 1.0) { DownloadManager.hideOverlay(); } 
+                            else { DownloadManager.progress.value = -1.0; DownloadManager.showFloatingOverlay.value = false; }
                           }
                         )
                       ],
@@ -335,28 +361,16 @@ class _MainScreenState extends State<MainScreen> {
   String searchQuery = "";
 
   void _onSearchSubmit(String val) { 
-    setState(() { 
-      searchQuery = val; 
-      isSearching = val.isNotEmpty; 
-    }); 
+    setState(() { searchQuery = val; isSearching = val.isNotEmpty; }); 
   }
   
   void _clearSearch() { 
     FocusScope.of(context).unfocus();
-    setState(() { 
-      _searchCtrl.clear(); 
-      searchQuery = ""; 
-      isSearching = false; 
-    }); 
+    setState(() { _searchCtrl.clear(); searchQuery = ""; isSearching = false; }); 
   }
 
   void _changeTab(int index) {
-    setState(() { 
-      _currentIndex = index; 
-      isSearching = false; 
-      _searchCtrl.clear(); 
-      searchQuery = ""; 
-    });
+    setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; });
   }
 
   @override Widget build(BuildContext context) {
@@ -382,26 +396,43 @@ class _MainScreenState extends State<MainScreen> {
       },
       child: Scaffold(
         drawer: Drawer(
-          width: 220, backgroundColor: const Color(0xFF121212),
-          child: ListView(
-            padding: EdgeInsets.zero,
+          width: 250, backgroundColor: const Color(0xFF121212),
+          child: Column(
             children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(color: Color(0xFFE50914)), 
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, 
-                  mainAxisAlignment: MainAxisAlignment.end, 
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
                   children: [
-                    Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), 
-                    Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))
-                  ]
-                )
+                    const DrawerHeader(
+                      decoration: BoxDecoration(color: Color(0xFFE50914)), 
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, 
+                        mainAxisAlignment: MainAxisAlignment.end, 
+                        children: [
+                          Text("CDCINE", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)), 
+                          Text("O melhor conteúdo.", style: TextStyle(color: Colors.white70, fontSize: 12))
+                        ]
+                      )
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.send, color: Colors.blueAccent), 
+                      title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), 
+                      onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }
+                    ),
+                  ],
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.send, color: Colors.blueAccent), 
-                title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), 
-                onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }
-              ),
+              Container(
+                padding: const EdgeInsets.all(16), width: double.infinity, color: Colors.black,
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [Icon(Icons.shield, color: Colors.grey, size: 16), SizedBox(width: 8), Text("DMCA / Direitos de Autor", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12))]),
+                    SizedBox(height: 8),
+                    Text("Nós não hospedamos ficheiros. O conteúdo é acedido através de motores de busca públicos em servidores de terceiros. Para denúncias, contacte-nos no Telegram: @hackermol", style: TextStyle(color: Colors.white54, fontSize: 10, height: 1.5)),
+                  ],
+                ),
+              )
             ],
           ),
         ),
@@ -470,12 +501,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
         ),
-        body: isSearching 
-          ? SearchResults(query: searchQuery) 
-          : IndexedStack(
-              index: _currentIndex,
-              children: views,
-            ),
+        body: isSearching ? SearchResults(query: searchQuery) : IndexedStack(index: _currentIndex, children: views),
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed,
           selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600],
@@ -551,11 +577,9 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
           
           SectionWidget(title: "Lançamentos", urlPattern: "$smartPlayUrl/genre/1/[PAGE]"),
           SectionWidget(title: "Em Alta", urlPattern: "$smartPlayUrl/genre/3/[PAGE]"),
-          
           SectionWidget(title: "Filmes", urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", onSeeAll: () => widget.onNavigate(1)),
           SectionWidget(title: "Séries", urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", onSeeAll: () => widget.onNavigate(2)),
           SectionWidget(title: "Animes", urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", onSeeAll: () => widget.onNavigate(3)),
-          
           const SizedBox(height: 40),
         ],
       ),
@@ -688,11 +712,7 @@ class _SectionWidgetState extends State<SectionWidget> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
-            child: Shimmer.fromColors(
-              baseColor: Colors.grey[900]!, 
-              highlightColor: Colors.grey[800]!, 
-              child: Container(height: 20, width: 100, color: Colors.black)
-            )
+            child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))
           ), 
           _buildHorizontalSkeleton()
         ]
@@ -767,16 +787,6 @@ class _GridScreenState extends State<GridScreen> {
               delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length)
             ),
           ),
-          if (items.isNotEmpty) 
-            SliverToBoxAdapter(
-              child: Container(
-                height: 250, margin: const EdgeInsets.symmetric(vertical: 20), 
-                child: InAppWebView(
-                  initialData: InAppWebViewInitialData(data: _c2, baseUrl: WebUri("https://www.highperformanceformat.com")), 
-                  initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true)
-                )
-              )
-            ),
           SliverToBoxAdapter(
             child: Container(
               color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
@@ -873,7 +883,7 @@ class PosterCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(item['titulo'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text("${item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.w600)),
+          Text("${item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -910,6 +920,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? savedEpId;
   String? savedEpNome;
   bool _autoPlayDisparado = false;
+  bool isShowingVastAd = false; // Controlo do Vídeo Anúncio
+  String pendingVideoUrl = "";
+  String pendingVideoTitle = "";
 
   @override void initState() { 
     super.initState(); 
@@ -934,6 +947,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
       savedEpId = map['ep_id'];
       savedEpNome = map['ep_nome'];
     }
+  }
+
+  // Lógica de 3 anúncios por cada 24 horas
+  Future<bool> _shouldShowAd() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> adTimes = prefs.getStringList('ad_history') ?? [];
+    DateTime now = DateTime.now();
+    
+    adTimes.removeWhere((timeStr) {
+      DateTime t = DateTime.parse(timeStr);
+      return now.difference(t).inHours >= 24;
+    });
+
+    if (adTimes.length < 3) {
+      adTimes.add(now.toIso8601String());
+      await prefs.setStringList('ad_history', adTimes);
+      return true;
+    }
+    return false;
   }
 
   void _iniciarSalvamentoContinuo() {
@@ -987,7 +1019,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (id.isNotEmpty) temp.add({"id": id, "nome": cleanTitle(nome)});
           }
           if (temp.isNotEmpty && mounted) {
-            temporadas = temp; tempSelecionada = temp[0]['id'];
+            setState(() { temporadas = temp; tempSelecionada = temp[0]['id']; });
             _carregarEpisodiosUrl(temp[0]['id']); 
             return;
           }
@@ -1018,12 +1050,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       """);
       if (epsRes != null && mounted) {
         List eList = json.decode(epsRes.toString());
-        episodios = eList.map((e) {
-          String fullNome = cleanTitle(e['full_nome'].toString());
-          var nums = RegExp(r'\d+').allMatches(fullNome);
-          String numFormatado = nums.isNotEmpty ? nums.last.group(0)! : "▶"; 
-          return {"id": e['id'].toString(), "full_nome": fullNome, "num": numFormatado};
-        }).toList();
+        setState(() {
+          episodios = eList.map((e) {
+            String fullNome = cleanTitle(e['full_nome'].toString());
+            var nums = RegExp(r'\d+').allMatches(fullNome);
+            String numFormatado = nums.isNotEmpty ? nums.last.group(0)! : "▶"; 
+            return {"id": e['id'].toString(), "full_nome": fullNome, "num": numFormatado};
+          }).toList();
+        });
 
         setState(() { isDataLoaded = true; }); 
 
@@ -1036,8 +1070,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
+    // RESOLUÇÃO: Reset de posição do vídeo caso o utilizador clique num episódio diferente.
+    if (savedEpId != null && savedEpId != idVideo) {
+      savedPositionSeconds = 0;
+    }
+
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar a transferência...", style: TextStyle(color: Colors.white)), backgroundColor: Colors.blue));
     }
 
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
@@ -1076,7 +1117,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isParaDownload) {
           DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
         } else {
-          _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
+          bool showAd = await _shouldShowAd();
+          if (showAd) {
+            setState(() {
+              isShowingVastAd = true;
+              pendingVideoUrl = serverEscolhido!['url'];
+              pendingVideoTitle = nomeVideo;
+            });
+          } else {
+            _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
+          }
         }
       }
     } catch (e) { 
@@ -1164,32 +1214,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
                   Container(color: Colors.black.withOpacity(0.6)),
                   
-                  if (!isPlaying && widget.item['tipo'] == 'filmes')
-                    Center(
-                      child: IconButton(
-                        icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
-                        onPressed: () {
-                          if (!_autoPlayDisparado && savedPositionSeconds > 0) {
-                            _autoPlayDisparado = true;
-                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
-                          } else {
-                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                  // REPRODUÇÃO VAST IN-STREAM
+                  if (isShowingVastAd)
+                    InAppWebView(
+                      initialData: InAppWebViewInitialData(data: vastAdHtml),
+                      initialSettings: InAppWebViewSettings(mediaPlaybackRequiresUserGesture: false, allowsInlineMediaPlayback: true, transparentBackground: true),
+                      onWebViewCreated: (controller) {
+                        controller.addJavaScriptHandler(handlerName: 'adFinished', callback: (args) {
+                          setState(() { isShowingVastAd = false; });
+                          _iniciarExoPlayer(pendingVideoUrl, pendingVideoTitle);
+                        });
+                      },
+                    )
+                  else ...[
+                    if (!isPlaying && widget.item['tipo'] == 'filmes')
+                      Center(
+                        child: IconButton(
+                          icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
+                          onPressed: () {
+                            if (!_autoPlayDisparado && savedPositionSeconds > 0) {
+                              _autoPlayDisparado = true;
+                              _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                            } else {
+                              _abrirServidores(widget.item['id'], widget.item['titulo'], false);
+                            }
                           }
-                        }
-                      )
-                    ),
-                  
-                  if (!isPlaying && widget.item['tipo'] != 'filmes')
-                    const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-                  
-                  if (isPlaying && isServerLoading)
-                    Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
+                        )
+                      ),
+                    
+                    if (isPlaying && isServerLoading)
+                      Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  if (isPlaying && !isServerLoading && _chewieController != null)
-                    Chewie(controller: _chewieController!),
+                    if (isPlaying && !isServerLoading && _chewieController != null)
+                      Chewie(controller: _chewieController!),
 
-                  if (!isPlaying)
-                    Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+                    if (!isPlaying)
+                      Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+                  ]
                 ],
               ),
             ),
@@ -1221,7 +1282,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      Text("${widget.item['tipo'].toString().toUpperCase()} | HD", style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w600)),
+                      Text("${widget.item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 15),
 
                       GestureDetector(
@@ -1284,7 +1345,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
-                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Pressione o botão do episódio para fazer download.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
+                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segure num episódio longo para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
                         ),
                       ],
 
@@ -1305,11 +1366,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             },
                           ),
                         )
-                       ]
+                      ]
                     ],
                   ),
-                ),
-              ),   
+                )
         ],
       ),
     );
