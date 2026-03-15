@@ -33,19 +33,43 @@ const String vastAdHtml = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css" />
     <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }</style>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; overflow: hidden; }
+        #video-id { width: 100%; height: 100%; display: block; background-color: black; }
+    </style>
 </head>
 <body>
-    <video id="video-id"><source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4"/></video>
+    <video id="video-id"></video>
     <script>
         var player = fluidPlayer('video-id', {
-            layoutControls: { autoPlay: true, mute: false, allowTheatre: false, playPauseAnimation: false, allowDownload: false, playButtonShowing: false, fillToContainer: true },
-            vastOptions: { adList: [{ roll: 'preRoll', vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069' }] }
+            layoutControls: {
+                autoPlay: true,
+                mute: false,
+                allowTheatre: false,
+                playPauseAnimation: false,
+                allowDownload: false,
+                playButtonShowing: false,
+                fillToContainer: true,
+                posterImage: ''
+            },
+            vastOptions: {
+                adList: [
+                    {
+                        roll: 'preRoll',
+                        vastTag: 'https://bid.onclckstr.com/vast?spot_id=6114069'
+                    }
+                ],
+                adCancelOffset: 0,
+                skipButtonCaption: 'Pular anúncio em [seconds]',
+                skipButtonClickCaption: 'Pular anúncio',
+                allowVPAID: true,
+                showProgressbarMarkers: false
+            }
         });
-        
+
         var isDone = false;
         function finishAd() {
-            if(!isDone) {
+            if (!isDone) {
                 isDone = true;
                 window.flutter_inappwebview.callHandler('adFinished');
             }
@@ -54,10 +78,11 @@ const String vastAdHtml = """
         player.on('vast.adEnd', finishAd);
         player.on('vast.adSkip', finishAd);
         player.on('vast.adError', finishAd);
-        
-        setTimeout(function(){ 
-           if(!document.querySelector('.fluid_vast_video_play')) finishAd(); 
-        }, 8000);
+        player.on('vast.noAd', finishAd);
+
+        setTimeout(function() {
+            if (!document.querySelector('.fluid_vast_video_play')) finishAd();
+        }, 10000);
     </script>
 </body>
 </html>
