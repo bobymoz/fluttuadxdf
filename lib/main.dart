@@ -12,7 +12,8 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:better_player/better_player.dart';
+import 'package:video_player/video_player.dart';
+import 'package:interactive_media_ads/interactive_media_ads.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -882,7 +883,11 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   InAppWebViewController? webExtrator;
-  BetterPlayerController? _betterPlayerController;
+  VideoPlayerController? _videoPlayerController;
+  AdsLoader? _adsLoader;
+  AdsManager? _adsManager;
+  AdDisplayContainer? _adDisplayContainer;
+  bool _adCompleted = false;
   Timer? _saveTimer;
 
   bool isDataLoaded = false;
@@ -912,7 +917,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override void dispose() {
     _saveTimer?.cancel();
-    _betterPlayerController?.dispose();
+    _videoPlayerController?.dispose();
+    _adsManager?.destroy();
     super.dispose();
   }
 
@@ -930,9 +936,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _iniciarSalvamentoContinuo() {
     _saveTimer?.cancel();
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_betterPlayerController != null) {
-        final pos = await _betterPlayerController!.videoPlayerController?.position;
-        if (pos != null && pos.inSeconds > 0) {
+      if (_videoPlayerController != null) {
+        final pos = _videoPlayerController!.value.position;
+        if (pos.inSeconds > 0) {
           final prefs = await SharedPreferences.getInstance();
           Map<String, dynamic> data = {"position": pos.inSeconds, "ep_id": savedEpId, "ep_nome": epAtivoNome};
           prefs.setString("resume_${widget.item['id']}", json.encode(data));
@@ -1085,57 +1091,62 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio) {
-    _betterPlayerController?.dispose();
+  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
+    _videoPlayerController?.dispose();
+    _adsManager?.destroy();
+    _adCompleted = false;
 
-    // BetterPlayer com VAST preRoll nativo:
-    // 1. Exibe o anúncio da Clickadilla antes do vídeo começar
-    // 2. Clickadilla recebe todos os eventos de tracking (impressão, quartis, skip)
-    // 3. Após o anúncio terminar/pular, o vídeo principal começa automaticamente
-    _betterPlayerController = BetterPlayerController(
-      BetterPlayerConfiguration(
-        autoPlay: true,
-        looping: false,
-        aspectRatio: 16 / 9,
-        fit: BoxFit.contain,
-        startAt: savedPositionSeconds > 0 ? Duration(seconds: savedPositionSeconds) : null,
-        controlsConfiguration: const BetterPlayerControlsConfiguration(
-          progressBarPlayedColor: Color(0xFFE50914),
-          progressBarHandleColor: Color(0xFFE50914),
-          progressBarBackgroundColor: Colors.grey,
-          progressBarBufferedColor: Colors.white38,
-          iconsColor: Colors.white,
-          textColor: Colors.white,
-          controlBarColor: Colors.black54,
-          enableSubtitles: false,
-          enableQualities: false,
-          enableAudioTracks: false,
-          enablePip: false,
-        ),
-        eventListener: (event) {
-          if (event.betterPlayerEventType == BetterPlayerEventType.initialized) {
-            setState(() => isServerLoading = false);
-            _iniciarSalvamentoContinuo();
-          }
-        },
-      ),
-      betterPlayerDataSource: BetterPlayerDataSource(
-        BetterPlayerDataSourceType.network,
-        url,
-        headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
-        notificationConfiguration: const BetterPlayerNotificationConfiguration(
-          showNotification: false,
-        ),
-        betterPlayerAdVideoDataSourceList: [
-          BetterPlayerAdVideoDataSource(
-            BetterPlayerAdVideoDataSourceType.vast,
-            "https://vast.yomeno.xyz/vast?spot_id=1484231",
-          ),
-        ],
-      ),
+    _videoPlayerController = VideoPlayerController.networkUrl(
+      Uri.parse(url),
+      httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
     );
 
-    setState(() {});
+    await _videoPlayerController!.initialize();
+
+    if (savedPositionSeconds > 0) {
+      await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
+    }
+
+    _videoPlayerController!.addListener(() {
+      if (_videoPlayerController!.value.isInitialized && _adCompleted) {
+        _iniciarSalvamentoContinuo();
+      }
+    });
+
+    _adDisplayContainer = AdDisplayContainer(
+      onContainerAdded: (container) {
+        _adsLoader = AdsLoader(
+          container: container,
+          onAdsLoaded: (event) {
+            _adsManager = event.manager;
+            _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
+              onAdEvent: (adEvent) {
+                if (adEvent.type == AdEventType.allAdsCompleted ||
+                    adEvent.type == AdEventType.contentResumeRequested) {
+                  setState(() => _adCompleted = true);
+                  _videoPlayerController!.play();
+                }
+              },
+              onAdError: (error) {
+                setState(() => _adCompleted = true);
+                _videoPlayerController!.play();
+              },
+            ));
+            _adsManager!.init();
+            _adsManager!.start();
+          },
+          onAdsLoadError: (error) {
+            setState(() => _adCompleted = true);
+            _videoPlayerController!.play();
+          },
+        );
+        _adsLoader!.requestAds(AdsRequest(
+          adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484231',
+        ));
+      },
+    );
+
+    setState(() { isServerLoading = false; });
   }
 
   void _salvarHistoricoGeral() async {
@@ -1212,8 +1223,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (isPlaying && isServerLoading)
                     Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  if (isPlaying && !isServerLoading && _betterPlayerController != null)
-                    BetterPlayer(controller: _betterPlayerController!),
+                  if (isPlaying && !isServerLoading && _videoPlayerController != null)
+                    Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: VideoPlayer(_videoPlayerController!),
+                        ),
+                        if (!_adCompleted && _adDisplayContainer != null)
+                          _adDisplayContainer!,
+                        Positioned(
+                          bottom: 0, left: 0, right: 0,
+                          child: VideoProgressIndicator(
+                            _videoPlayerController!,
+                            allowScrubbing: true,
+                            colors: const VideoProgressColors(
+                              playedColor: Color(0xFFE50914),
+                              bufferedColor: Colors.white38,
+                              backgroundColor: Colors.grey,
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 10, right: 10,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _videoPlayerController!.value.isPlaying
+                                    ? _videoPlayerController!.pause()
+                                    : _videoPlayerController!.play();
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                              child: Icon(
+                                _videoPlayerController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: Colors.white, size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
 
                   if (!isPlaying)
                     Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
