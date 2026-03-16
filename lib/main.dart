@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -13,8 +12,8 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
+import 'package:better_player/better_player.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
@@ -25,64 +24,6 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 const String _c1 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : 'ea3ab4f496752035d9aba623fd8faad5','format' : 'iframe','height' : 50,'width' : 320,'params' : {}};</script><script src="https://www.highperformanceformat.com/ea3ab4f496752035d9aba623fd8faad5/invoke.js"></script></body></html>""";
 const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
 
-const String vastAdHtml = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <link rel="stylesheet" href="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.css" type="text/css"/>
-    <script src="https://cdn.fluidplayer.com/v3/current/fluidplayer.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body, html { width: 100%; height: 100%; background: black; overflow: hidden; }
-        #fp-video { width: 100%; height: 100%; display: block; }
-    </style>
-</head>
-<body>
-    <video id="fp-video" playsinline>
-        <source src="data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tAAAADmZyZWUAAAAIbWRhdA==" type="video/mp4"/>
-    </video>
-    <script>
-        var player = fluidPlayer('fp-video', {
-            layoutControls: {
-                autoPlay: true,
-                fillToContainer: true,
-                allowTheatre: false,
-                allowDownload: false,
-                playButtonShowing: false,
-                playPauseAnimation: false,
-                mute: false
-            },
-            vastOptions: {
-                adList: [{
-                    roll: 'preRoll',
-                    vastTag: 'https://vast.yomeno.xyz/vast?spot_id=1484231'
-                }],
-                allowVPAID: true,
-                showProgressbarMarkers: false
-            }
-        });
-
-        var isDone = false;
-        function finishAd() {
-            if (!isDone) {
-                isDone = true;
-                try { window.flutter_inappwebview.callHandler('adFinished'); } catch(e) {}
-            }
-        }
-
-        player.on('vast.adEnd',   finishAd);
-        player.on('vast.adSkip',  finishAd);
-        player.on('vast.adError', finishAd);
-        player.on('vast.noAd',    finishAd);
-
-        // Segurança: se em 15s nada aconteceu, avanca
-        setTimeout(finishAd, 15000);
-    </script>
-</body>
-</html>
-""";
 
 const List<Map<String, String>> officialGenres = [
   {"nome": "Ação", "slug": "4", "img": "https://image.tmdb.org/t/p/w500/7WsyChQLEftFiDOVTGkv3hFpyyt.jpg"},
@@ -941,8 +882,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   InAppWebViewController? webExtrator;
-  VideoPlayerController? _videoPlayerController;
-  ChewieController? _chewieController;
+  BetterPlayerController? _betterPlayerController;
   Timer? _saveTimer;
 
   bool isDataLoaded = false;
@@ -962,9 +902,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? savedEpNome;
   bool _autoPlayDisparado = false;
   
-  bool isShowingVastAd = false;
-  Timer? _midRollTimer;
-  bool _midRollDisparado = false;
 
   @override void initState() { 
     super.initState(); 
@@ -975,9 +912,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override void dispose() {
     _saveTimer?.cancel();
-    _midRollTimer?.cancel();
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+    _betterPlayerController?.dispose();
     super.dispose();
   }
 
@@ -995,11 +930,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _iniciarSalvamentoContinuo() {
     _saveTimer?.cancel();
     _saveTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (_videoPlayerController != null && _videoPlayerController!.value.isPlaying) {
-        int pos = _videoPlayerController!.value.position.inSeconds;
-        if (pos > 0) {
+      if (_betterPlayerController != null) {
+        final pos = await _betterPlayerController!.videoPlayerController?.position;
+        if (pos != null && pos.inSeconds > 0) {
           final prefs = await SharedPreferences.getInstance();
-          Map<String, dynamic> data = {"position": pos, "ep_id": savedEpId, "ep_nome": epAtivoNome};
+          Map<String, dynamic> data = {"position": pos.inSeconds, "ep_id": savedEpId, "ep_nome": epAtivoNome};
           prefs.setString("resume_${widget.item['id']}", json.encode(data));
         }
       }
@@ -1142,7 +1077,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isParaDownload) {
           DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
         } else {
-          // Inicia o vídeo direto — anúncio midRoll será exibido após 30s de reprodução
           _iniciarExoPlayer(serverEscolhido!['url'], nomeVideo);
         }
       }
@@ -1151,40 +1085,57 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
-    _videoPlayerController?.dispose();
-    _chewieController?.dispose();
+  void _iniciarExoPlayer(String url, String tituloEpisodio) {
+    _betterPlayerController?.dispose();
 
-    _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"});
-    
-    await _videoPlayerController!.initialize();
-
-    if (savedPositionSeconds > 0) {
-      await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
-    }
-
-    _chewieController = ChewieController(
-      videoPlayerController: _videoPlayerController!,
-      autoPlay: true, looping: false, aspectRatio: 16 / 9, 
-      allowPlaybackSpeedChanging: true, showControlsOnInitialize: false,
-      hideControlsTimer: const Duration(seconds: 2), 
-      materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), backgroundColor: Colors.grey[900]!, bufferedColor: Colors.white38),
+    // BetterPlayer com VAST preRoll nativo:
+    // 1. Exibe o anúncio da Clickadilla antes do vídeo começar
+    // 2. Clickadilla recebe todos os eventos de tracking (impressão, quartis, skip)
+    // 3. Após o anúncio terminar/pular, o vídeo principal começa automaticamente
+    _betterPlayerController = BetterPlayerController(
+      BetterPlayerConfiguration(
+        autoPlay: true,
+        looping: false,
+        aspectRatio: 16 / 9,
+        fit: BoxFit.contain,
+        startAt: savedPositionSeconds > 0 ? Duration(seconds: savedPositionSeconds) : null,
+        controlsConfiguration: const BetterPlayerControlsConfiguration(
+          progressBarPlayedColor: Color(0xFFE50914),
+          progressBarHandleColor: Color(0xFFE50914),
+          progressBarBackgroundColor: Colors.grey,
+          progressBarBufferedColor: Colors.white38,
+          iconsColor: Colors.white,
+          textColor: Colors.white,
+          controlBarColor: Colors.black54,
+          enableSubtitles: false,
+          enableQualities: false,
+          enableAudioTracks: false,
+          enablePip: false,
+        ),
+        eventListener: (event) {
+          if (event.betterPlayerEventType == BetterPlayerEventType.initialized) {
+            setState(() => isServerLoading = false);
+            _iniciarSalvamentoContinuo();
+          }
+        },
+      ),
+      betterPlayerDataSource: BetterPlayerDataSource(
+        BetterPlayerDataSourceType.network,
+        url,
+        headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
+        notificationConfiguration: const BetterPlayerNotificationConfiguration(
+          showNotification: false,
+        ),
+        betterPlayerAdVideoDataSourceList: [
+          BetterPlayerAdVideoDataSource(
+            BetterPlayerAdVideoDataSourceType.vast,
+            "https://vast.yomeno.xyz/vast?spot_id=1484231",
+          ),
+        ],
+      ),
     );
-    
-    setState(() => isServerLoading = false);
-    _iniciarSalvamentoContinuo();
 
-    // MidRoll: exibe anúncio após 30s de reprodução, uma única vez por vídeo
-    if (!_midRollDisparado) {
-      _midRollTimer?.cancel();
-      _midRollTimer = Timer(const Duration(seconds: 30), () {
-        if (mounted && _videoPlayerController != null && _videoPlayerController!.value.isPlaying) {
-          _midRollDisparado = true;
-          _videoPlayerController!.pause();
-          setState(() => isShowingVastAd = true);
-        }
-      });
-    }
+    setState(() {});
   }
 
   void _salvarHistoricoGeral() async {
@@ -1261,28 +1212,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (isPlaying && isServerLoading)
                     Container(color: Colors.black.withOpacity(0.8), child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  if (isPlaying && !isServerLoading && _chewieController != null)
-                    Chewie(controller: _chewieController!),
+                  if (isPlaying && !isServerLoading && _betterPlayerController != null)
+                    BetterPlayer(controller: _betterPlayerController!),
 
                   if (!isPlaying)
                     Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
 
-                  // Overlay do anuncio midRoll — aparece POR CIMA do Chewie, pausa o vídeo
-                  if (isShowingVastAd)
-                    InAppWebView(
-                      initialData: InAppWebViewInitialData(data: vastAdHtml),
-                      initialSettings: InAppWebViewSettings(
-                        mediaPlaybackRequiresUserGesture: false,
-                        allowsInlineMediaPlayback: true,
-                        transparentBackground: false,
-                      ),
-                      onWebViewCreated: (controller) {
-                        controller.addJavaScriptHandler(handlerName: 'adFinished', callback: (args) {
-                          setState(() => isShowingVastAd = false);
-                          _videoPlayerController?.play();
-                        });
-                      },
-                    ),
+
                 ],
               ),
             ),
@@ -1377,7 +1313,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
-                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segure num episódio longo para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
+                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
                         ),
                       ],
 
