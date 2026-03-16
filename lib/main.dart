@@ -17,7 +17,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
-const String telegramUrl = "https://t.me/hackermol";
+const String telegramUrl = "https://t.me/cdcine";
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -210,7 +210,7 @@ class CDcineApp extends StatelessWidget {
   @override Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
-      title: 'CDCINE PRO',
+      title: 'CDCINE',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0B0B0F),
