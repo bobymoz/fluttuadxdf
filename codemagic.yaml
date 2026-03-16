@@ -7,10 +7,17 @@ workflows:
     scripts:
       - name: Baixar dependências
         script: flutter packages pub get
+
+      - name: Patch better_player namespace
+        script: |
+          find $HOME/.pub-cache/hosted/pub.dev/better_player-*/android -name "build.gradle" | xargs sed -i 's/^android {/android {\n    namespace "com.jhomlala.better_player"/'
+
       - name: GERAR ÍCONE DO APP (Correção)
         script: dart run flutter_launcher_icons
+
       - name: Build APK Release
         script: flutter build apk --release
+
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
     publishing:
