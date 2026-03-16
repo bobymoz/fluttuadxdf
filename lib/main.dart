@@ -1253,7 +1253,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!isPlaying && widget.item['tipo'] != 'filmes')
                     const Center(child: Text("Selecione um episodio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
                   
-                  if (isPlaying && isServerLoading)
+                  if (isPlaying && (isServerLoading || (!_adCompleted && _adDisplayContainer == null)))
                     Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
                   if (isPlaying && !isServerLoading && _videoPlayerController != null)
