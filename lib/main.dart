@@ -1122,14 +1122,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
               onAdEvent: (adEvent) {
                 if (adEvent.type == AdEventType.allAdsCompleted ||
-                    adEvent.type == AdEventType.contentResumeRequested) {
+                    adEvent.type == AdEventType.contentResumeRequested ||
+                    adEvent.type == AdEventType.adBreakEnded) {
                   setState(() => _adCompleted = true);
                   _videoPlayerController!.play();
                 }
-              },
-              onAdError: (error) {
-                setState(() => _adCompleted = true);
-                _videoPlayerController!.play();
               },
             ));
             _adsManager!.init();
