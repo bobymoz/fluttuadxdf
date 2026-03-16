@@ -12,6 +12,12 @@ workflows:
         script: |
           GRADLE_FILE=$(find $HOME/.pub-cache/hosted/pub.dev/better_player-*/android -name "build.gradle")
           sed -i '' 's/^android {/android {\n    namespace "com.jhomlala.better_player"/' "$GRADLE_FILE"
+      - name: Patch better_player hashValues
+        script: |
+          find $HOME/.pub-cache/hosted/pub.dev/better_player-*/lib -name "*.dart" | xargs grep -l "hashValues" | while read f; do
+            sed -i '' 's/hashValues(\(.*\))/Object.hashAll([\1])/' "$f"
+          done
+      
       - name: GERAR ÍCONE DO APP (Correção)
         script: dart run flutter_launcher_icons
 
