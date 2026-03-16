@@ -12,7 +12,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:better_player_plus/better_player_plus.dart';
+import 'package:better_player/better_player.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
