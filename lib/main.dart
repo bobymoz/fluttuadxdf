@@ -509,20 +509,14 @@ class _MainScreenState extends State<MainScreen> {
                       title: const Text('Nosso Telegram', style: TextStyle(color: Colors.white)), 
                       onTap: () { launchUrl(Uri.parse(telegramUrl), mode: LaunchMode.externalApplication); }
                     ),
+                    ListTile(
+                      leading: const Icon(Icons.shield_outlined, color: Colors.grey),
+                      title: const Text('DMCA', style: TextStyle(color: Colors.white)),
+                      onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DmcaScreen())); }
+                    ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(16), width: double.infinity, color: Colors.black,
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [Icon(Icons.shield, color: Colors.grey, size: 16), SizedBox(width: 8), Text("DMCA / Direitos de Autor", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12))]),
-                    SizedBox(height: 8),
-                    Text("Nós não hospedamos ficheiros. O conteúdo é acedido através de motores de busca públicos em servidores de terceiros. Para denúncias, contacte-nos no Telegram: @hackermol", style: TextStyle(color: Colors.white54, fontSize: 10, height: 1.5)),
-                  ],
-                ),
-              )
             ],
           ),
         ),
@@ -566,27 +560,6 @@ class _MainScreenState extends State<MainScreen> {
               }
             ),
             const SizedBox(width: 5),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              color: const Color(0xFF1C1C1C),
-              onSelected: (value) {
-                if (value == 'dmca') {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const DmcaScreen()));
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'dmca',
-                  child: Row(
-                    children: [
-                      Icon(Icons.shield_outlined, color: Colors.grey, size: 18),
-                      SizedBox(width: 10),
-                      Text('DMCA', style: TextStyle(color: Colors.white, fontSize: 14)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(60),
