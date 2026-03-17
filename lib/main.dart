@@ -1274,43 +1274,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     });
 
-    // AdsLoader usando container já no widget tree
-    _adsLoader = AdsLoader(
-      container: _adContainer!,
-      onAdsLoaded: (event) {
-        _adsManager = event.manager;
-        _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
-          onAdEvent: (adEvent) {
-            if (adEvent.type == AdEventType.started) {
-              if (mounted) setState(() => _adStarted = true);
-            }
-            if (adEvent.type == AdEventType.allAdsCompleted ||
-                adEvent.type == AdEventType.contentResumeRequested) {
-              if (mounted) {
-                setState(() => _adCompleted = true);
-                _videoPlayerController?.play();
-                _iniciarSalvamentoContinuo();
-              }
-            }
-          },
-        ));
-        _adsManager!.init();
-        _adsManager!.start();
-      },
-      onAdsLoadError: (error) {
-        if (mounted) {
-          setState(() { _adCompleted = true; });
-          _videoPlayerController?.play();
-          _iniciarSalvamentoContinuo();
-        }
-      },
-    );
-
-    await _adsLoader!.requestAds(AdsRequest(
-      adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
-    ));
-
+    // Mostra o player imediatamente, anúncio carrega por cima
     if (mounted) setState(() { isServerLoading = false; });
+
+    try {
+      _adsLoader = AdsLoader(
+        container: _adContainer!,
+        onAdsLoaded: (event) {
+          _adsManager = event.manager;
+          _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
+            onAdEvent: (adEvent) {
+              if (adEvent.type == AdEventType.started) {
+                if (mounted) setState(() => _adStarted = true);
+              }
+              if (adEvent.type == AdEventType.allAdsCompleted ||
+                  adEvent.type == AdEventType.contentResumeRequested) {
+                if (mounted) {
+                  setState(() => _adCompleted = true);
+                  _videoPlayerController?.play();
+                  _iniciarSalvamentoContinuo();
+                }
+              }
+            },
+          ));
+          _adsManager!.init();
+          _adsManager!.start();
+        },
+        onAdsLoadError: (error) {
+          if (mounted) {
+            setState(() { _adCompleted = true; });
+            _videoPlayerController?.play();
+            _iniciarSalvamentoContinuo();
+          }
+        },
+      );
+
+      await _adsLoader!.requestAds(AdsRequest(
+        adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
+      ));
+    } catch (e) {
+      // Se o IMA falhar, inicia o vídeo directamente
+      if (mounted) {
+        setState(() { _adCompleted = true; });
+        _videoPlayerController?.play();
+        _iniciarSalvamentoContinuo();
+      }
+    }
   }
 
   String _formatDuration(Duration d) {
