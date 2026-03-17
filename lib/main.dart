@@ -1355,6 +1355,72 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Widget _buildPlayerArea() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Fundo quando não reproduz
+        if (!isPlaying || isServerLoading) ...[
+          CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
+          Container(color: Colors.black.withOpacity(0.6)),
+        ],
+
+        // Fundo preto quando reproduz
+        if (isPlaying && !isServerLoading)
+          Container(color: Colors.black),
+
+        // Vídeo — só após anúncio
+        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
+          Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
+
+        // AdDisplayContainer — SEMPRE no tree para o IMA funcionar, tamanho expand
+        // fica por cima do vídeo/preto mas abaixo dos controles
+        Positioned.fill(
+          child: Visibility(
+            visible: isPlaying && !isServerLoading && !_adCompleted,
+            maintainState: true,
+            maintainAnimation: true,
+            maintainSize: true,
+            child: _adContainer ?? const SizedBox.shrink(),
+          ),
+        ),
+
+        // Não está a reproduzir
+        if (!isPlaying && widget.item['tipo'] == 'filmes')
+          Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
+        if (!isPlaying && widget.item['tipo'] != 'filmes')
+          const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+
+        // Loading servidor
+        if (isPlaying && isServerLoading)
+          Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
+
+        // Buffering spinner
+        if (isPlaying && !isServerLoading && _adCompleted && _isBuffering)
+          const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+
+        // Controles do player
+        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
+          GestureDetector(
+            onTap: _toggleControls,
+            child: AnimatedOpacity(
+              opacity: _showControls ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 250),
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.black87, Colors.transparent, Colors.black54],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    // Top bar
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      child: Row(children: [
+                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () { if (_isFullscreen) _exitFullscreen(); else Navigator.pop(context); }
   @override Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
@@ -1461,73 +1527,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
     );
-
-  Widget _buildPlayerArea() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Fundo quando não reproduz
-        if (!isPlaying || isServerLoading) ...[
-          CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
-          Container(color: Colors.black.withOpacity(0.6)),
-        ],
-
-        // Fundo preto quando reproduz
-        if (isPlaying && !isServerLoading)
-          Container(color: Colors.black),
-
-        // Vídeo — só após anúncio
-        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
-          Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
-
-        // AdDisplayContainer — SEMPRE no tree para o IMA funcionar, tamanho expand
-        // fica por cima do vídeo/preto mas abaixo dos controles
-        Positioned.fill(
-          child: Visibility(
-            visible: isPlaying && !isServerLoading && !_adCompleted,
-            maintainState: true,
-            maintainAnimation: true,
-            maintainSize: true,
-            child: _adContainer ?? const SizedBox.shrink(),
-          ),
-        ),
-
-        // Não está a reproduzir
-        if (!isPlaying && widget.item['tipo'] == 'filmes')
-          Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
-        if (!isPlaying && widget.item['tipo'] != 'filmes')
-          const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-
-        // Loading servidor
-        if (isPlaying && isServerLoading)
-          Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
-
-        // Buffering spinner
-        if (isPlaying && !isServerLoading && _adCompleted && _isBuffering)
-          const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
-
-        // Controles do player
-        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
-          GestureDetector(
-            onTap: _toggleControls,
-            child: AnimatedOpacity(
-              opacity: _showControls ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.black87, Colors.transparent, Colors.black54],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    // Top bar
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      child: Row(children: [
-                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () { if (_isFullscreen) _exitFullscreen(); else Navigator.pop(context); }),
+),
                         Expanded(child: Text(epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
                       ]),
                     ),
