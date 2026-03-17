@@ -1594,6 +1594,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 }
+}
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
   List<Map<String, dynamic>> history = [];
