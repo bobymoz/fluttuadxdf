@@ -231,7 +231,7 @@ class CDcineApp extends StatelessWidget {
 // VERIFICAÇÃO DE VERSÃO
 // ==========================================
 const String _appVersion = "1.0.0";
-const String _versionUrl = "https://rentry.co/cdup/";
+const String _versionUrl = "https://rentry.co/cdup/raw";
 
 class VersionGateScreen extends StatefulWidget {
   const VersionGateScreen({super.key});
@@ -254,11 +254,18 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
     try {
       final res = await http.get(Uri.parse(_versionUrl), headers: {"User-Agent": "Mozilla/5.0"}).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        _latestVersion = data['latest_version'] ?? _appVersion;
+        // Rentry pode ter texto extra — extrai só o bloco JSON { ... }
+        String body = res.body;
+        final start = body.indexOf('{');
+        final end = body.lastIndexOf('}');
+        if (start != -1 && end != -1) {
+          body = body.substring(start, end + 1);
+        }
+        final data = json.decode(body);
+        _latestVersion = (data['latest_version'] ?? _appVersion).toString().trim();
         _downloadUrl = data['download_url'] ?? "";
         _changelog = data['changelog'] ?? "";
-        if (_latestVersion.trim() != _appVersion.trim()) {
+        if (_latestVersion != _appVersion.trim()) {
           if (mounted) setState(() { _needsUpdate = true; _checking = false; });
           return;
         }
@@ -983,9 +990,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoPlayerController? _videoPlayerController;
   AdsLoader? _adsLoader;
   AdsManager? _adsManager;
-  AdDisplayContainer? _adDisplayContainer;
   bool _adCompleted = false;
   bool _adStarted = false;
+  bool _adContainerReady = false;
+  AdDisplayContainer? _adContainer;
   Timer? _saveTimer;
 
   bool isDataLoaded = false;
@@ -1012,7 +1020,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState(); 
     _salvarHistoricoGeral(); 
     _fetchRecomendacoes(); 
-    _checkResumeData(); 
+    _checkResumeData();
+    _adContainer = AdDisplayContainer(
+      onContainerAdded: (container) {
+        _adContainerReady = true;
+        // Será usado quando _iniciarExoPlayer for chamado
+      },
+    );
   }
 
   @override void dispose() {
@@ -1207,10 +1221,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
     _videoPlayerController?.dispose();
     _adsManager?.destroy();
-    _adCompleted = false;
-    _adStarted = false;
-    _adDisplayContainer = null;
-    _showControls = false;
+    setState(() {
+      _adCompleted = false;
+      _adStarted = false;
+      _showControls = false;
+    });
 
     _videoPlayerController = VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -1227,8 +1242,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() {});
     });
 
-    // Timeout de segurança: se o anúncio não responder em 12s, inicia o vídeo
-    Future.delayed(const Duration(seconds: 12), () {
+    // Timeout de segurança: 15s sem resposta → começa vídeo
+    Future.delayed(const Duration(seconds: 15), () {
       if (mounted && !_adCompleted) {
         setState(() { _adCompleted = true; });
         _videoPlayerController?.play();
@@ -1236,46 +1251,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     });
 
-    _adDisplayContainer = AdDisplayContainer(
-      onContainerAdded: (container) {
-        _adsLoader = AdsLoader(
-          container: container,
-          onAdsLoaded: (event) {
-            _adsManager = event.manager;
-            _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
-              onAdEvent: (adEvent) {
-                if (adEvent.type == AdEventType.started) {
-                  if (mounted) setState(() => _adStarted = true);
-                }
-                // Só finaliza se o anúncio já começou há pelo menos 5s
-                if (adEvent.type == AdEventType.allAdsCompleted ||
-                    adEvent.type == AdEventType.contentResumeRequested) {
-                  if (mounted && _adStarted) {
-                    setState(() => _adCompleted = true);
-                    _videoPlayerController!.play();
-                    _iniciarSalvamentoContinuo();
-                  }
-                }
-              },
-            ));
-            _adsManager!.init();
-            _adsManager!.start();
-          },
-          onAdsLoadError: (error) {
-            if (mounted) {
-              setState(() { _adCompleted = true; _adStarted = true; });
-              _videoPlayerController!.play();
-              _iniciarSalvamentoContinuo();
+    // Cria novo AdsLoader usando o container que já está no widget tree
+    _adsLoader = AdsLoader(
+      container: _adContainer!,
+      onAdsLoaded: (event) {
+        _adsManager = event.manager;
+        _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
+          onAdEvent: (adEvent) {
+            if (adEvent.type == AdEventType.started) {
+              if (mounted) setState(() => _adStarted = true);
+            }
+            if (adEvent.type == AdEventType.allAdsCompleted ||
+                adEvent.type == AdEventType.contentResumeRequested) {
+              if (mounted) {
+                setState(() => _adCompleted = true);
+                _videoPlayerController?.play();
+                _iniciarSalvamentoContinuo();
+              }
             }
           },
-        );
-        _adsLoader!.requestAds(AdsRequest(
-          adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
         ));
+        _adsManager!.init();
+        _adsManager!.start();
+      },
+      onAdsLoadError: (error) {
+        if (mounted) {
+          setState(() { _adCompleted = true; });
+          _videoPlayerController?.play();
+          _iniciarSalvamentoContinuo();
+        }
       },
     );
 
-    setState(() { isServerLoading = false; });
+    await _adsLoader!.requestAds(AdsRequest(
+      adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
+    ));
+
+    if (mounted) setState(() { isServerLoading = false; });
   }
 
   String _formatDuration(Duration d) {
@@ -1336,6 +1348,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 children: [
                   CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
                   Container(color: Colors.black.withOpacity(0.6)),
+
+                  // AdDisplayContainer SEMPRE no widget tree (tamanho 0 quando não está a reproduzir anúncio)
+                  Offstage(
+                    offstage: !isPlaying || isServerLoading || _adCompleted,
+                    child: _adContainer ?? const SizedBox.shrink(),
+                  ),
                   
                   // Camadas do player (sempre visíveis por baixo)
                   if (!isPlaying && widget.item['tipo'] == 'filmes')
@@ -1356,13 +1374,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!isPlaying && widget.item['tipo'] != 'filmes')
                     const Center(child: Text("Selecione um episodio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
                   
-                  // Loading preto: enquanto carrega servidor OU enquanto adDisplayContainer ainda não foi criado
-                  if (isPlaying && (isServerLoading || _adDisplayContainer == null))
+                  // Loading preto: enquanto carrega servidor
+                  if (isPlaying && isServerLoading)
                     Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  if (isPlaying && !isServerLoading && _adDisplayContainer != null && _videoPlayerController != null)
+                  if (isPlaying && !isServerLoading && _videoPlayerController != null)
                     GestureDetector(
-                      onTap: _toggleControls,
+                      onTap: _adCompleted ? _toggleControls : null,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -1374,11 +1392,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                           ),
 
-                          // Anúncio IMA por cima do vídeo
-                          if (!_adCompleted && _adDisplayContainer != null)
-                            _adDisplayContainer!,
-
-                          // Controles (visíveis apenas quando _showControls = true e anúncio acabou)
+                          // Controles (só após anúncio)
                           if (_adCompleted)
                             AnimatedOpacity(
                               opacity: _showControls ? 1.0 : 0.0,
