@@ -222,8 +222,111 @@ class CDcineApp extends StatelessWidget {
         ),
       ),
       builder: (context, child) => Stack(children: [child!, const DraggableDownloadOverlay()]),
-      home: const MainScreen(),
+      home: const VersionGateScreen(),
     );
+  }
+}
+
+// ==========================================
+// VERIFICAÇÃO DE VERSÃO
+// ==========================================
+const String _appVersion = "1.0.0";
+const String _versionUrl = "https://rentry.co/cdup/raw";
+
+class VersionGateScreen extends StatefulWidget {
+  const VersionGateScreen({super.key});
+  @override State<VersionGateScreen> createState() => _VersionGateScreenState();
+}
+
+class _VersionGateScreenState extends State<VersionGateScreen> {
+  bool _checking = true;
+  bool _needsUpdate = false;
+  String _latestVersion = "";
+  String _downloadUrl = "";
+  String _changelog = "";
+
+  @override void initState() {
+    super.initState();
+    _checkVersion();
+  }
+
+  Future<void> _checkVersion() async {
+    try {
+      final res = await http.get(Uri.parse(_versionUrl), headers: {"User-Agent": "Mozilla/5.0"}).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        _latestVersion = data['latest_version'] ?? _appVersion;
+        _downloadUrl = data['download_url'] ?? "";
+        _changelog = data['changelog'] ?? "";
+        if (_latestVersion != _appVersion) {
+          setState(() { _needsUpdate = true; _checking = false; });
+          return;
+        }
+      }
+    } catch (_) {}
+    setState(() => _checking = false);
+  }
+
+  @override Widget build(BuildContext context) {
+    if (_needsUpdate) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0B0B0F),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.system_update, color: Color(0xFFE50914), size: 72),
+                const SizedBox(height: 24),
+                Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 42, letterSpacing: 3)),
+                const SizedBox(height: 8),
+                Text("Atualização Disponível", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 26, letterSpacing: 1)),
+                const SizedBox(height: 6),
+                Text("v$_appVersion  →  v$_latestVersion", style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                const SizedBox(height: 24),
+                if (_changelog.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1C1C1C),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("O que há de novo:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 8),
+                        Text(_changelog, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE50914),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => launchUrl(Uri.parse(_downloadUrl), mode: LaunchMode.externalApplication),
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    label: const Text("Baixar Atualização", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text("Esta versão não é mais suportada.\nAtualize para continuar usando o CDCINE.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12, height: 1.5)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const MainScreen();
   }
 }
 
@@ -463,6 +566,27 @@ class _MainScreenState extends State<MainScreen> {
               }
             ),
             const SizedBox(width: 5),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              color: const Color(0xFF1C1C1C),
+              onSelected: (value) {
+                if (value == 'dmca') {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const DmcaScreen()));
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'dmca',
+                  child: Row(
+                    children: [
+                      Icon(Icons.shield_outlined, color: Colors.grey, size: 18),
+                      SizedBox(width: 10),
+                      Text('DMCA', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(60),
@@ -1256,7 +1380,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (isPlaying && (isServerLoading || (!_adCompleted && _adDisplayContainer == null)))
                     Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-                  if (isPlaying && !isServerLoading && _videoPlayerController != null)
+                  if (isPlaying && !isServerLoading && _adDisplayContainer != null && _videoPlayerController != null)
                     GestureDetector(
                       onTap: _toggleControls,
                       child: Stack(
@@ -1600,6 +1724,124 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           ),
         ],
       )
+    );
+  }
+}
+
+class DmcaScreen extends StatelessWidget {
+  const DmcaScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      appBar: AppBar(
+        title: const Text("DMCA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF0B0B0F),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.shield, color: Color(0xFFE50914), size: 28),
+              const SizedBox(width: 10),
+              Text("Notificação de violação de\ndireitos autorais",
+                style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1),
+              ),
+            ]),
+            const SizedBox(height: 24),
+            const Text(
+              "Para enviar uma notificação de violação de direitos autorais ao ChauThanh.INFO, você precisará realizar os seguintes passos: (consulte seu advogado ou a Seção 512(c)(3) da Lei de Direitos Autorais para confirmar esses requisitos)",
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6),
+            ),
+            const SizedBox(height: 20),
+            _dmcaItem(Icons.person_outline, "Informações sobre a pessoa/empresa que reivindica os direitos autorais."),
+            _dmcaItem(Icons.link, "Envio da identificação do material protegido por direitos autorais, fornecendo os URLs correspondentes."),
+            _dmcaItem(Icons.contact_mail_outlined, "Informações que nos permitam entrar em contato com a empresa/empresa em questão, como e-mail, número de telefone ou endereço físico."),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1C),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE50914).withOpacity(0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Todas as informações acima devem ser enviadas para o e-mail:",
+                    style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                  ),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => launchUrl(Uri.parse("mailto:cdcine@horsefucker.org")),
+                    child: const Text(
+                      "cdcine@horsefucker.org",
+                      style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.bold, decoration: TextDecoration.underline, decorationColor: Color(0xFFE50914)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text("Quaisquer outros meios de envio não serão aceitos e não receberão resposta.",
+                    style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: const Text(
+                "O conteúdo protegido por direitos autorais será analisado em até 24 horas e removido em até 48 horas.",
+                style: TextStyle(color: Colors.blue, fontSize: 13, height: 1.6),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: const Text(
+                "Observe também que, de acordo com a Seção 512(f), qualquer pessoa que, conscientemente, declare falsamente que um material ou atividade infringe direitos autorais poderá ser responsabilizada.",
+                style: TextStyle(color: Colors.orange, fontSize: 13, height: 1.6),
+              ),
+            ),
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dmcaItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: const Color(0xFFE50914), size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6))),
+        ],
+      ),
     );
   }
 }
