@@ -258,13 +258,13 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
         _latestVersion = data['latest_version'] ?? _appVersion;
         _downloadUrl = data['download_url'] ?? "";
         _changelog = data['changelog'] ?? "";
-        if (_latestVersion != _appVersion) {
-          setState(() { _needsUpdate = true; _checking = false; });
+        if (_latestVersion.trim() != _appVersion.trim()) {
+          if (mounted) setState(() { _needsUpdate = true; _checking = false; });
           return;
         }
       }
     } catch (_) {}
-    setState(() => _checking = false);
+    if (mounted) setState(() => _checking = false);
   }
 
   @override Widget build(BuildContext context) {
@@ -325,7 +325,7 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
         ),
       );
     }
-
+    // Silencioso: sempre mostra MainScreen, bloqueio aparece só se _needsUpdate = true
     return const MainScreen();
   }
 }
@@ -985,6 +985,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   AdsManager? _adsManager;
   AdDisplayContainer? _adDisplayContainer;
   bool _adCompleted = false;
+  bool _adStarted = false;
   Timer? _saveTimer;
 
   bool isDataLoaded = false;
@@ -1207,6 +1208,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _videoPlayerController?.dispose();
     _adsManager?.destroy();
     _adCompleted = false;
+    _adStarted = false;
+    _adDisplayContainer = null;
     _showControls = false;
 
     _videoPlayerController = VideoPlayerController.networkUrl(
@@ -1224,10 +1227,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() {});
     });
 
-    // Timeout de segurança: se o anúncio não responder em 8s, inicia o vídeo
-    Future.delayed(const Duration(seconds: 8), () {
+    // Timeout de segurança: se o anúncio não responder em 12s, inicia o vídeo
+    Future.delayed(const Duration(seconds: 12), () {
       if (mounted && !_adCompleted) {
-        setState(() => _adCompleted = true);
+        setState(() { _adCompleted = true; });
         _videoPlayerController?.play();
         _iniciarSalvamentoContinuo();
       }
@@ -1241,10 +1244,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _adsManager = event.manager;
             _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
               onAdEvent: (adEvent) {
+                if (adEvent.type == AdEventType.started) {
+                  if (mounted) setState(() => _adStarted = true);
+                }
+                // Só finaliza se o anúncio já começou há pelo menos 5s
                 if (adEvent.type == AdEventType.allAdsCompleted ||
-                    adEvent.type == AdEventType.contentResumeRequested ||
-                    adEvent.type == AdEventType.adBreakEnded) {
-                  if (mounted) {
+                    adEvent.type == AdEventType.contentResumeRequested) {
+                  if (mounted && _adStarted) {
                     setState(() => _adCompleted = true);
                     _videoPlayerController!.play();
                     _iniciarSalvamentoContinuo();
@@ -1257,7 +1263,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
           onAdsLoadError: (error) {
             if (mounted) {
-              setState(() => _adCompleted = true);
+              setState(() { _adCompleted = true; _adStarted = true; });
               _videoPlayerController!.play();
               _iniciarSalvamentoContinuo();
             }
@@ -1350,7 +1356,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!isPlaying && widget.item['tipo'] != 'filmes')
                     const Center(child: Text("Selecione um episodio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
                   
-                  if (isPlaying && (isServerLoading || (!_adCompleted && _adDisplayContainer == null)))
+                  // Loading preto: enquanto carrega servidor OU enquanto adDisplayContainer ainda não foi criado
+                  if (isPlaying && (isServerLoading || _adDisplayContainer == null))
                     Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
                   if (isPlaying && !isServerLoading && _adDisplayContainer != null && _videoPlayerController != null)
@@ -1401,6 +1408,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                               style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                                               maxLines: 1, overflow: TextOverflow.ellipsis,
                                             ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.cast, color: Colors.white, size: 22),
+                                            tooltip: "Emparelhar com TV",
+                                            onPressed: () {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text("Use o menu de partilha do Android para transmitir para a TV."),
+                                                  backgroundColor: Colors.black87,
+                                                  duration: Duration(seconds: 3),
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ],
                                       ),
@@ -1746,15 +1766,21 @@ class DmcaScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Todas as informações acima devem ser enviadas para o e-mail:",
+                  const Text("Todas as informações acima devem ser enviadas para:",
                     style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
                   ),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () => launchUrl(Uri.parse("mailto:cdcine@horsefucker.org")),
-                    child: const Text(
-                      "cdcine@horsefucker.org",
-                      style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.bold, decoration: TextDecoration.underline, decorationColor: Color(0xFFE50914)),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE50914),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () => launchUrl(Uri.parse("mailto:cdcine@horsefucker.org?subject=DMCA%20Notice"), mode: LaunchMode.externalApplication),
+                      icon: const Icon(Icons.email_outlined, color: Colors.white),
+                      label: const Text("Enviar notificação DMCA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ),
                   const SizedBox(height: 8),
