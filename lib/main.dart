@@ -1249,6 +1249,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     await _videoPlayerController!.initialize();
+    // NÃO chama play() aqui — o vídeo só começa após o anúncio terminar
 
     if (savedPositionSeconds > 0) {
       await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
@@ -1256,13 +1257,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _videoPlayerController!.addListener(() {
       if (!mounted) return;
-      final isBuffering = _videoPlayerController!.value.isBuffering;
-      if (isBuffering != _isBuffering) setState(() => _isBuffering = isBuffering);
+      final val = _videoPlayerController!.value;
+      final buffering = val.isBuffering || (!val.isPlaying && !val.isCompleted && val.position > Duration.zero && _adCompleted);
+      if (buffering != _isBuffering) setState(() => _isBuffering = buffering);
       else setState(() {});
     });
-
-    // Entra em tela cheia automaticamente
-    _enterFullscreen();
 
     // Timeout segurança: 15s → começa vídeo
     Future.delayed(const Duration(seconds: 15), () {
@@ -1480,11 +1479,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
               fit: StackFit.expand,
               children: [
                 Container(color: Colors.black),
-                Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
 
-                // Buffering spinner
-                if (_isBuffering && _adCompleted)
-                  const ColoredBox(color: Color(0x55000000), child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+                // Vídeo — só renderizado após anúncio terminar (evita som duplo)
+                if (_adCompleted)
+                  Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
+
+                // Buffering spinner — aparece por cima do vídeo, abaixo dos controles
+                if (_adCompleted && _isBuffering)
+                  const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
 
                 // Controles
                 if (_adCompleted)
@@ -1495,13 +1497,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.black87, Colors.transparent, Colors.black87], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
                       child: Column(
                         children: [
-                          // Top bar
+                          // Top bar — só voltar e título
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                             child: Row(children: [
                               IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () { if (_isFullscreen) _exitFullscreen(); else Navigator.pop(context); }),
                               Expanded(child: Text(epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                              IconButton(icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white, size: 26), onPressed: () { _isFullscreen ? _exitFullscreen() : _enterFullscreen(); _startHideTimer(); }),
                             ]),
                           ),
                           // Botões centrais
@@ -1515,13 +1516,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(width: 40),
                             GestureDetector(onTap: () { final p = _videoPlayerController!.value.position; final d = _videoPlayerController!.value.duration; final n = p + const Duration(seconds: 30); _videoPlayerController!.seekTo(n > d ? d : n); _startHideTimer(); }, child: const Icon(Icons.forward_30, color: Colors.white, size: 40)),
                           ])),
-                          // Progresso
-                          Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10), child: Column(children: [
+                          // Barra de progresso + tempo + fullscreen no canto direito
+                          Padding(padding: const EdgeInsets.fromLTRB(12, 0, 4, 6), child: Column(children: [
                             VideoProgressIndicator(_videoPlayerController!, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Color(0xFFE50914), bufferedColor: Colors.white38, backgroundColor: Colors.white24)),
-                            const SizedBox(height: 4),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                            const SizedBox(height: 2),
+                            Row(children: [
                               Text(_formatDuration(_videoPlayerController!.value.position), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                              const Spacer(),
                               Text(_formatDuration(_videoPlayerController!.value.duration), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                              IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white, size: 24), onPressed: () { _isFullscreen ? _exitFullscreen() : _enterFullscreen(); _startHideTimer(); }),
                             ]),
                           ])),
                         ],
