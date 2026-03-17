@@ -1270,7 +1270,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
         );
         _adsLoader!.requestAds(AdsRequest(
-          adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484231',
+          adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
         ));
       },
     );
