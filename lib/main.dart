@@ -1007,6 +1007,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool isServerLoading = false;
   bool isSynopsisExpanded = false;
   bool _showControls = false;
+  bool _isFullscreen = false;
+  bool _isBuffering = false;
   Timer? _hideControlsTimer;
   int _extracaoStatus = 0;
 
@@ -1034,7 +1036,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideControlsTimer?.cancel();
     _videoPlayerController?.dispose();
     _adsManager?.destroy();
+    _exitFullscreen();
     super.dispose();
+  }
+
+  void _enterFullscreen() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    setState(() => _isFullscreen = true);
+  }
+
+  void _exitFullscreen() {
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (mounted) setState(() => _isFullscreen = false);
   }
 
   void _checkResumeData() async {
@@ -1225,6 +1240,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _adCompleted = false;
       _adStarted = false;
       _showControls = false;
+      _isBuffering = false;
     });
 
     _videoPlayerController = VideoPlayerController.networkUrl(
@@ -1239,10 +1255,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     _videoPlayerController!.addListener(() {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      final isBuffering = _videoPlayerController!.value.isBuffering;
+      if (isBuffering != _isBuffering) setState(() => _isBuffering = isBuffering);
+      else setState(() {});
     });
 
-    // Timeout de segurança: 15s sem resposta → começa vídeo
+    // Entra em tela cheia automaticamente
+    _enterFullscreen();
+
+    // Timeout segurança: 15s → começa vídeo
     Future.delayed(const Duration(seconds: 15), () {
       if (mounted && !_adCompleted) {
         setState(() { _adCompleted = true; });
@@ -1251,7 +1273,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     });
 
-    // Cria novo AdsLoader usando o container que já está no widget tree
+    // AdsLoader usando container já no widget tree
     _adsLoader = AdsLoader(
       container: _adContainer!,
       onAdsLoaded: (event) {
@@ -1334,6 +1356,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override Widget build(BuildContext context) {
+    final playerArea = _buildPlayerArea();
+
+    if (_isFullscreen) {
+      return WillPopScope(
+        onWillPop: () async { _exitFullscreen(); return false; },
+        child: Scaffold(backgroundColor: Colors.black, body: playerArea),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F13),
       body: Column(
@@ -1341,274 +1372,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
             color: Colors.black,
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
-                  Container(color: Colors.black.withOpacity(0.6)),
-
-                  // AdDisplayContainer SEMPRE no widget tree (tamanho 0 quando não está a reproduzir anúncio)
-                  Offstage(
-                    offstage: !isPlaying || isServerLoading || _adCompleted,
-                    child: _adContainer ?? const SizedBox.shrink(),
-                  ),
-                  
-                  // Camadas do player (sempre visíveis por baixo)
-                  if (!isPlaying && widget.item['tipo'] == 'filmes')
-                    Center(
-                      child: IconButton(
-                        icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), 
-                        onPressed: () {
-                          if (!_autoPlayDisparado && savedPositionSeconds > 0) {
-                            _autoPlayDisparado = true;
-                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
-                          } else {
-                            _abrirServidores(widget.item['id'], widget.item['titulo'], false);
-                          }
-                        }
-                      )
-                    ),
-                  
-                  if (!isPlaying && widget.item['tipo'] != 'filmes')
-                    const Center(child: Text("Selecione um episodio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-                  
-                  // Loading preto: enquanto carrega servidor
-                  if (isPlaying && isServerLoading)
-                    Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
-
-                  if (isPlaying && !isServerLoading && _videoPlayerController != null)
-                    GestureDetector(
-                      onTap: _adCompleted ? _toggleControls : null,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Vídeo
-                          Center(
-                            child: AspectRatio(
-                              aspectRatio: _videoPlayerController!.value.aspectRatio,
-                              child: VideoPlayer(_videoPlayerController!),
-                            ),
-                          ),
-
-                          // Controles (só após anúncio)
-                          if (_adCompleted)
-                            AnimatedOpacity(
-                              opacity: _showControls ? 1.0 : 0.0,
-                              duration: const Duration(milliseconds: 250),
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Colors.black87, Colors.transparent, Colors.black87],
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    // Barra superior
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      child: Row(
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-                                            onPressed: () => Navigator.pop(context),
-                                          ),
-                                          Expanded(
-                                            child: Text(
-                                              epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']),
-                                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.cast, color: Colors.white, size: 22),
-                                            tooltip: "Emparelhar com TV",
-                                            onPressed: () {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text("Use o menu de partilha do Android para transmitir para a TV."),
-                                                  backgroundColor: Colors.black87,
-                                                  duration: Duration(seconds: 3),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Botões centrais
-                                    Expanded(
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          // Voltar 30s
-                                          GestureDetector(
-                                            onTap: () {
-                                              final pos = _videoPlayerController!.value.position;
-                                              final newPos = pos - const Duration(seconds: 30);
-                                              _videoPlayerController!.seekTo(newPos < Duration.zero ? Duration.zero : newPos);
-                                              _startHideTimer();
-                                            },
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: const [
-                                                Icon(Icons.replay_30, color: Colors.white, size: 38),
-                                              ],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 36),
-                                          // Play/Pause
-                                          GestureDetector(
-                                            onTap: () {
-                                              setState(() {
-                                                _videoPlayerController!.value.isPlaying
-                                                    ? _videoPlayerController!.pause()
-                                                    : _videoPlayerController!.play();
-                                              });
-                                              _startHideTimer();
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.all(10),
-                                              decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle),
-                                              child: Icon(
-                                                _videoPlayerController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                                                color: Colors.white, size: 36,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 36),
-                                          // Avançar 30s
-                                          GestureDetector(
-                                            onTap: () {
-                                              final pos = _videoPlayerController!.value.position;
-                                              final dur = _videoPlayerController!.value.duration;
-                                              final newPos = pos + const Duration(seconds: 30);
-                                              _videoPlayerController!.seekTo(newPos > dur ? dur : newPos);
-                                              _startHideTimer();
-                                            },
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: const [
-                                                Icon(Icons.forward_30, color: Colors.white, size: 38),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Barra de progresso + tempo
-                                    Padding(
-                                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                                      child: Column(
-                                        children: [
-                                          VideoProgressIndicator(
-                                            _videoPlayerController!,
-                                            allowScrubbing: true,
-                                            colors: const VideoProgressColors(
-                                              playedColor: Color(0xFFE50914),
-                                              bufferedColor: Colors.white38,
-                                              backgroundColor: Colors.white24,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                _formatDuration(_videoPlayerController!.value.position),
-                                                style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                              ),
-                                              Text(
-                                                _formatDuration(_videoPlayerController!.value.duration),
-                                                style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-
-                  if (!isPlaying)
-                    Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),                ],
-              ),
-            ),
+            child: AspectRatio(aspectRatio: 16 / 9, child: playerArea),
           ),
-
           SizedBox(height: 1, width: 1, child: InAppWebView(initialSettings: InAppWebViewSettings(javaScriptEnabled: true), initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")), onWebViewCreated: (c) => webExtrator = c, onLoadStop: (c, u) { _onExtratorLoaded(); })),
-
           Expanded(
-            child: !isDataLoaded 
+            child: !isDataLoaded
               ? _buildPlayerSkeleton()
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: Text(cleanTitle(widget.item['titulo']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
-                          if (widget.item['tipo'] == 'filmes')
-                            GestureDetector(
-                              onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)),
-                                child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]),
-                              ),
-                            )
-                        ],
-                      ),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(child: Text(cleanTitle(widget.item['titulo']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
+                        if (widget.item['tipo'] == 'filmes')
+                          GestureDetector(
+                            onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
+                            child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))])),
+                          )
+                      ]),
                       const SizedBox(height: 10),
-
                       Text("${widget.item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 15),
-
                       GestureDetector(
                         onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-                            ),
-                            if (sinopse.length > 150)
-                              Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))
-                          ],
-                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                          if (sinopse.length > 150)
+                            Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))
+                        ]),
                       ),
                       const SizedBox(height: 20),
-
                       if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              dropdownColor: Colors.grey[900], value: tempSelecionada,
-                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                              items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(),
-                              onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } },
-                            ),
-                          ),
+                          child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } })),
                         ),
                         const SizedBox(height: 10),
                       ],
-
                       if (widget.item['tipo'] != 'filmes') ...[
                         if (episodios.isEmpty)
-                          SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right:10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
+                          SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
                         else
                           SizedBox(
                             height: 45,
@@ -1618,55 +1422,122 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
                                 return GestureDetector(
                                   onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
-                                  onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true), 
-                                  child: Container(
-                                    width: 45, margin: const EdgeInsets.only(right: 8),
-                                    decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)),
-                                    child: Center(
-                                      child: isAtivo 
-                                        ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) 
-                                        : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))
-                                    ),
-                                  ),
+                                  onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true),
+                                  child: Container(width: 45, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)))),
                                 );
                               },
                             ),
                           ),
                         const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))),
-                          child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))]),
-                        ),
+                        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
                       ],
-
                       if (recomendacoes.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
                         const SizedBox(height: 10),
-                        SizedBox(
-                          height: 160,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal, itemCount: recomendacoes.length,
-                            itemBuilder: (ctx, i) {
-                              var rec = recomendacoes[i];
-                              return GestureDetector(
-                                onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))),
-                                child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec)),
-                              );
-                            },
-                          ),
-                        )
+                        SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) { var rec = recomendacoes[i]; return GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec))); }))
                       ]
                     ],
                   ),
                 ),
-              ),    
+          ),
         ],
       ),
     );
   }
-}
 
+  Widget _buildPlayerArea() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Fundo quando não reproduz
+        if (!isPlaying || isServerLoading) ...[
+          CachedNetworkImage(imageUrl: backdrop.isNotEmpty ? backdrop : widget.item['imagem'], fit: BoxFit.cover, alignment: Alignment.topCenter),
+          Container(color: Colors.black.withOpacity(0.6)),
+        ],
+
+        // AdDisplayContainer SEMPRE no tree — visível só durante anúncio
+        Offstage(
+          offstage: !isPlaying || isServerLoading || _adCompleted,
+          child: _adContainer ?? const SizedBox.shrink(),
+        ),
+
+        // Não está a reproduzir
+        if (!isPlaying && widget.item['tipo'] == 'filmes')
+          Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
+        if (!isPlaying && widget.item['tipo'] != 'filmes')
+          const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+
+        // Loading servidor
+        if (isPlaying && isServerLoading)
+          Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
+
+        // Player
+        if (isPlaying && !isServerLoading && _videoPlayerController != null)
+          GestureDetector(
+            onTap: _adCompleted ? _toggleControls : null,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(color: Colors.black),
+                Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
+
+                // Buffering spinner
+                if (_isBuffering && _adCompleted)
+                  const ColoredBox(color: Color(0x55000000), child: Center(child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+
+                // Controles
+                if (_adCompleted)
+                  AnimatedOpacity(
+                    opacity: _showControls ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: Container(
+                      decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.black87, Colors.transparent, Colors.black87], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                      child: Column(
+                        children: [
+                          // Top bar
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                            child: Row(children: [
+                              IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () { if (_isFullscreen) _exitFullscreen(); else Navigator.pop(context); }),
+                              Expanded(child: Text(epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              IconButton(icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white, size: 26), onPressed: () { _isFullscreen ? _exitFullscreen() : _enterFullscreen(); _startHideTimer(); }),
+                            ]),
+                          ),
+                          // Botões centrais
+                          Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            GestureDetector(onTap: () { final p = _videoPlayerController!.value.position; final n = p - const Duration(seconds: 30); _videoPlayerController!.seekTo(n < Duration.zero ? Duration.zero : n); _startHideTimer(); }, child: const Icon(Icons.replay_30, color: Colors.white, size: 40)),
+                            const SizedBox(width: 40),
+                            GestureDetector(
+                              onTap: () { setState(() { _videoPlayerController!.value.isPlaying ? _videoPlayerController!.pause() : _videoPlayerController!.play(); }); _startHideTimer(); },
+                              child: Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle), child: Icon(_videoPlayerController!.value.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 38)),
+                            ),
+                            const SizedBox(width: 40),
+                            GestureDetector(onTap: () { final p = _videoPlayerController!.value.position; final d = _videoPlayerController!.value.duration; final n = p + const Duration(seconds: 30); _videoPlayerController!.seekTo(n > d ? d : n); _startHideTimer(); }, child: const Icon(Icons.forward_30, color: Colors.white, size: 40)),
+                          ])),
+                          // Progresso
+                          Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 10), child: Column(children: [
+                            VideoProgressIndicator(_videoPlayerController!, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Color(0xFFE50914), bufferedColor: Colors.white38, backgroundColor: Colors.white24)),
+                            const SizedBox(height: 4),
+                            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                              Text(_formatDuration(_videoPlayerController!.value.position), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                              Text(_formatDuration(_videoPlayerController!.value.duration), style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                            ]),
+                          ])),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+        if (!isPlaying)
+          Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+      ],
+    );
+  }
+}
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
   List<Map<String, dynamic>> history = [];
