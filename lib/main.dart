@@ -1083,6 +1083,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onExtratorLoaded() async {
+    if (isDataLoaded && _extracaoStatus == 0) return; // já carregado, ignora
     if (webExtrator == null) return;
     try {
       if (_extracaoStatus == 0) {
@@ -1362,89 +1363,104 @@ class _PlayerScreenState extends State<PlayerScreen> {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF0F0F13),
-        body: Column(
+        body: Stack(
           children: [
-            Container(
-              padding: EdgeInsets.only(top: _isFullscreen ? 0 : MediaQuery.of(context).padding.top),
-              color: Colors.black,
-              child: _isFullscreen
-                ? SizedBox(height: MediaQuery.of(context).size.height, child: _buildPlayerArea())
-                : AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
-            ),
-            if (!_isFullscreen) ...[
-              SizedBox(height: 1, width: 1, child: InAppWebView(initialSettings: InAppWebViewSettings(javaScriptEnabled: true), initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")), onWebViewCreated: (c) => webExtrator = c, onLoadStop: (c, u) { _onExtratorLoaded(); })),
-              Expanded(
-                child: !isDataLoaded
-                  ? _buildPlayerSkeleton()
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Expanded(child: Text(cleanTitle(widget.item['titulo']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
-                            if (widget.item['tipo'] == 'filmes')
-                              GestureDetector(
-                                onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
-                                child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))])),
-                              )
-                          ]),
-                          const SizedBox(height: 10),
-                          Text("${widget.item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 15),
-                          GestureDetector(
-                            onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
-                              if (sinopse.length > 150)
-                                Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))
+            // Layout normal — sempre no tree, escondido em fullscreen
+            Column(
+              children: [
+                Container(
+                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+                  color: Colors.black,
+                  child: AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
+                ),
+                // InAppWebView SEMPRE no tree (nunca destruído)
+                SizedBox(height: 1, width: 1, child: InAppWebView(
+                  initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
+                  initialUrlRequest: URLRequest(url: WebUri("$smartPlayUrl/posts/${widget.item['tipo']}/post/${widget.item['id']}")),
+                  onWebViewCreated: (c) => webExtrator = c,
+                  onLoadStop: (c, u) { _onExtratorLoaded(); },
+                )),
+                Expanded(
+                  child: !isDataLoaded
+                    ? _buildPlayerSkeleton()
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Expanded(child: Text(cleanTitle(widget.item['titulo']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
+                              if (widget.item['tipo'] == 'filmes')
+                                GestureDetector(
+                                  onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
+                                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))])),
+                                )
                             ]),
-                          ),
-                          const SizedBox(height: 20),
-                          if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
-                              child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } })),
+                            const SizedBox(height: 10),
+                            Text("${widget.item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 15),
+                            GestureDetector(
+                              onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                                if (sinopse.length > 150)
+                                  Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))
+                              ]),
                             ),
-                            const SizedBox(height: 10),
-                          ],
-                          if (widget.item['tipo'] != 'filmes') ...[
-                            if (episodios.isEmpty)
-                              SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
-                            else
-                              SizedBox(
-                                height: 45,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal, itemCount: episodios.length,
-                                  itemBuilder: (ctx, i) {
-                                    var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
-                                    return GestureDetector(
-                                      onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
-                                      onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true),
-                                      child: Container(width: 45, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)))),
-                                    );
-                                  },
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
-                          ],
-                          if (recomendacoes.isNotEmpty) ...[
                             const SizedBox(height: 20),
-                            Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
-                            const SizedBox(height: 10),
-                            SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) { var rec = recomendacoes[i]; return GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec))); }))
-                          ]
-                        ],
+                            if (widget.item['tipo'] != 'filmes' && temporadas.isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
+                                child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'], child: Text(t['nome']))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _extracaoStatus = 1; isDataLoaded = false; }); _carregarEpisodiosUrl(val); } })),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                            if (widget.item['tipo'] != 'filmes') ...[
+                              if (episodios.isEmpty)
+                                SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
+                              else
+                                SizedBox(
+                                  height: 45,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal, itemCount: episodios.length,
+                                    itemBuilder: (ctx, i) {
+                                      var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
+                                      return GestureDetector(
+                                        onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
+                                        onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true),
+                                        child: Container(width: 45, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)))),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
+                              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
+                            ],
+                            if (recomendacoes.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
+                              const SizedBox(height: 10),
+                              SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) { var rec = recomendacoes[i]; return GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: rec))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: rec))); }))
+                            ]
+                          ],
+                        ),
                       ),
-                    ),
+                ),
+              ],
+            ),
+
+            // Tela cheia — cobre tudo por cima sem destruir o layout de baixo
+            if (_isFullscreen)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  child: _buildPlayerArea(),
+                ),
               ),
-            ],
           ],
         ),
       ),
     );
-  }
 
   Widget _buildPlayerArea() {
     return Stack(
