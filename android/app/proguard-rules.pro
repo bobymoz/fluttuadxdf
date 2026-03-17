@@ -1,0 +1,9 @@
+-keep class io.flutter.** { *; }
+-keep class io.flutter.plugins.** { *; }
+-dontwarn io.flutter.embedding.**
+-keep class com.google.android.exoplayer2.** { *; }
+-keep class com.google.ads.interactivemedia.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
