@@ -1083,6 +1083,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onExtratorLoaded() async {
+    if (isDataLoaded && _extracaoStatus == 0) return;
     if (isDataLoaded && _extracaoStatus == 0) return; // já carregado, ignora
     if (webExtrator == null) return;
     try {
@@ -1373,17 +1374,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
           Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
 
-        // AdDisplayContainer — SEMPRE no tree para o IMA funcionar, tamanho expand
-        // fica por cima do vídeo/preto mas abaixo dos controles
-        Positioned.fill(
-          child: Visibility(
-            visible: isPlaying && !isServerLoading && !_adCompleted,
-            maintainState: true,
-            maintainAnimation: true,
-            maintainSize: true,
-            child: _adContainer ?? const SizedBox.shrink(),
-          ),
-        ),
+        // AdDisplayContainer — visível apenas durante anúncio
+        if (isPlaying && !isServerLoading && !_adCompleted)
+          _adContainer ?? const SizedBox.shrink(),
 
         // Não está a reproduzir
         if (!isPlaying && widget.item['tipo'] == 'filmes')
@@ -1593,71 +1586,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         ),
       ),
-    );
-),
-                        Expanded(child: Text(epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      ]),
-                    ),
-                    // Botões centrais
-                    Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      GestureDetector(
-                        onTap: () { final p = _videoPlayerController!.value.position; final n = p - const Duration(seconds: 30); _videoPlayerController!.seekTo(n < Duration.zero ? Duration.zero : n); _startHideTimer(); },
-                        child: const Icon(Icons.replay_30, color: Colors.white, size: 40),
-                      ),
-                      const SizedBox(width: 40),
-                      GestureDetector(
-                        onTap: () { setState(() { _videoPlayerController!.value.isPlaying ? _videoPlayerController!.pause() : _videoPlayerController!.play(); }); _startHideTimer(); },
-                        child: Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle), child: Icon(_videoPlayerController!.value.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 38)),
-                      ),
-                      const SizedBox(width: 40),
-                      GestureDetector(
-                        onTap: () { final p = _videoPlayerController!.value.position; final d = _videoPlayerController!.value.duration; final n = p + const Duration(seconds: 30); _videoPlayerController!.seekTo(n > d ? d : n); _startHideTimer(); },
-                        child: const Icon(Icons.forward_30, color: Colors.white, size: 40),
-                      ),
-                    ])),
-                    // Barra inferior: barra progresso + tempo esq + duração dir + fullscreen
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            height: 20,
-                            child: VideoProgressIndicator(
-                              _videoPlayerController!,
-                              allowScrubbing: true,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              colors: const VideoProgressColors(
-                                playedColor: Color(0xFFE50914),
-                                bufferedColor: Colors.white38,
-                                backgroundColor: Colors.white24,
-                              ),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Text(_formatDuration(_videoPlayerController!.value.position), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
-                              const Spacer(),
-                              Text(_formatDuration(_videoPlayerController!.value.duration), style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () { _isFullscreen ? _exitFullscreen() : _enterFullscreen(); _startHideTimer(); },
-                                child: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white, size: 26),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-        if (!isPlaying)
-          Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
-      ],
     );
   }
 }
