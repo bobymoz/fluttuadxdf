@@ -1665,6 +1665,25 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 class DmcaScreen extends StatelessWidget {
   const DmcaScreen({super.key});
 
+  Widget _dmcaItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.15), shape: BoxShape.circle),
+            child: Icon(icon, color: const Color(0xFFE50914), size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6))),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1762,25 +1781,6 @@ class DmcaScreen extends StatelessWidget {
             const SizedBox(height: 30),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _dmcaItem(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 2),
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.15), shape: BoxShape.circle),
-            child: Icon(icon, color: const Color(0xFFE50914), size: 16),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6))),
-        ],
       ),
     );
   }
