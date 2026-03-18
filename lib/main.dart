@@ -285,7 +285,7 @@ class CDcineApp extends StatelessWidget {
 // VERIFICAÇÃO DE VERSÃO
 // ==========================================
 const String _appVersion = "1.0.0";
-const String _versionUrl = "https://rentry.co/cdup/raw";
+const String _versionUrl = "https://rentry.co/cdup";
 
 class VersionGateScreen extends StatefulWidget {
   const VersionGateScreen({super.key});
