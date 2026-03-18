@@ -13,12 +13,13 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
-import 'package:interactive_media_ads/interactive_media_ads.dart';
+import 'package:chewie/chewie.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
 const String telegramUrl = "https://t.me/cdcine";
+const String _smartlinkUrl = "https://www.profitablecpmratenetwork.com/zf8dukvff2?key=6595b8c67d73bde812d6d6aa344ca3b7";
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -46,6 +47,59 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const CDcineApp());
+}
+
+// ==========================================
+// SPLASH SCREEN
+// ==========================================
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override State<SplashScreen> createState() => _SplashScreenState();
+}
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+  late Animation<double> _fade;
+
+  @override void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+    _scale = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.5)));
+    _ctrl.forward();
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VersionGateScreen()));
+    });
+  }
+
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      body: Center(
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, __) => FadeTransition(
+            opacity: _fade,
+            child: ScaleTransition(
+              scale: _scale,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset('assets/icon.png', width: 110, height: 110),
+                  const SizedBox(height: 20),
+                  Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 48, letterSpacing: 4)),
+                  const SizedBox(height: 8),
+                  const Text("O melhor streaming gratuito", style: TextStyle(color: Colors.white54, fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 String cleanTitle(String input) {
@@ -222,7 +276,7 @@ class CDcineApp extends StatelessWidget {
         ),
       ),
       builder: (context, child) => Stack(children: [child!, const DraggableDownloadOverlay()]),
-      home: const VersionGateScreen(),
+      home: const SplashScreen(),
     );
   }
 }
@@ -988,13 +1042,10 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   InAppWebViewController? webExtrator;
   VideoPlayerController? _videoPlayerController;
-  AdsLoader? _adsLoader;
-  AdsManager? _adsManager;
-  bool _adCompleted = false;
-  bool _adStarted = false;
-  bool _adContainerReady = false;
-  AdDisplayContainer? _adContainer;
+  ChewieController? _chewieController;
   Timer? _saveTimer;
+  Timer? _smartlinkTimer;
+  bool _popupShown = false;
 
   bool isDataLoaded = false;
   String sinopse = "";
@@ -1016,26 +1067,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String? savedEpId;
   String? savedEpNome;
   bool _autoPlayDisparado = false;
-  
 
   @override void initState() { 
     super.initState(); 
     _salvarHistoricoGeral(); 
     _fetchRecomendacoes(); 
     _checkResumeData();
-    _adContainer = AdDisplayContainer(
-      onContainerAdded: (container) {
-        _adContainerReady = true;
-        // Será usado quando _iniciarExoPlayer for chamado
-      },
-    );
   }
 
   @override void dispose() {
     _saveTimer?.cancel();
     _hideControlsTimer?.cancel();
+    _smartlinkTimer?.cancel();
+    _chewieController?.dispose();
     _videoPlayerController?.dispose();
-    _adsManager?.destroy();
     _exitFullscreen();
     super.dispose();
   }
@@ -1174,6 +1219,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
     } else {
+      // Mostra popup smartlink antes de baixar
+      _mostrarPopupSmartlink(isDownload: true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar a transferência...", style: TextStyle(color: Colors.white)), backgroundColor: Colors.blue));
     }
 
@@ -1235,15 +1282,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
-    _videoPlayerController?.dispose();
-    _adsManager?.destroy();
-    setState(() {
-      _adCompleted = false;
-      _adStarted = false;
-      _showControls = false;
-      _isBuffering = false;
+  void _mostrarPopupSmartlink({bool isDownload = false}) {
+    _videoPlayerController?.pause();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _SmartlinkPopup(
+        isDownload: isDownload,
+        onContinuar: () async {
+          Navigator.pop(ctx);
+          await launchUrl(Uri.parse(_smartlinkUrl), mode: LaunchMode.inAppBrowserView);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Obrigado pelo apoio! 🙏"),
+                backgroundColor: Color(0xFF1C1C1C),
+                duration: Duration(seconds: 3),
+              ),
+            );
+            if (!isDownload) _videoPlayerController?.play();
+          }
+        },
+        onAguardar: (onDone) {
+          // countdown é gerido dentro do popup
+        },
+        onAguardouCompleto: () {
+          Navigator.pop(ctx);
+          if (!isDownload && mounted) _videoPlayerController?.play();
+        },
+      ),
+    );
+  }
+
+  void _iniciarSmartlinkTimer() {
+    _smartlinkTimer?.cancel();
+    _smartlinkTimer = Timer(const Duration(minutes: 3), () {
+      if (mounted && !_popupShown) {
+        _popupShown = true;
+        _mostrarPopupSmartlink();
+      }
     });
+  }
+
+  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
+    _smartlinkTimer?.cancel();
+    _popupShown = false;
+    _chewieController?.dispose();
+    _videoPlayerController?.dispose();
+    setState(() { _showControls = false; _isBuffering = false; });
 
     _videoPlayerController = VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -1251,75 +1337,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
 
     await _videoPlayerController!.initialize();
-    // NÃO chama play() aqui — o vídeo só começa após o anúncio terminar
 
     if (savedPositionSeconds > 0) {
       await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
     }
 
+    _chewieController = ChewieController(
+      videoPlayerController: _videoPlayerController!,
+      autoPlay: true,
+      looping: false,
+      allowFullScreen: true,
+      allowMuting: true,
+      showControlsOnInitialize: false,
+      materialProgressColors: ChewieProgressColors(
+        playedColor: const Color(0xFFE50914),
+        handleColor: const Color(0xFFE50914),
+        bufferedColor: Colors.white38,
+        backgroundColor: Colors.white24,
+      ),
+      placeholder: Container(color: Colors.black),
+      errorBuilder: (ctx, msg) => Center(child: Text(msg, style: const TextStyle(color: Colors.white))),
+    );
+
     _videoPlayerController!.addListener(() {
       if (!mounted) return;
       final val = _videoPlayerController!.value;
-      final buffering = val.isBuffering || (!val.isPlaying && !val.isCompleted && val.position > Duration.zero && _adCompleted);
-      if (buffering != _isBuffering) setState(() => _isBuffering = buffering);
-      else setState(() {});
+      final buf = val.isBuffering;
+      if (buf != _isBuffering) setState(() => _isBuffering = buf);
     });
 
-    // Timeout segurança: 15s → começa vídeo
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted && !_adCompleted) {
-        setState(() { _adCompleted = true; });
-        _videoPlayerController?.play();
-        _iniciarSalvamentoContinuo();
-      }
-    });
-
-    // Mostra o player imediatamente, anúncio carrega por cima
     if (mounted) setState(() { isServerLoading = false; });
 
-    try {
-      _adsLoader = AdsLoader(
-        container: _adContainer!,
-        onAdsLoaded: (event) {
-          _adsManager = event.manager;
-          _adsManager!.setAdsManagerDelegate(AdsManagerDelegate(
-            onAdEvent: (adEvent) {
-              if (adEvent.type == AdEventType.started) {
-                if (mounted) setState(() => _adStarted = true);
-              }
-              if (adEvent.type == AdEventType.allAdsCompleted ||
-                  adEvent.type == AdEventType.contentResumeRequested) {
-                if (mounted) {
-                  setState(() => _adCompleted = true);
-                  _videoPlayerController?.play();
-                  _iniciarSalvamentoContinuo();
-                }
-              }
-            },
-          ));
-          _adsManager!.init();
-          _adsManager!.start();
-        },
-        onAdsLoadError: (error) {
-          if (mounted) {
-            setState(() { _adCompleted = true; });
-            _videoPlayerController?.play();
-            _iniciarSalvamentoContinuo();
-          }
-        },
-      );
-
-      await _adsLoader!.requestAds(AdsRequest(
-        adTagUrl: 'https://vast.yomeno.xyz/vast?spot_id=1484395',
-      ));
-    } catch (e) {
-      // Se o IMA falhar, inicia o vídeo directamente
-      if (mounted) {
-        setState(() { _adCompleted = true; });
-        _videoPlayerController?.play();
-        _iniciarSalvamentoContinuo();
-      }
-    }
+    _iniciarSalvamentoContinuo();
+    _iniciarSmartlinkTimer();
   }
 
   String _formatDuration(Duration d) {
@@ -1375,113 +1425,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Container(color: Colors.black.withOpacity(0.6)),
         ],
 
-        // Fundo preto quando reproduz
-        if (isPlaying && !isServerLoading)
-          Container(color: Colors.black),
+        // Player Chewie profissional
+        if (isPlaying && !isServerLoading && _chewieController != null)
+          Chewie(controller: _chewieController!),
 
-        // Vídeo — só após anúncio
-        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
-          Center(child: AspectRatio(aspectRatio: _videoPlayerController!.value.aspectRatio, child: VideoPlayer(_videoPlayerController!))),
+        // Loading servidor
+        if (isPlaying && isServerLoading)
+          Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
 
-        // AdDisplayContainer — visível apenas durante anúncio
-        if (isPlaying && !isServerLoading && !_adCompleted)
-          _adContainer ?? const SizedBox.shrink(),
+        // Buffering por cima do Chewie
+        if (isPlaying && !isServerLoading && _isBuffering)
+          const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
 
         // Não está a reproduzir
         if (!isPlaying && widget.item['tipo'] == 'filmes')
           Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'], widget.item['titulo'], false))),
         if (!isPlaying && widget.item['tipo'] != 'filmes')
           const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-
-        // Loading servidor
-        if (isPlaying && isServerLoading)
-          Container(color: Colors.black, child: const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))),
-
-        // Buffering spinner
-        if (isPlaying && !isServerLoading && _adCompleted && _isBuffering)
-          const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
-
-        // Controles do player
-        if (isPlaying && !isServerLoading && _adCompleted && _videoPlayerController != null)
-          GestureDetector(
-            onTap: _toggleControls,
-            child: AnimatedOpacity(
-              opacity: _showControls ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.black87, Colors.transparent, Colors.black54],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    // Top bar
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      child: Row(children: [
-                        IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () { if (_isFullscreen) _exitFullscreen(); else Navigator.pop(context); }),
-                        Expanded(child: Text(epAtivoNome.isNotEmpty ? epAtivoNome : cleanTitle(widget.item['titulo']), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                      ]),
-                    ),
-                    // Botões centrais
-                    Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      GestureDetector(
-                        onTap: () { final p = _videoPlayerController!.value.position; final n = p - const Duration(seconds: 30); _videoPlayerController!.seekTo(n < Duration.zero ? Duration.zero : n); _startHideTimer(); },
-                        child: const Icon(Icons.replay_30, color: Colors.white, size: 40),
-                      ),
-                      const SizedBox(width: 40),
-                      GestureDetector(
-                        onTap: () { setState(() { _videoPlayerController!.value.isPlaying ? _videoPlayerController!.pause() : _videoPlayerController!.play(); }); _startHideTimer(); },
-                        child: Container(padding: const EdgeInsets.all(12), decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle), child: Icon(_videoPlayerController!.value.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 38)),
-                      ),
-                      const SizedBox(width: 40),
-                      GestureDetector(
-                        onTap: () { final p = _videoPlayerController!.value.position; final d = _videoPlayerController!.value.duration; final n = p + const Duration(seconds: 30); _videoPlayerController!.seekTo(n > d ? d : n); _startHideTimer(); },
-                        child: const Icon(Icons.forward_30, color: Colors.white, size: 40),
-                      ),
-                    ])),
-                    // Barra de progresso
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            height: 20,
-                            child: VideoProgressIndicator(
-                              _videoPlayerController!,
-                              allowScrubbing: true,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              colors: const VideoProgressColors(
-                                playedColor: Color(0xFFE50914),
-                                bufferedColor: Colors.white38,
-                                backgroundColor: Colors.white24,
-                              ),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Text(_formatDuration(_videoPlayerController!.value.position), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
-                              const Spacer(),
-                              Text(_formatDuration(_videoPlayerController!.value.duration), style: const TextStyle(color: Colors.white54, fontSize: 12)),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () { _isFullscreen ? _exitFullscreen() : _enterFullscreen(); _startHideTimer(); },
-                                child: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white, size: 26),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
 
         if (!isPlaying)
           Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
@@ -1661,6 +1621,132 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           ),
         ],
       )
+    );
+  }
+}
+
+// ==========================================
+// POPUP SMARTLINK
+// ==========================================
+class _SmartlinkPopup extends StatefulWidget {
+  final bool isDownload;
+  final VoidCallback onContinuar;
+  final Function(VoidCallback) onAguardar;
+  final VoidCallback onAguardouCompleto;
+  const _SmartlinkPopup({required this.isDownload, required this.onContinuar, required this.onAguardar, required this.onAguardouCompleto});
+  @override State<_SmartlinkPopup> createState() => _SmartlinkPopupState();
+}
+
+class _SmartlinkPopupState extends State<_SmartlinkPopup> {
+  int _countdown = 30;
+  Timer? _timer;
+  bool _aguardando = false;
+
+  @override void dispose() { _timer?.cancel(); super.dispose(); }
+
+  void _iniciarContagem() {
+    setState(() { _aguardando = true; _countdown = 30; });
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _countdown--);
+      if (_countdown <= 0) {
+        t.cancel();
+        widget.onAguardouCompleto();
+      }
+    });
+  }
+
+  @override Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF141414),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white10),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)],
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Imagem pobre.jpg
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset('assets/pobre.jpg', height: 130, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.wallet, color: Colors.white54, size: 80)),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.isDownload ? "Antes de baixar..." : "Continuar assistindo",
+              style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Para manter o app ativo e gratuito,\npreciso da sua ajuda! Escolha uma das opções abaixo:",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+
+            // Botão Continuar agora
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE50914),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: widget.onContinuar,
+                icon: const Icon(Icons.open_in_new, color: Colors.white, size: 18),
+                label: const Text("Continuar agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Botão Aguardar / contagem
+            SizedBox(
+              width: double.infinity,
+              child: _aguardando
+                ? AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20, height: 20,
+                          child: CircularProgressIndicator(
+                            value: _countdown / 30,
+                            color: Colors.white54,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text("Aguarde $_countdown segundos...", style: const TextStyle(color: Colors.white54, fontSize: 14)),
+                      ],
+                    ),
+                  )
+                : OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _iniciarContagem,
+                    icon: const Icon(Icons.timer_outlined, color: Colors.white54, size: 18),
+                    label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white54, fontSize: 14)),
+                  ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
