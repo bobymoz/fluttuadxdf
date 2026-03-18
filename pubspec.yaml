@@ -22,7 +22,7 @@ dependencies:
   path_provider: ^2.1.2
   permission_handler: ^11.3.0
   video_player: ^2.8.1
-  interactive_media_ads: ^0.2.0
+  chewie: ^1.8.0
   open_filex: ^4.5.2
 
 dev_dependencies:
