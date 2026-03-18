@@ -1218,10 +1218,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!isParaDownload) {
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; });
-    } else {
-      // Mostra popup smartlink antes de baixar
-      _mostrarPopupSmartlink(isDownload: true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A preparar a transferência...", style: TextStyle(color: Colors.white)), backgroundColor: Colors.blue));
     }
 
     String urlApi = widget.item['tipo'] == 'filmes' ? "$smartPlayUrl/player/movie" : "$smartPlayUrl/player/episode";
@@ -1257,10 +1253,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.first;
 
-        if (serverEscolhido == null) return; // segurança extra
+        if (serverEscolhido == null) return;
 
         if (isParaDownload) {
-          DownloadManager.startDownload(serverEscolhido['url'], nomeVideo, serverEscolhido['isMp4']);
+          // Passa os dados do download para o popup — download só começa após o utilizador interagir
+          _mostrarPopupSmartlink(
+            isDownload: true,
+            downloadUrl: serverEscolhido['url'],
+            downloadTitle: nomeVideo,
+            downloadIsMp4: serverEscolhido['isMp4'],
+          );
         } else {
           _iniciarExoPlayer(serverEscolhido!['url'], nomeVideo);
         }
@@ -1282,8 +1284,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  void _mostrarPopupSmartlink({bool isDownload = false}) {
-    _videoPlayerController?.pause();
+  void _mostrarObrigado() {
+    final overlay = Overlay.of(context);
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        top: MediaQuery.of(context).padding.top + 12,
+        left: 20, right: 20,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1C),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE50914).withOpacity(0.6)),
+              boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 20)],
+            ),
+            child: Row(
+              children: [
+                const Text("🙏", style: TextStyle(fontSize: 26)),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text("Obrigado pelo apoio!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                      SizedBox(height: 2),
+                      Text("O teu apoio mantém o CDCINE gratuito ❤️", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 4), entry.remove);
+  }
+
+  void _mostrarPopupSmartlink({bool isDownload = false, String? downloadUrl, String? downloadTitle, bool? downloadIsMp4}) {
+    if (!isDownload) _videoPlayerController?.pause();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1291,24 +1334,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
         isDownload: isDownload,
         onContinuar: () async {
           Navigator.pop(ctx);
-          await launchUrl(Uri.parse(_smartlinkUrl), mode: LaunchMode.inAppBrowserView);
+          // Custom Tab — abre browser real com cookies, sem diálogo de escolha
+          await launchUrl(Uri.parse(_smartlinkUrl), mode: LaunchMode.externalNonBrowserApplication);
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Obrigado pelo apoio! 🙏"),
-                backgroundColor: Color(0xFF1C1C1C),
-                duration: Duration(seconds: 3),
-              ),
-            );
+            _mostrarObrigado();
             if (!isDownload) _videoPlayerController?.play();
+            if (isDownload && downloadUrl != null) {
+              DownloadManager.startDownload(downloadUrl, downloadTitle ?? '', downloadIsMp4 ?? true);
+            }
           }
         },
-        onAguardar: (onDone) {
-          // countdown é gerido dentro do popup
-        },
+        onAguardar: (onDone) {},
         onAguardouCompleto: () {
           Navigator.pop(ctx);
+          _mostrarObrigado();
           if (!isDownload && mounted) _videoPlayerController?.play();
+          if (isDownload && downloadUrl != null && mounted) {
+            DownloadManager.startDownload(downloadUrl, downloadTitle ?? '', downloadIsMp4 ?? true);
+          }
         },
       ),
     );
@@ -1443,8 +1486,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && widget.item['tipo'] != 'filmes')
           const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
 
-        if (!isPlaying)
-          Positioned(top: 10, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Navigator.pop(context))),
+        // Botão voltar SEMPRE visível no topo esquerdo
+        Positioned(
+          top: 8, left: 4,
+          child: SafeArea(
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ),
       ],
     );
   }
