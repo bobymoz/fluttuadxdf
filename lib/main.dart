@@ -307,8 +307,70 @@ class CDcineApp extends StatelessWidget {
         ),
       ),
       builder: (context, child) => Stack(children: [child!, const DraggableDownloadOverlay()]),
-      home: const SplashScreen(),
+      home: const _ConnectivityGate(),
     );
+  }
+}
+
+class _ConnectivityGate extends StatefulWidget {
+  const _ConnectivityGate();
+  @override State<_ConnectivityGate> createState() => _ConnectivityGateState();
+}
+class _ConnectivityGateState extends State<_ConnectivityGate> {
+  bool _checking = true;
+  bool _noInternet = false;
+
+  @override void initState() { super.initState(); _check(); }
+
+  Future<void> _check() async {
+    setState(() { _checking = true; _noInternet = false; });
+    try {
+      final res = await http.get(Uri.parse("https://www.google.com")).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        if (mounted) setState(() => _checking = false);
+        return;
+      }
+    } catch (_) {}
+    if (mounted) setState(() { _checking = false; _noInternet = true; });
+  }
+
+  @override Widget build(BuildContext context) {
+    if (_checking) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0B0B0F),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
+      );
+    }
+    if (_noInternet) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0B0B0F),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.wifi_off, color: Colors.white30, size: 80),
+              const SizedBox(height: 24),
+              Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 40, letterSpacing: 3)),
+              const SizedBox(height: 12),
+              const Text("Sem ligação à internet", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text("Verifica a tua ligação Wi-Fi ou dados móveis e tenta novamente.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.6)),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: _check,
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  label: const Text("Tentar novamente", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+    return const SplashScreen();
   }
 }
 
@@ -692,7 +754,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(width: 5),
           ],
-          bottom: PreferredSize(
+          bottom: _currentIndex == 4 ? null : PreferredSize(
             preferredSize: const Size.fromHeight(60),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -740,6 +802,15 @@ class _MainScreenState extends State<MainScreen> {
 // ==========================================
 // ABA TV — IPTV AO VIVO
 // ==========================================
+
+// Fontes IPTV públicas — múltiplas para redundância e mais canais
+const List<Map<String, String>> _iptvSources = [
+  {'name': 'M3UPT (PT/BR)', 'url': 'https://m3upt.com/iptv'},
+  {'name': 'IPTV-ORG Português', 'url': 'https://iptv-org.github.io/iptv/languages/por.m3u'},
+  {'name': 'IPTV-ORG Brasil', 'url': 'https://iptv-org.github.io/iptv/countries/br.m3u'},
+  {'name': 'IPTV-ORG Portugal', 'url': 'https://iptv-org.github.io/iptv/countries/pt.m3u'},
+];
+
 class TvTab extends StatefulWidget {
   const TvTab({super.key});
   @override State<TvTab> createState() => _TvTabState();
@@ -751,22 +822,55 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
   List<Map<String, String>> _channels = [];
   List<Map<String, String>> _filtered = [];
   bool _loading = true;
+  bool _noInternet = false;
   String _search = "";
+  int _sourceIndex = 0;
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override void initState() { super.initState(); _loadChannels(); }
   @override void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
   Future<void> _loadChannels() async {
-    try {
-      final res = await http.get(Uri.parse("https://m3upt.com/iptv"), headers: {"User-Agent": "Mozilla/5.0"}).timeout(const Duration(seconds: 15));
-      if (res.statusCode == 200) {
-        final channels = _parseM3U(res.body);
-        if (mounted) setState(() { _channels = channels; _filtered = channels; _loading = false; });
-        return;
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
+    setState(() { _loading = true; _noInternet = false; });
+    bool anySuccess = false;
+    final List<Map<String, String>> all = [];
+    final Set<String> seen = {};
+
+    for (final source in _iptvSources) {
+      try {
+        final res = await http.get(
+          Uri.parse(source['url']!),
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
+            "Referer": "https://www.google.pt/",
+          },
+        ).timeout(const Duration(seconds: 12));
+
+        if (res.statusCode == 200 && res.body.contains('#EXTM3U')) {
+          final parsed = _parseM3U(res.body);
+          for (final ch in parsed) {
+            final key = '${ch['name']}_${ch['url']}';
+            if (!seen.contains(key)) { seen.add(key); all.add(ch); }
+          }
+          anySuccess = true;
+        }
+      } catch (_) {}
+    }
+
+    if (!anySuccess && all.isEmpty) {
+      if (mounted) setState(() { _loading = false; _noInternet = true; });
+      return;
+    }
+
+    // Ordena por grupo depois por nome
+    all.sort((a, b) {
+      final g = a['group']!.compareTo(b['group']!);
+      return g != 0 ? g : a['name']!.compareTo(b['name']!);
+    });
+
+    if (mounted) setState(() { _channels = all; _filtered = all; _loading = false; });
   }
 
   List<Map<String, String>> _parseM3U(String content) {
@@ -778,9 +882,10 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
       if (l.startsWith('#EXTINF')) {
         name = RegExp(r',(.+)$').firstMatch(l)?.group(1)?.trim() ?? 'Canal';
         logo = RegExp(r'tvg-logo="([^"]*)"').firstMatch(l)?.group(1) ?? '';
-        group = RegExp(r'group-title="([^"]*)"').firstMatch(l)?.group(1) ?? '';
+        group = RegExp(r'group-title="([^"]*)"').firstMatch(l)?.group(1) ?? 'Outros';
+        if (group!.isEmpty) group = 'Outros';
       } else if (l.isNotEmpty && !l.startsWith('#') && name != null) {
-        result.add({'name': name, 'logo': logo ?? '', 'group': group ?? '', 'url': l});
+        result.add({'name': name, 'logo': logo ?? '', 'group': group ?? 'Outros', 'url': l});
         name = null; logo = null; group = null;
       }
     }
@@ -790,37 +895,88 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
   void _onSearch(String q) {
     setState(() {
       _search = q;
-      _filtered = q.isEmpty ? _channels : _channels.where((c) => c['name']!.toLowerCase().contains(q.toLowerCase()) || c['group']!.toLowerCase().contains(q.toLowerCase())).toList();
+      _filtered = q.isEmpty
+        ? _channels
+        : _channels.where((c) =>
+            c['name']!.toLowerCase().contains(q.toLowerCase()) ||
+            c['group']!.toLowerCase().contains(q.toLowerCase())).toList();
     });
   }
 
   void _openChannel(Map<String, String> ch) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => _TvPlayerScreen(name: ch['name']!, url: ch['url']!, logo: ch['logo']!)));
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => _TvPlayerScreen(name: ch['name']!, url: ch['url']!, logo: ch['logo']!),
+    ));
   }
 
   @override Widget build(BuildContext context) {
     super.build(context);
+
+    if (_noInternet) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.wifi_off, color: Colors.white30, size: 64),
+          const SizedBox(height: 16),
+          const Text("Sem ligação à internet", style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text("Verifica a tua ligação e tenta novamente.", style: TextStyle(color: Colors.white38, fontSize: 13)),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            onPressed: _loadChannels,
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            label: const Text("Tentar novamente", style: TextStyle(color: Colors.white)),
+          ),
+        ]),
+      );
+    }
+
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
           child: TextField(
             controller: _searchCtrl,
             style: const TextStyle(color: Colors.white, fontSize: 14),
             onChanged: _onSearch,
             decoration: InputDecoration(
-              hintText: "Pesquisar canal...",
+              hintText: "Pesquisar canal ou grupo...",
               hintStyle: const TextStyle(color: Colors.grey),
               filled: true, fillColor: Colors.grey[900],
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              suffixIcon: _search.isNotEmpty ? IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 18), onPressed: () { _searchCtrl.clear(); _onSearch(''); }) : null,
+              suffixIcon: _search.isNotEmpty
+                ? IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 18), onPressed: () { _searchCtrl.clear(); _onSearch(''); })
+                : null,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
               contentPadding: EdgeInsets.zero,
             ),
           ),
         ),
+        if (!_loading)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 6),
+            child: Row(children: [
+              Text("${_filtered.length} canais", style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _loadChannels,
+                icon: const Icon(Icons.refresh, size: 14, color: Colors.grey),
+                label: const Text("Atualizar", style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ),
+            ]),
+          ),
         if (_loading)
-          Expanded(child: ListView.builder(itemCount: 10, itemBuilder: (_, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: ListTile(leading: Container(width: 48, height: 48, color: Colors.black), title: Container(height: 14, color: Colors.black), subtitle: Container(height: 10, color: Colors.black)))))
+          Expanded(child: ListView.builder(
+            itemCount: 12,
+            itemBuilder: (_, i) => Shimmer.fromColors(
+              baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!,
+              child: ListTile(
+                leading: Container(width: 52, height: 36, color: Colors.black, margin: const EdgeInsets.symmetric(vertical: 4)),
+                title: Container(height: 13, color: Colors.black),
+                subtitle: Container(height: 10, color: Colors.black, margin: const EdgeInsets.only(top: 4)),
+              ),
+            ),
+          ))
         else if (_filtered.isEmpty)
           const Expanded(child: Center(child: Text("Nenhum canal encontrado", style: TextStyle(color: Colors.grey))))
         else
@@ -829,24 +985,46 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
               itemCount: _filtered.length,
               itemBuilder: (ctx, i) {
                 final ch = _filtered[i];
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: ch['logo']!.isNotEmpty
-                      ? CachedNetworkImage(imageUrl: ch['logo']!, width: 52, height: 36, fit: BoxFit.contain,
-                          placeholder: (_, __) => Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)),
-                          errorWidget: (_, __, ___) => Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)))
-                      : Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)),
-                  ),
-                  title: Text(ch['name']!, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: ch['group']!.isNotEmpty ? Text(ch['group']!, style: TextStyle(color: Colors.grey[500], fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis) : null,
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.withOpacity(0.4))),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.red, size: 8), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))]),
-                  ),
-                  onTap: () => _openChannel(ch),
+                // Separador de grupo
+                final showGroup = i == 0 || _filtered[i - 1]['group'] != ch['group'];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showGroup && _search.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: Row(children: [
+                          Container(width: 3, height: 14, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)),
+                          Text(ch['group']!, style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                        ]),
+                      ),
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: ch['logo']!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: ch['logo']!, width: 52, height: 34, fit: BoxFit.contain,
+                              placeholder: (_, __) => _logoPlaceholder(),
+                              errorWidget: (_, __, ___) => _logoPlaceholder())
+                          : _logoPlaceholder(),
+                      ),
+                      title: Text(ch['name']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: _search.isNotEmpty && ch['group']!.isNotEmpty
+                        ? Text(ch['group']!, style: TextStyle(color: Colors.grey[600], fontSize: 11), maxLines: 1)
+                        : null,
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.withOpacity(0.35))),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.circle, color: Colors.red, size: 7),
+                          SizedBox(width: 4),
+                          Text("AO VIVO", style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                      onTap: () => _openChannel(ch),
+                    ),
+                  ],
                 );
               },
             ),
@@ -854,6 +1032,8 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
       ],
     );
   }
+
+  Widget _logoPlaceholder() => Container(width: 52, height: 34, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white24, size: 18));
 }
 
 class _TvPlayerScreen extends StatefulWidget {
@@ -872,7 +1052,15 @@ class _TvPlayerScreenState extends State<_TvPlayerScreen> {
 
   Future<void> _init() async {
     try {
-      _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url), httpHeaders: {"User-Agent": "Mozilla/5.0"});
+      _ctrl = VideoPlayerController.networkUrl(
+        Uri.parse(widget.url),
+        httpHeaders: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Referer": "https://www.google.pt/",
+          "Accept-Language": "pt-PT,pt;q=0.9",
+          "Origin": "https://www.google.pt",
+        },
+      );
       await _ctrl!.initialize();
       _chewie = ChewieController(
         videoPlayerController: _ctrl!,
@@ -2006,26 +2194,23 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 12),
-            // Destaque — deixa claro qual opção ajuda
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: const Color(0xFFE50914).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5)),
               ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.star, color: Color(0xFFE50914), size: 14),
-                  SizedBox(width: 6),
-                  Text("Clica em \"Assistir agora\" para nos apoiar!", style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)),
-                ],
+              child: const Text(
+                "Clique em \"Assistir agora\" para nos ajudar!",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),
             const SizedBox(height: 20),
 
-            // Botão Continuar agora
+            // Botão Assistir agora
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -2036,7 +2221,7 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
                 ),
                 onPressed: widget.onContinuar,
                 icon: const Icon(Icons.play_arrow, color: Colors.white, size: 20),
-                label: const Text("⭐ Assistir agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                label: const Text("Assistir agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
             const SizedBox(height: 10),
