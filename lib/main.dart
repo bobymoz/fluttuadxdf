@@ -599,6 +599,7 @@ class _MainScreenState extends State<MainScreen> {
       const PaginatedCategoryView(key: ValueKey("filmes"), urlPattern: "$smartPlayUrl/posts/filmes/[PAGE]", filterType: "filmes", title: "Filmes"),
       const PaginatedCategoryView(key: ValueKey("series"), urlPattern: "$smartPlayUrl/posts/series/[PAGE]", filterType: "series", title: "Séries"),
       const PaginatedCategoryView(key: ValueKey("animes"), urlPattern: "$smartPlayUrl/posts/animes/[PAGE]", filterType: "animes", title: "Animes"),
+      const TvTab(key: ValueKey("tv")),
       const GenerosView(key: ValueKey("generos")),
     ];
 
@@ -727,10 +728,194 @@ class _MainScreenState extends State<MainScreen> {
             BottomNavigationBarItem(icon: Icon(Icons.movie_creation_outlined), label: "Filmes"),
             BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: "Séries"),
             BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"),
+            BottomNavigationBarItem(icon: Icon(Icons.tv), label: "TV"),
             BottomNavigationBarItem(icon: Icon(Icons.format_list_bulleted), label: "Gêneros"),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ==========================================
+// ABA TV — IPTV AO VIVO
+// ==========================================
+class TvTab extends StatefulWidget {
+  const TvTab({super.key});
+  @override State<TvTab> createState() => _TvTabState();
+}
+
+class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
+  @override bool get wantKeepAlive => true;
+
+  List<Map<String, String>> _channels = [];
+  List<Map<String, String>> _filtered = [];
+  bool _loading = true;
+  String _search = "";
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  @override void initState() { super.initState(); _loadChannels(); }
+  @override void dispose() { _searchCtrl.dispose(); super.dispose(); }
+
+  Future<void> _loadChannels() async {
+    try {
+      final res = await http.get(Uri.parse("https://m3upt.com/iptv"), headers: {"User-Agent": "Mozilla/5.0"}).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) {
+        final channels = _parseM3U(res.body);
+        if (mounted) setState(() { _channels = channels; _filtered = channels; _loading = false; });
+        return;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  List<Map<String, String>> _parseM3U(String content) {
+    final List<Map<String, String>> result = [];
+    final lines = content.split('\n');
+    String? name, logo, group;
+    for (final line in lines) {
+      final l = line.trim();
+      if (l.startsWith('#EXTINF')) {
+        name = RegExp(r',(.+)$').firstMatch(l)?.group(1)?.trim() ?? 'Canal';
+        logo = RegExp(r'tvg-logo="([^"]*)"').firstMatch(l)?.group(1) ?? '';
+        group = RegExp(r'group-title="([^"]*)"').firstMatch(l)?.group(1) ?? '';
+      } else if (l.isNotEmpty && !l.startsWith('#') && name != null) {
+        result.add({'name': name, 'logo': logo ?? '', 'group': group ?? '', 'url': l});
+        name = null; logo = null; group = null;
+      }
+    }
+    return result;
+  }
+
+  void _onSearch(String q) {
+    setState(() {
+      _search = q;
+      _filtered = q.isEmpty ? _channels : _channels.where((c) => c['name']!.toLowerCase().contains(q.toLowerCase()) || c['group']!.toLowerCase().contains(q.toLowerCase())).toList();
+    });
+  }
+
+  void _openChannel(Map<String, String> ch) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => _TvPlayerScreen(name: ch['name']!, url: ch['url']!, logo: ch['logo']!)));
+  }
+
+  @override Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            onChanged: _onSearch,
+            decoration: InputDecoration(
+              hintText: "Pesquisar canal...",
+              hintStyle: const TextStyle(color: Colors.grey),
+              filled: true, fillColor: Colors.grey[900],
+              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _search.isNotEmpty ? IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 18), onPressed: () { _searchCtrl.clear(); _onSearch(''); }) : null,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+        if (_loading)
+          Expanded(child: ListView.builder(itemCount: 10, itemBuilder: (_, i) => Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: ListTile(leading: Container(width: 48, height: 48, color: Colors.black), title: Container(height: 14, color: Colors.black), subtitle: Container(height: 10, color: Colors.black)))))
+        else if (_filtered.isEmpty)
+          const Expanded(child: Center(child: Text("Nenhum canal encontrado", style: TextStyle(color: Colors.grey))))
+        else
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filtered.length,
+              itemBuilder: (ctx, i) {
+                final ch = _filtered[i];
+                return ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: ch['logo']!.isNotEmpty
+                      ? CachedNetworkImage(imageUrl: ch['logo']!, width: 52, height: 36, fit: BoxFit.contain,
+                          placeholder: (_, __) => Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)),
+                          errorWidget: (_, __, ___) => Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)))
+                      : Container(width: 52, height: 36, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white30, size: 20)),
+                  ),
+                  title: Text(ch['name']!, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: ch['group']!.isNotEmpty ? Text(ch['group']!, style: TextStyle(color: Colors.grey[500], fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis) : null,
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.withOpacity(0.4))),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.red, size: 8), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold))]),
+                  ),
+                  onTap: () => _openChannel(ch),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TvPlayerScreen extends StatefulWidget {
+  final String name, url, logo;
+  const _TvPlayerScreen({required this.name, required this.url, required this.logo});
+  @override State<_TvPlayerScreen> createState() => _TvPlayerScreenState();
+}
+
+class _TvPlayerScreenState extends State<_TvPlayerScreen> {
+  VideoPlayerController? _ctrl;
+  ChewieController? _chewie;
+  bool _loading = true;
+  bool _error = false;
+
+  @override void initState() { super.initState(); _init(); }
+
+  Future<void> _init() async {
+    try {
+      _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url), httpHeaders: {"User-Agent": "Mozilla/5.0"});
+      await _ctrl!.initialize();
+      _chewie = ChewieController(
+        videoPlayerController: _ctrl!,
+        autoPlay: true,
+        looping: true,
+        allowFullScreen: true,
+        isLive: true,
+        materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), bufferedColor: Colors.white24, backgroundColor: Colors.white12),
+      );
+      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _error = true; });
+    }
+  }
+
+  @override void dispose() { _chewie?.dispose(); _ctrl?.dispose(); super.dispose(); }
+
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Row(children: [
+          if (widget.logo.isNotEmpty) ...[
+            CachedNetworkImage(imageUrl: widget.logo, height: 28, fit: BoxFit.contain, errorWidget: (_, __, ___) => const Icon(Icons.tv, color: Colors.white, size: 22)),
+            const SizedBox(width: 10),
+          ],
+          Expanded(child: Text(widget.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.white, size: 8), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))])),
+        ]),
+      ),
+      body: _loading
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+        : _error
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.signal_wifi_off, color: Colors.white54, size: 64),
+              const SizedBox(height: 16),
+              const Text("Canal indisponível", style: TextStyle(color: Colors.white70, fontSize: 16)),
+              const SizedBox(height: 8),
+              const Text("Este canal pode não funcionar\nfora de Portugal.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 13)),
+            ]))
+          : Chewie(controller: _chewie!),
     );
   }
 }
@@ -1816,9 +2001,27 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
             ),
             const SizedBox(height: 8),
             const Text(
-              "Para manter o app ativo e gratuito,\npreciso da sua ajuda! Escolha uma das opções abaixo:",
+              "Para manter o app gratuito,\npreciso da sua ajuda!",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            // Destaque — deixa claro qual opção ajuda
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE50914).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.star, color: Color(0xFFE50914), size: 14),
+                  SizedBox(width: 6),
+                  Text("Clica em \"Assistir agora\" para nos apoiar!", style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -1832,8 +2035,8 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: widget.onContinuar,
-                icon: const Icon(Icons.open_in_new, color: Colors.white, size: 18),
-                label: const Text("Continuar agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                icon: const Icon(Icons.play_arrow, color: Colors.white, size: 20),
+                label: const Text("⭐ Assistir agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
               ),
             ),
             const SizedBox(height: 10),
