@@ -14,6 +14,7 @@ import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:flutter_custom_tabs/flutter_custom_tabs.dart' as custom_tabs;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -60,15 +61,23 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late AnimationController _ctrl;
   late Animation<double> _scale;
   late Animation<double> _fade;
+  late Animation<double> _textFade;
+  late Animation<Offset> _textSlide;
 
   @override void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
-    _scale = Tween<double>(begin: 0.6, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
-    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.5)));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+    _scale = Tween<double>(begin: 0.4, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.6, curve: Curves.elasticOut)));
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.4, curve: Curves.easeIn)));
+    _textFade = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 0.9, curve: Curves.easeIn)));
+    _textSlide = Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0, curve: Curves.easeOut)));
     _ctrl.forward();
-    Future.delayed(const Duration(milliseconds: 2200), () {
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const VersionGateScreen()));
+    Future.delayed(const Duration(milliseconds: 2600), () {
+      if (mounted) Navigator.pushReplacement(context, PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const VersionGateScreen(),
+        transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        transitionDuration: const Duration(milliseconds: 500),
+      ));
     });
   }
 
@@ -80,21 +89,43 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       body: Center(
         child: AnimatedBuilder(
           animation: _ctrl,
-          builder: (_, __) => FadeTransition(
-            opacity: _fade,
-            child: ScaleTransition(
-              scale: _scale,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset('assets/icon.png', width: 110, height: 110),
-                  const SizedBox(height: 20),
-                  Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 48, letterSpacing: 4)),
-                  const SizedBox(height: 8),
-                  const Text("O melhor streaming gratuito", style: TextStyle(color: Colors.white54, fontSize: 13)),
-                ],
+          builder: (_, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FadeTransition(
+                opacity: _fade,
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: Container(
+                    width: 120, height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.4), blurRadius: 40, spreadRadius: 5)],
+                    ),
+                    child: ClipOval(child: Image.asset('assets/icon.png', fit: BoxFit.cover)),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+              SlideTransition(
+                position: _textSlide,
+                child: FadeTransition(
+                  opacity: _textFade,
+                  child: Column(
+                    children: [
+                      Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 52, letterSpacing: 6)),
+                      const SizedBox(height: 6),
+                      const Text("O melhor streaming gratuito", style: TextStyle(color: Colors.white38, fontSize: 13, letterSpacing: 1)),
+                      const SizedBox(height: 40),
+                      SizedBox(
+                        width: 24, height: 24,
+                        child: CircularProgressIndicator(color: const Color(0xFFE50914).withOpacity(0.6), strokeWidth: 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -285,7 +316,7 @@ class CDcineApp extends StatelessWidget {
 // VERIFICAÇÃO DE VERSÃO
 // ==========================================
 const String _appVersion = "1.0.0";
-const String _versionUrl = "https://rentry.co/cdup";
+const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 
 class VersionGateScreen extends StatefulWidget {
   const VersionGateScreen({super.key});
@@ -295,6 +326,7 @@ class VersionGateScreen extends StatefulWidget {
 class _VersionGateScreenState extends State<VersionGateScreen> {
   bool _checking = true;
   bool _needsUpdate = false;
+  bool _blocked = false;
   String _latestVersion = "";
   String _downloadUrl = "";
   String _changelog = "";
@@ -308,13 +340,11 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
     try {
       final res = await http.get(Uri.parse(_versionUrl), headers: {"User-Agent": "Mozilla/5.0"}).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200) {
-        // Rentry pode ter texto extra — extrai só o bloco JSON { ... }
         String body = res.body;
         final start = body.indexOf('{');
         final end = body.lastIndexOf('}');
-        if (start != -1 && end != -1) {
-          body = body.substring(start, end + 1);
-        }
+        if (start == -1 || end == -1) throw Exception('JSON not found');
+        body = body.substring(start, end + 1);
         final data = json.decode(body);
         _latestVersion = (data['latest_version'] ?? _appVersion).toString().trim();
         _downloadUrl = data['download_url'] ?? "";
@@ -323,12 +353,51 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
           if (mounted) setState(() { _needsUpdate = true; _checking = false; });
           return;
         }
+        if (mounted) setState(() => _checking = false);
+        return;
       }
-    } catch (_) {}
-    if (mounted) setState(() => _checking = false);
+      // URL acessível mas status != 200 — bloqueia
+      if (mounted) setState(() { _blocked = true; _checking = false; });
+    } catch (_) {
+      // Sem rede ou URL removida — bloqueia
+      if (mounted) setState(() { _blocked = true; _checking = false; });
+    }
   }
 
   @override Widget build(BuildContext context) {
+    if (_blocked) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0B0B0F),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.lock_outline, color: Color(0xFFE50914), size: 64),
+                  const SizedBox(height: 24),
+                  Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 40, letterSpacing: 3)),
+                  const SizedBox(height: 12),
+                  const Text("App temporariamente indisponível.\nTente novamente mais tarde.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.6)),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                      onPressed: () { setState(() { _checking = true; _blocked = false; }); _checkVersion(); },
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      label: const Text("Tentar novamente", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_needsUpdate) {
       return Scaffold(
         backgroundColor: const Color(0xFF0B0B0F),
@@ -1334,8 +1403,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
         isDownload: isDownload,
         onContinuar: () async {
           Navigator.pop(ctx);
-          // Custom Tab — abre browser real com cookies, sem diálogo de escolha
-          await launchUrl(Uri.parse(_smartlinkUrl), mode: LaunchMode.externalNonBrowserApplication);
+          try {
+            await custom_tabs.launchUrl(
+              Uri.parse(_smartlinkUrl),
+              customTabsOptions: custom_tabs.CustomTabsOptions(
+                colorSchemes: custom_tabs.CustomTabsColorSchemes.defaults(
+                  toolbarColor: const Color(0xFF0B0B0F),
+                ),
+                urlBarHidingEnabled: true,
+                showTitle: false,
+                closeButton: custom_tabs.CustomTabsCloseButton(
+                  icon: custom_tabs.CustomTabsCloseButtonIcons.back,
+                ),
+              ),
+            );
+          } catch (_) {}
           if (mounted) {
             _mostrarObrigado();
             if (!isDownload) _videoPlayerController?.play();
