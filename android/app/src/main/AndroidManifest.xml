@@ -31,6 +31,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <activity
+  android:name="com.unity3d.ads.adunit.AdUnitActivity"
+  android:configChanges="fontScale|keyboard|keyboardHidden|locale|mnc|mcc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|touchscreen"
+  android:hardwareAccelerated="true"
+  android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
     
     <queries>
