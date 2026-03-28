@@ -24,6 +24,7 @@ dependencies:
   video_player: ^2.8.1
   chewie: ^1.8.0
   flutter_custom_tabs: ^2.0.0
+  unity_ads_plugin: ^4.0.1
   open_filex: ^4.5.2
   
 
