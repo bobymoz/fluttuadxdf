@@ -17,10 +17,16 @@ import 'package:chewie/chewie.dart';
 import 'package:flutter_custom_tabs/flutter_custom_tabs.dart' as custom_tabs;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
 const String telegramUrl = "https://t.me/cdcine";
 const String _smartlinkUrl = "https://www.profitablecpmratenetwork.com/zf8dukvff2?key=6595b8c67d73bde812d6d6aa344ca3b7";
+
+// Unity Ads
+const String _unityGameId = "6077055"; // Android
+const String _unityInterstitialId = "Cd";
+const String _unityRewardedId = "Rewarded_Android";
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -47,6 +53,13 @@ const List<Map<String, String>> officialGenres = [
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Inicializa Unity Ads
+  await UnityAds.init(
+    gameId: _unityGameId,
+    testMode: false,
+    onComplete: () => debugPrint('Unity Ads inicializado'),
+    onFailed: (error, msg) => debugPrint('Unity Ads erro: $msg'),
+  );
   runApp(const CDcineApp());
 }
 
@@ -1698,12 +1711,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (serverEscolhido == null) return;
 
         if (isParaDownload) {
-          // Passa os dados do download para o popup — download só começa após o utilizador interagir
-          _mostrarPopupSmartlink(
-            isDownload: true,
-            downloadUrl: serverEscolhido['url'],
-            downloadTitle: nomeVideo,
-            downloadIsMp4: serverEscolhido['isMp4'],
+          // Mostra anúncio Unity Interstitial antes do download
+          _mostrarUnityInterstitial(
+            onComplete: () {
+              DownloadManager.startDownload(
+                serverEscolhido!['url'], nomeVideo, serverEscolhido['isMp4']);
+            },
           );
         } else {
           _iniciarExoPlayer(serverEscolhido!['url'], nomeVideo);
@@ -1724,6 +1737,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _showControls = false);
     });
+  }
+
+  void _mostrarUnityInterstitial({required VoidCallback onComplete}) {
+    UnityAds.load(
+      placementId: _unityInterstitialId,
+      onComplete: (placementId) {
+        UnityAds.showVideoAd(
+          placementId: _unityInterstitialId,
+          onComplete: (placementId) => onComplete(),
+          onFailed: (placementId, error, message) => onComplete(), // se falhar inicia download na mesma
+          onSkipped: (placementId) => onComplete(),
+        );
+      },
+      onFailed: (placementId, error, message) => onComplete(), // se não carregar inicia download na mesma
+    );
   }
 
   void _mostrarObrigado() {
