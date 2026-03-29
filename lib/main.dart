@@ -1855,7 +1855,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             behavior: SnackBarBehavior.floating,
           ));
         }
-        Future<void> _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
+        await _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
         return;
       } catch (_) {}
     }
@@ -1934,7 +1934,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
+  Future<void> _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     setState(() { _showControls = false; _isBuffering = false; });
