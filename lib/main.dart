@@ -14,15 +14,12 @@ import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
-import 'package:flutter_custom_tabs/flutter_custom_tabs.dart' as custom_tabs;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 
 const String smartPlayUrl = "https://smartplaylite.xn--n8ja5190f.mba";
 const String telegramUrl = "https://t.me/cdcine";
-const String _smartlinkUrl = "https://www.profitablecpmratenetwork.com/zf8dukvff2?key=6595b8c67d73bde812d6d6aa344ca3b7";
-
 // Unity Ads
 const String _unityGameId = "6077055"; // Android
 const String _unityInterstitialId = "Cd";
@@ -231,8 +228,15 @@ class DownloadManager {
   static CancelToken? cancelToken;
 
   static Future<void> startDownload(String url, String title, bool isMp4) async {
-    var status = await Permission.storage.request();
-    if (!status.isGranted) await Permission.videos.request();
+    // Android 10+ não precisa de Permission.storage para pasta Download pública
+    if (Platform.isAndroid) {
+      final sdkInt = int.tryParse(Platform.operatingSystemVersion.split(' ').last) ?? 0;
+      if (sdkInt < 29) {
+        // Android 9 e anterior precisa da permissão
+        final status = await Permission.storage.request();
+        if (!status.isGranted) return;
+      }
+    }
 
     currentTitle = cleanTitle(title);
     progress.value = 0.0;
@@ -242,25 +246,27 @@ class DownloadManager {
 
     try {
       final dir = Directory('/storage/emulated/0/Download');
-      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '');
-      String ext = isMp4 ? "mp4" : "m3u8";
+      if (!await dir.exists()) await dir.create(recursive: true);
+      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
+      if (safeTitle.isEmpty) safeTitle = 'video';
+      String ext = isMp4 ? "mp4" : "ts";
       final savePath = "${dir.path}/CDCINE_$safeTitle.$ext";
 
       await Dio().download(url, savePath, cancelToken: cancelToken, options: Options(headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}), onReceiveProgress: (rec, total) {
         if (total != -1) progress.value = rec / total;
       });
-      progress.value = -2.0; 
+      progress.value = -2.0;
       activeDownloadsCount.value = 0;
       _salvarHistorico(savePath);
       Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
     } catch (e) {
       activeDownloadsCount.value = 0;
-      if (e is DioException && CancelToken.isCancel(e)) { 
-        progress.value = -1.0; 
-        showFloatingOverlay.value = false; 
-      } else { 
-        progress.value = -3.0; 
-        Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; }); 
+      if (e is DioException && CancelToken.isCancel(e)) {
+        progress.value = -1.0;
+        showFloatingOverlay.value = false;
+      } else {
+        progress.value = -3.0;
+        Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
       }
     }
   }
@@ -1499,8 +1505,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
   Timer? _saveTimer;
-  Timer? _smartlinkTimer;
-  bool _popupShown = false;
+  Timer? _adTimer;
 
   bool isDataLoaded = false;
   String sinopse = "";
@@ -1532,8 +1537,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override void dispose() {
     _saveTimer?.cancel();
+    _adTimer?.cancel();
     _hideControlsTimer?.cancel();
-    _smartlinkTimer?.cancel();
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     _exitFullscreen();
@@ -1742,117 +1747,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _mostrarUnityInterstitial({required VoidCallback onComplete}) {
     UnityAds.load(
       placementId: _unityInterstitialId,
-      onComplete: (placementId) {
+      onComplete: (id) {
         UnityAds.showVideoAd(
           placementId: _unityInterstitialId,
-          onComplete: (placementId) => onComplete(),
-          onFailed: (placementId, error, message) => onComplete(), // se falhar inicia download na mesma
-          onSkipped: (placementId) => onComplete(),
+          onComplete: (id) => onComplete(),
+          onFailed: (id, error, msg) => onComplete(),
+          onSkipped: (id) => onComplete(),
         );
       },
-      onFailed: (placementId, error, message) => onComplete(), // se não carregar inicia download na mesma
+      onFailed: (id, error, msg) => onComplete(),
     );
   }
 
-  void _mostrarObrigado() {
-    final overlay = Overlay.of(context);
-    final entry = OverlayEntry(
-      builder: (_) => Positioned(
-        top: MediaQuery.of(context).padding.top + 12,
-        left: 20, right: 20,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1C),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE50914).withOpacity(0.6)),
-              boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 20)],
-            ),
-            child: Row(
-              children: [
-                const Text("🙏", style: TextStyle(fontSize: 26)),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text("Obrigado pelo apoio!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                      SizedBox(height: 2),
-                      Text("O teu apoio mantém o CDCINE gratuito ❤️", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 4), entry.remove);
-  }
+  void _mostrarRewardedPopup() {
+    // Sai de tela cheia antes de mostrar o popup para não bugar
+    if (_isFullscreen) _exitFullscreen();
 
-  void _mostrarPopupSmartlink({bool isDownload = false, String? downloadUrl, String? downloadTitle, bool? downloadIsMp4}) {
-    if (!isDownload) _videoPlayerController?.pause();
+    _videoPlayerController?.pause();
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _SmartlinkPopup(
-        isDownload: isDownload,
-        onContinuar: () async {
+      builder: (ctx) => _RewardedPopup(
+        onVerAnuncio: () {
           Navigator.pop(ctx);
-          try {
-            await custom_tabs.launchUrl(
-              Uri.parse(_smartlinkUrl),
-              customTabsOptions: custom_tabs.CustomTabsOptions(
-                colorSchemes: custom_tabs.CustomTabsColorSchemes.defaults(
-                  toolbarColor: const Color(0xFF0B0B0F),
-                ),
-                urlBarHidingEnabled: true,
-                showTitle: false,
-                closeButton: custom_tabs.CustomTabsCloseButton(
-                  icon: custom_tabs.CustomTabsCloseButtonIcons.back,
-                ),
-              ),
-            );
-          } catch (_) {}
-          if (mounted) {
-            _mostrarObrigado();
-            if (!isDownload) _videoPlayerController?.play();
-            if (isDownload && downloadUrl != null) {
-              DownloadManager.startDownload(downloadUrl, downloadTitle ?? '', downloadIsMp4 ?? true);
-            }
-          }
+          UnityAds.load(
+            placementId: _unityRewardedId,
+            onComplete: (id) {
+              UnityAds.showVideoAd(
+                placementId: _unityRewardedId,
+                onComplete: (id) { if (mounted) _videoPlayerController?.play(); },
+                onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
+                onSkipped: (id) { if (mounted) _videoPlayerController?.play(); },
+              );
+            },
+            onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
+          );
         },
-        onAguardar: (onDone) {},
-        onAguardouCompleto: () {
+        onAguardar: () {
           Navigator.pop(ctx);
-          _mostrarObrigado();
-          if (!isDownload && mounted) _videoPlayerController?.play();
-          if (isDownload && downloadUrl != null && mounted) {
-            DownloadManager.startDownload(downloadUrl, downloadTitle ?? '', downloadIsMp4 ?? true);
-          }
+          if (mounted) _videoPlayerController?.play();
         },
       ),
     );
   }
 
-  void _iniciarSmartlinkTimer() {
-    _smartlinkTimer?.cancel();
-    _smartlinkTimer = Timer(const Duration(minutes: 3), () {
-      if (mounted && !_popupShown) {
-        _popupShown = true;
-        _mostrarPopupSmartlink();
-      }
-    });
-  }
-
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
-    _smartlinkTimer?.cancel();
-    _popupShown = false;
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     setState(() { _showControls = false; _isBuffering = false; });
@@ -1895,7 +1834,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() { isServerLoading = false; });
 
     _iniciarSalvamentoContinuo();
-    _iniciarSmartlinkTimer();
+
+    // Mostra popup Rewarded a cada 3 minutos
+    _adTimer?.cancel();
+    _adTimer = Timer(const Duration(minutes: 3), () {
+      if (mounted) _mostrarRewardedPopup();
+    });
   }
 
   String _formatDuration(Duration d) {
@@ -2160,21 +2104,19 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 }
 
 // ==========================================
-// POPUP SMARTLINK
+// POPUP REWARDED
 // ==========================================
-class _SmartlinkPopup extends StatefulWidget {
-  final bool isDownload;
-  final VoidCallback onContinuar;
-  final Function(VoidCallback) onAguardar;
-  final VoidCallback onAguardouCompleto;
-  const _SmartlinkPopup({required this.isDownload, required this.onContinuar, required this.onAguardar, required this.onAguardouCompleto});
-  @override State<_SmartlinkPopup> createState() => _SmartlinkPopupState();
+class _RewardedPopup extends StatefulWidget {
+  final VoidCallback onVerAnuncio;
+  final VoidCallback onAguardar;
+  const _RewardedPopup({required this.onVerAnuncio, required this.onAguardar});
+  @override State<_RewardedPopup> createState() => _RewardedPopupState();
 }
 
-class _SmartlinkPopupState extends State<_SmartlinkPopup> {
+class _RewardedPopupState extends State<_RewardedPopup> {
   int _countdown = 30;
-  Timer? _timer;
   bool _aguardando = false;
+  Timer? _timer;
 
   @override void dispose() { _timer?.cancel(); super.dispose(); }
 
@@ -2183,10 +2125,7 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown--);
-      if (_countdown <= 0) {
-        t.cancel();
-        widget.onAguardouCompleto();
-      }
+      if (_countdown <= 0) { t.cancel(); widget.onAguardar(); }
     });
   }
 
@@ -2204,41 +2143,22 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Imagem pobre.jpg
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset('assets/pobre.jpg', height: 130, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.wallet, color: Colors.white54, size: 80)),
+              child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72)),
             ),
             const SizedBox(height: 16),
-            Text(
-              widget.isDownload ? "Antes de baixar..." : "Continuar assistindo",
-              style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1),
-            ),
+            Text("Para continuar assistindo", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
             const SizedBox(height: 8),
             const Text(
-              "Para manter o app gratuito,\npreciso da sua ajuda!",
+              "Para manter o CDCINE gratuito,\npreciso da sua ajuda!",
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE50914).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5)),
-              ),
-              child: const Text(
-                "Clique em \"Assistir agora\" para nos ajudar!",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12),
-              ),
+              style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 20),
 
-            // Botão Assistir agora
+            // Opção 1 — Ver anúncio
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -2247,40 +2167,25 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: widget.onContinuar,
-                icon: const Icon(Icons.play_arrow, color: Colors.white, size: 20),
-                label: const Text("Assistir agora", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                onPressed: widget.onVerAnuncio,
+                icon: const Icon(Icons.play_circle_outline, color: Colors.white),
+                label: const Text("Ver anúncio (~10 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
               ),
             ),
             const SizedBox(height: 10),
 
-            // Botão Aguardar / contagem
+            // Opção 2 — Aguardar
             SizedBox(
               width: double.infinity,
               child: _aguardando
-                ? AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
+                ? Container(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 20, height: 20,
-                          child: CircularProgressIndicator(
-                            value: _countdown / 30,
-                            color: Colors.white54,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text("Aguarde $_countdown segundos...", style: const TextStyle(color: Colors.white54, fontSize: 14)),
-                      ],
-                    ),
+                    decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown / 30, color: Colors.white54, strokeWidth: 2.5)),
+                      const SizedBox(width: 12),
+                      Text("Aguardando... $_countdown seg", style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                    ]),
                   )
                 : OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
@@ -2289,8 +2194,8 @@ class _SmartlinkPopupState extends State<_SmartlinkPopup> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _iniciarContagem,
-                    icon: const Icon(Icons.timer_outlined, color: Colors.white54, size: 18),
-                    label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white54, fontSize: 14)),
+                    icon: const Icon(Icons.timer_outlined, color: Colors.white38, size: 18),
+                    label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white38, fontSize: 14)),
                   ),
             ),
           ],
