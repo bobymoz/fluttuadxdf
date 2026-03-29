@@ -1855,7 +1855,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             behavior: SnackBarBehavior.floating,
           ));
         }
-        await _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
+        Future<void> _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
         return;
       } catch (_) {}
     }
