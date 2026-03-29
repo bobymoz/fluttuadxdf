@@ -329,7 +329,7 @@ class DownloadManager {
     );
   }
 
-  static void _salvarHistorico(String path) async {
+  static Future<void> _salvarHistorico(String path) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> files = prefs.getStringList('downloads') ?? [];
     if (!files.contains(path)) { 
