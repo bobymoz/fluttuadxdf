@@ -1535,6 +1535,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   ChewieController? _chewieController;
   Timer? _saveTimer;
   Timer? _adTimer;
+  bool _rewardedLoaded = false;
+  List<Map> _serversDisponiveis = [];
 
   bool isDataLoaded = false;
   String sinopse = "";
@@ -1737,6 +1739,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return {"url": url, "tipo": tipo, "idioma": idioma, "isMp4": tipo.toUpperCase().contains("MP4")};
         }).toList();
 
+        _serversDisponiveis = servers;
+
+        // Verifica se tem dublado E legendado — se sim, oferece escolha
+        final temDublado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('dublado'));
+        final temLegendado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('legendado'));
+
+        if (!isParaDownload && temDublado && temLegendado) {
+          // Mostra seletor de idioma
+          _mostrarSeletorIdioma(servers, nomeVideo);
+          return;
+        }
+
+        // Selecção automática de servidor
         Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
@@ -1745,11 +1760,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (serverEscolhido == null) return;
 
         if (isParaDownload) {
-          // Feedback imediato — sem silêncio
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("A preparar download..."),
-            backgroundColor: Color(0xFF1C1C1C),
-            duration: Duration(seconds: 2),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: const Row(children: [
+              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+              SizedBox(width: 12),
+              Text("A preparar download...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ]),
+            backgroundColor: const Color(0xFFE50914),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ));
           _mostrarUnityInterstitial(
             onComplete: () {
@@ -1758,11 +1778,92 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           );
         } else {
-          _iniciarExoPlayer(serverEscolhido!['url'], nomeVideo);
+          _iniciarExoPlayerComFallback(servers, serverEscolhido, nomeVideo);
         }
       }
     } catch (e) { 
       if (!isParaDownload) setState(() { isServerLoading = false; isPlaying = false; });
+    }
+  }
+
+  void _mostrarSeletorIdioma(List<Map> servers, String nomeVideo) {
+    final dublado = servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('dublado') && s['isMp4'] == true,
+        orElse: () => servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => servers.first));
+    final legendado = servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado') && s['isMp4'] == true,
+        orElse: () => servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado'), orElse: () => servers.first));
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1C1C1C),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            const Text("Selecionar idioma", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 16),
+            _idiomaBtn(ctx, "🎙️ Dublado", const Color(0xFFE50914), () => _iniciarExoPlayerComFallback(servers, dublado, nomeVideo)),
+            const SizedBox(height: 10),
+            _idiomaBtn(ctx, "💬 Legendado", Colors.white12, () => _iniciarExoPlayerComFallback(servers, legendado, nomeVideo)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _idiomaBtn(BuildContext ctx, String label, Color cor, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(backgroundColor: cor, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        onPressed: () { Navigator.pop(ctx); onTap(); },
+        child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+      ),
+    );
+  }
+
+  Future<void> _iniciarExoPlayerComFallback(List<Map> servers, Map serverPrincipal, String nomeVideo) async {
+    // Tenta o servidor principal com timeout
+    try {
+      final ctrl = VideoPlayerController.networkUrl(
+        Uri.parse(serverPrincipal['url']),
+        httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
+      );
+      await ctrl.initialize().timeout(const Duration(seconds: 12));
+      await _iniciarExoPlayer(serverPrincipal['url'], nomeVideo, controllerPreinit: ctrl);
+      return;
+    } catch (_) {}
+
+    // Fallback para outros servidores
+    final outrosServers = servers.where((s) => s['url'] != serverPrincipal['url']).toList();
+    for (final s in outrosServers) {
+      try {
+        final ctrl = VideoPlayerController.networkUrl(
+          Uri.parse(s['url']),
+          httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
+        );
+        await ctrl.initialize().timeout(const Duration(seconds: 12));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Servidor alternativo carregado"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+        await _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
+        return;
+      } catch (_) {}
+    }
+
+    // Todos falharam
+    if (mounted) {
+      setState(() { isServerLoading = false; isPlaying = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum servidor disponível."), backgroundColor: Colors.red));
     }
   }
 
@@ -1794,9 +1895,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _mostrarRewardedPopup() {
-    // Sai de tela cheia antes de mostrar o popup para não bugar
     if (_isFullscreen) _exitFullscreen();
-
     _videoPlayerController?.pause();
     showDialog(
       context: context,
@@ -1804,18 +1903,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
       builder: (ctx) => _RewardedPopup(
         onVerAnuncio: () {
           Navigator.pop(ctx);
-          UnityAds.load(
-            placementId: _unityRewardedId,
-            onComplete: (id) {
-              UnityAds.showVideoAd(
-                placementId: _unityRewardedId,
-                onComplete: (id) { if (mounted) _videoPlayerController?.play(); },
-                onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
-                onSkipped: (id) { if (mounted) _videoPlayerController?.play(); },
-              );
-            },
-            onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
-          );
+          // Usa o já carregado, ou carrega agora se necessário
+          if (_rewardedLoaded) {
+            UnityAds.showVideoAd(
+              placementId: _unityRewardedId,
+              onComplete: (id) { _rewardedLoaded = false; if (mounted) _videoPlayerController?.play(); },
+              onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
+              onSkipped: (id) { if (mounted) _videoPlayerController?.play(); },
+            );
+          } else {
+            UnityAds.load(
+              placementId: _unityRewardedId,
+              onComplete: (id) {
+                UnityAds.showVideoAd(
+                  placementId: _unityRewardedId,
+                  onComplete: (id) { _rewardedLoaded = false; if (mounted) _videoPlayerController?.play(); },
+                  onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
+                  onSkipped: (id) { if (mounted) _videoPlayerController?.play(); },
+                );
+              },
+              onFailed: (id, error, msg) { if (mounted) _videoPlayerController?.play(); },
+            );
+          }
         },
         onAguardar: () {
           Navigator.pop(ctx);
@@ -1825,17 +1934,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
+  void _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     setState(() { _showControls = false; _isBuffering = false; });
 
-    _videoPlayerController = VideoPlayerController.networkUrl(
+    _videoPlayerController = controllerPreinit ?? VideoPlayerController.networkUrl(
       Uri.parse(url),
       httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
     );
 
-    await _videoPlayerController!.initialize();
+    if (controllerPreinit == null) {
+      await _videoPlayerController!.initialize();
+    }
 
     if (savedPositionSeconds > 0) {
       await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
@@ -1869,9 +1980,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _iniciarSalvamentoContinuo();
 
-    // Mostra popup Rewarded a cada 3 minutos
+    // Pré-carrega o Rewarded antecipadamente
+    _rewardedLoaded = false;
+    UnityAds.load(
+      placementId: _unityRewardedId,
+      onComplete: (id) { if (mounted) setState(() => _rewardedLoaded = true); },
+      onFailed: (id, error, msg) {},
+    );
+
+    // Mostra popup Rewarded a cada 3 minutos — espera carregar até 10s
     _adTimer?.cancel();
-    _adTimer = Timer(const Duration(minutes: 3), () {
+    _adTimer = Timer(const Duration(minutes: 3), () async {
+      if (!mounted) return;
+      // Se ainda não carregou, aguarda até 10s
+      if (!_rewardedLoaded) {
+        for (int i = 0; i < 10; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          if (_rewardedLoaded || !mounted) break;
+        }
+      }
       if (mounted) _mostrarRewardedPopup();
     });
   }
@@ -1947,7 +2074,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && widget.item['tipo'] != 'filmes')
           const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
 
-        // Botão voltar SEMPRE visível no topo esquerdo
+        // Botão voltar SEMPRE visível no topo esquerdo + cast no topo direito
         Positioned(
           top: 8, left: 4,
           child: SafeArea(
@@ -1957,6 +2084,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
+        if (isPlaying && !isServerLoading)
+          Positioned(
+            top: 8, right: 4,
+            child: SafeArea(
+              child: IconButton(
+                icon: const Icon(Icons.cast, color: Colors.white, size: 22, shadows: [Shadow(color: Colors.black, blurRadius: 8)]),
+                tooltip: "Transmitir para TV",
+                onPressed: () async {
+                  // Abre configurações nativas de cast do Android
+                  try {
+                    await SystemChannels.platform.invokeMethod('SystemNavigator.routeUpdated');
+                  } catch (_) {}
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text("Ativa o Cast no menu de notificações do teu Android ou usa um Chromecast"),
+                      backgroundColor: Color(0xFF1C1C1C),
+                      duration: Duration(seconds: 4),
+                      behavior: SnackBarBehavior.floating,
+                    ));
+                  }
+                },
+              ),
+            ),
+          ),
       ],
     );
   }
