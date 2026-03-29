@@ -228,13 +228,17 @@ class DownloadManager {
   static CancelToken? cancelToken;
 
   static Future<void> startDownload(String url, String title, bool isMp4) async {
-    // Android 10+ não precisa de Permission.storage para pasta Download pública
+    // Android 10+ (API 29+) não precisa de permissão para pasta Download pública
     if (Platform.isAndroid) {
-      final sdkInt = int.tryParse(Platform.operatingSystemVersion.split(' ').last) ?? 0;
-      if (sdkInt < 29) {
-        // Android 9 e anterior precisa da permissão
-        final status = await Permission.storage.request();
-        if (!status.isGranted) return;
+      final info = await Permission.storage.status;
+      if (!info.isGranted) {
+        // Só pede permissão se for Android 9 ou anterior
+        // No Android 10+ ignora e tenta diretamente
+        final sdkVersion = await _getAndroidSdk();
+        if (sdkVersion < 29) {
+          final status = await Permission.storage.request();
+          if (!status.isGranted) return;
+        }
       }
     }
 
@@ -245,16 +249,26 @@ class DownloadManager {
     cancelToken = CancelToken();
 
     try {
-      final dir = Directory('/storage/emulated/0/Download');
-      if (!await dir.exists()) await dir.create(recursive: true);
+      // Tenta pasta Download pública primeiro
+      Directory dir = Directory('/storage/emulated/0/Download');
+      if (!await dir.exists()) {
+        // Fallback para pasta de documentos do app
+        dir = Directory('/storage/emulated/0/Documents');
+        if (!await dir.exists()) await dir.create(recursive: true);
+      }
+
       String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '').trim();
-      if (safeTitle.isEmpty) safeTitle = 'video';
+      if (safeTitle.isEmpty) safeTitle = 'video_${DateTime.now().millisecondsSinceEpoch}';
       String ext = isMp4 ? "mp4" : "ts";
       final savePath = "${dir.path}/CDCINE_$safeTitle.$ext";
 
-      await Dio().download(url, savePath, cancelToken: cancelToken, options: Options(headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}), onReceiveProgress: (rec, total) {
-        if (total != -1) progress.value = rec / total;
-      });
+      final dio = Dio();
+      await dio.download(
+        url, savePath,
+        cancelToken: cancelToken,
+        options: Options(headers: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"}, receiveTimeout: const Duration(minutes: 30)),
+        onReceiveProgress: (rec, total) { if (total != -1) progress.value = rec / total; },
+      );
       progress.value = -2.0;
       activeDownloadsCount.value = 0;
       _salvarHistorico(savePath);
@@ -269,6 +283,21 @@ class DownloadManager {
         Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
       }
     }
+  }
+
+  static Future<int> _getAndroidSdk() async {
+    try {
+      final version = Platform.operatingSystemVersion; // ex: "Android 10 (API 29)"
+      final match = RegExp(r'API (\d+)').firstMatch(version);
+      if (match != null) return int.parse(match.group(1)!);
+      // Fallback por nome de versão
+      if (version.contains('Android 10')) return 29;
+      if (version.contains('Android 11')) return 30;
+      if (version.contains('Android 12')) return 31;
+      if (version.contains('Android 13')) return 33;
+      if (version.contains('Android 14')) return 34;
+    } catch (_) {}
+    return 30; // Assume Android 10+ por segurança
   }
 
   static void hideOverlay() {
@@ -1716,7 +1745,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (serverEscolhido == null) return;
 
         if (isParaDownload) {
-          // Mostra anúncio Unity Interstitial antes do download
+          // Feedback imediato — sem silêncio
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("A preparar download..."),
+            backgroundColor: Color(0xFF1C1C1C),
+            duration: Duration(seconds: 2),
+          ));
           _mostrarUnityInterstitial(
             onComplete: () {
               DownloadManager.startDownload(
@@ -2154,7 +2188,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const Text(
               "Para manter o CDCINE gratuito,\npreciso da sua ajuda!",
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+              style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 20),
 
@@ -2190,12 +2224,12 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                 : OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Colors.white24),
+                      side: const BorderSide(color: Colors.white38),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: _iniciarContagem,
-                    icon: const Icon(Icons.timer_outlined, color: Colors.white38, size: 18),
-                    label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white38, fontSize: 14)),
+                    icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18),
+                    label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500)),
                   ),
             ),
           ],
