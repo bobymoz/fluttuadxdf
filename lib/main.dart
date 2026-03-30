@@ -1537,6 +1537,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _adTimer;
   bool _rewardedLoaded = false;
   List<Map> _serversDisponiveis = [];
+  String _idiomaAtivo = '';
 
   bool isDataLoaded = false;
   String sinopse = "";
@@ -1741,16 +1742,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         _serversDisponiveis = servers;
 
-        // Verifica se tem dublado E legendado — se sim, mostra chips de idioma
-        final temDublado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('dublado'));
-        final temLegendado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('legendado'));
-
-        if (!isParaDownload && temDublado && temLegendado) {
-          setState(() { _serversDisponiveis = servers; isServerLoading = false; });
-          return; // Aguarda o utilizador escolher o idioma via chips
-        }
-
-        // Selecção automática
+        // Selecção automática do servidor padrão (dublado MP4 preferido)
         Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
@@ -1759,6 +1751,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (serverEscolhido == null) return;
 
         if (isParaDownload) {
+          // Snackbar aparece UMA vez e fica até o anúncio abrir
+          ScaffoldMessenger.of(context).removeCurrentSnackBar();
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: const Row(children: [
               SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
@@ -1766,18 +1760,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Text("A preparar download...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ]),
             backgroundColor: const Color(0xFFE50914),
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 30), // some quando o anúncio abre
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ));
           _mostrarUnityInterstitial(
             onComplete: () {
-              DownloadManager.startDownload(
-                serverEscolhido!['url'], nomeVideo, serverEscolhido['isMp4']);
+              ScaffoldMessenger.of(context).removeCurrentSnackBar();
+              DownloadManager.startDownload(serverEscolhido!['url'], nomeVideo, serverEscolhido['isMp4']);
             },
           );
         } else {
-          _iniciarExoPlayerComFallback(servers, serverEscolhido, nomeVideo);
+          // Inicia com servidor padrão — chips de idioma aparecem abaixo se houver mais opções
+          _idiomaAtivo = serverEscolhido['idioma'].toString();
+          _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
         }
       }
     } catch (e) { 
@@ -1785,22 +1781,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _mostrarSeletorIdioma(List<Map> servers, String nomeVideo) {
-    final dublado = servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('dublado') && s['isMp4'] == true,
-        orElse: () => servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => servers.first));
-    final legendado = servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado') && s['isMp4'] == true,
-        orElse: () => servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado'), orElse: () => servers.first));
-
-    setState(() { isPlaying = true; isServerLoading = false; });
-
-    // Mostra botões inline como as temporadas — sem bottomSheet
-  }
-
   Widget _buildSeletorIdioma(List<Map> servers, String nomeVideo) {
     if (servers.isEmpty) return const SizedBox.shrink();
-    final temDublado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('dublado'));
-    final temLegendado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('legendado'));
-    if (!temDublado || !temLegendado) return const SizedBox.shrink();
+    // Coleta idiomas únicos disponíveis
+    final idiomas = <String>{};
+    for (final s in servers) {
+      final id = s['idioma'].toString();
+      if (id.toLowerCase().contains('dublado')) idiomas.add('Dublado');
+      else if (id.toLowerCase().contains('legendado')) idiomas.add('Legendado');
+    }
+    if (idiomas.length < 2) return const SizedBox.shrink(); // Só mostra se tiver 2+
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1811,81 +1801,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const Text("Idioma", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
         ]),
         const SizedBox(height: 8),
-        Row(children: [
-          _chipIdioma("Dublado", servers, nomeVideo),
-          const SizedBox(width: 8),
-          _chipIdioma("Legendado", servers, nomeVideo),
-        ]),
+        Row(children: idiomas.map((id) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: _chipIdioma(id, servers, nomeVideo),
+        )).toList()),
         const SizedBox(height: 8),
       ],
     );
   }
 
   Widget _chipIdioma(String idioma, List<Map> servers, String nomeVideo) {
-    final isAtivo = epAtivoNome.toLowerCase().contains(idioma.toLowerCase()) ||
-        (_serversDisponiveis.isNotEmpty && _videoPlayerController != null &&
-         _serversDisponiveis.any((s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()) &&
-             s['url'] == (_videoPlayerController?.dataSource ?? '')));
-    return GestureDetector(
-      onTap: () {
-        final server = servers.firstWhere(
-          (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()) && s['isMp4'] == true,
-          orElse: () => servers.firstWhere(
-            (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()),
-            orElse: () => servers.first));
-        _iniciarExoPlayerComFallback(servers, server, nomeVideo);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12),
+    final isAtivo = _idiomaAtivo.toLowerCase().contains(idioma.toLowerCase());
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () {
+          final server = servers.firstWhere(
+            (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()) && s['isMp4'] == true,
+            orElse: () => servers.firstWhere(
+              (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()),
+              orElse: () => servers.first));
+          setState(() => _idiomaAtivo = server['idioma'].toString());
+          _iniciarExoPlayer(server['url'], nomeVideo);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12),
+          ),
+          child: Text(idioma, style: TextStyle(color: isAtivo ? Colors.white : Colors.grey[300], fontSize: 13, fontWeight: FontWeight.bold)),
         ),
-        child: Text(idioma, style: TextStyle(color: isAtivo ? Colors.white : Colors.grey[300], fontSize: 13, fontWeight: FontWeight.bold)),
       ),
     );
   }
 
   Future<void> _iniciarExoPlayerComFallback(List<Map> servers, Map serverPrincipal, String nomeVideo) async {
-    setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; });
-    // Tenta o servidor principal com timeout
-    try {
-      final ctrl = VideoPlayerController.networkUrl(
-        Uri.parse(serverPrincipal['url']),
-        httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
-      );
-      await ctrl.initialize().timeout(const Duration(seconds: 12));
-      _iniciarExoPlayer(serverPrincipal['url'], nomeVideo, controllerPreinit: ctrl);
-      return;
-    } catch (_) {}
-
-    // Fallback para outros servidores
-    final outrosServers = servers.where((s) => s['url'] != serverPrincipal['url']).toList();
-    for (final s in outrosServers) {
-      try {
-        final ctrl = VideoPlayerController.networkUrl(
-          Uri.parse(s['url']),
-          httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
-        );
-        await ctrl.initialize().timeout(const Duration(seconds: 12));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Servidor alternativo carregado"),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ));
-        }
-        _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
-        return;
-      } catch (_) {}
-    }
-
-    if (mounted) {
-      setState(() { isServerLoading = false; isPlaying = false; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum servidor disponível."), backgroundColor: Colors.red));
-    }
+    setState(() { _idiomaAtivo = serverPrincipal['idioma'].toString(); });
+    _iniciarExoPlayer(serverPrincipal['url'], nomeVideo);
   }
 
   void _toggleControls() {
@@ -1958,7 +1913,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
-    setState(() { _showControls = false; _isBuffering = false; });
+    setState(() { _showControls = false; _isBuffering = false; isPlaying = true; isServerLoading = true; });
 
     _videoPlayerController = controllerPreinit ?? VideoPlayerController.networkUrl(
       Uri.parse(url),
@@ -2217,10 +2172,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     scrollDirection: Axis.horizontal, itemCount: episodios.length,
                                     itemBuilder: (ctx, i) {
                                       var ep = episodios[i]; bool isAtivo = epAtivoNome == "${widget.item['titulo']} - ${ep['full_nome']}";
-                                      return GestureDetector(
-                                        onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
-                                        onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true),
-                                        child: Container(width: 45, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)))),
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: Material(
+                                          color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C),
+                                          borderRadius: BorderRadius.circular(6),
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(6),
+                                            onTap: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", false),
+                                            onLongPress: () => _abrirServidores(ep['id'], "${widget.item['titulo']} - ${ep['full_nome']}", true),
+                                            child: Container(
+                                              width: 45, height: 45,
+                                              decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)),
+                                              child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))),
+                                            ),
+                                          ),
+                                        ),
                                       );
                                     },
                                   ),
