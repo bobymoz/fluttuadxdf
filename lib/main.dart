@@ -329,7 +329,7 @@ class DownloadManager {
     );
   }
 
-  static Future<void> _salvarHistorico(String path) async {
+  static void _salvarHistorico(String path) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> files = prefs.getStringList('downloads') ?? [];
     if (!files.contains(path)) { 
@@ -1741,17 +1741,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
         _serversDisponiveis = servers;
 
-        // Verifica se tem dublado E legendado — se sim, oferece escolha
+        // Verifica se tem dublado E legendado — se sim, mostra chips de idioma
         final temDublado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('dublado'));
         final temLegendado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('legendado'));
 
         if (!isParaDownload && temDublado && temLegendado) {
-          // Mostra seletor de idioma
-          _mostrarSeletorIdioma(servers, nomeVideo);
-          return;
+          setState(() { _serversDisponiveis = servers; isServerLoading = false; });
+          return; // Aguarda o utilizador escolher o idioma via chips
         }
 
-        // Selecção automática de servidor
+        // Selecção automática
         Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
         serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['idioma'].toString().toLowerCase().contains('dublado'), orElse: () => null);
@@ -1792,41 +1791,64 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final legendado = servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado') && s['isMp4'] == true,
         orElse: () => servers.firstWhere((s) => s['idioma'].toString().toLowerCase().contains('legendado'), orElse: () => servers.first));
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1C1C1C),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 16),
-            const Text("Selecionar idioma", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 16),
-            _idiomaBtn(ctx, "🎙️ Dublado", const Color(0xFFE50914), () => _iniciarExoPlayerComFallback(servers, dublado, nomeVideo)),
-            const SizedBox(height: 10),
-            _idiomaBtn(ctx, "💬 Legendado", Colors.white12, () => _iniciarExoPlayerComFallback(servers, legendado, nomeVideo)),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+    setState(() { isPlaying = true; isServerLoading = false; });
+
+    // Mostra botões inline como as temporadas — sem bottomSheet
+  }
+
+  Widget _buildSeletorIdioma(List<Map> servers, String nomeVideo) {
+    if (servers.isEmpty) return const SizedBox.shrink();
+    final temDublado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('dublado'));
+    final temLegendado = servers.any((s) => s['idioma'].toString().toLowerCase().contains('legendado'));
+    if (!temDublado || !temLegendado) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Row(children: [
+          Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)),
+          const Text("Idioma", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          _chipIdioma("Dublado", servers, nomeVideo),
+          const SizedBox(width: 8),
+          _chipIdioma("Legendado", servers, nomeVideo),
+        ]),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
-  Widget _idiomaBtn(BuildContext ctx, String label, Color cor, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: cor, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        onPressed: () { Navigator.pop(ctx); onTap(); },
-        child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+  Widget _chipIdioma(String idioma, List<Map> servers, String nomeVideo) {
+    final isAtivo = epAtivoNome.toLowerCase().contains(idioma.toLowerCase()) ||
+        (_serversDisponiveis.isNotEmpty && _videoPlayerController != null &&
+         _serversDisponiveis.any((s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()) &&
+             s['url'] == (_videoPlayerController?.dataSource ?? '')));
+    return GestureDetector(
+      onTap: () {
+        final server = servers.firstWhere(
+          (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()) && s['isMp4'] == true,
+          orElse: () => servers.firstWhere(
+            (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()),
+            orElse: () => servers.first));
+        _iniciarExoPlayerComFallback(servers, server, nomeVideo);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12),
+        ),
+        child: Text(idioma, style: TextStyle(color: isAtivo ? Colors.white : Colors.grey[300], fontSize: 13, fontWeight: FontWeight.bold)),
       ),
     );
   }
 
   Future<void> _iniciarExoPlayerComFallback(List<Map> servers, Map serverPrincipal, String nomeVideo) async {
+    setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; });
     // Tenta o servidor principal com timeout
     try {
       final ctrl = VideoPlayerController.networkUrl(
@@ -1834,7 +1856,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
       );
       await ctrl.initialize().timeout(const Duration(seconds: 12));
-      await _iniciarExoPlayer(serverPrincipal['url'], nomeVideo, controllerPreinit: ctrl);
+      _iniciarExoPlayer(serverPrincipal['url'], nomeVideo, controllerPreinit: ctrl);
       return;
     } catch (_) {}
 
@@ -1855,12 +1877,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             behavior: SnackBarBehavior.floating,
           ));
         }
-        await _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
+        _iniciarExoPlayer(s['url'], nomeVideo, controllerPreinit: ctrl);
         return;
       } catch (_) {}
     }
 
-    // Todos falharam
     if (mounted) {
       setState(() { isServerLoading = false; isPlaying = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum servidor disponível."), backgroundColor: Colors.red));
@@ -1934,7 +1955,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Future<void> _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
+  void _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     setState(() { _showControls = false; _isBuffering = false; });
@@ -2074,7 +2095,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && widget.item['tipo'] != 'filmes')
           const Center(child: Text("Selecione um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
 
-        // Botão voltar SEMPRE visível no topo esquerdo + cast no topo direito
+        // Botão voltar SEMPRE visível no topo esquerdo
         Positioned(
           top: 8, left: 4,
           child: SafeArea(
@@ -2084,27 +2105,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ),
-        if (isPlaying && !isServerLoading)
+
+        // Botão cast — só visível quando vídeo está a reproduzir
+        if (isPlaying && !isServerLoading && _chewieController != null)
           Positioned(
-            top: 8, right: 4,
+            bottom: 48, right: 8,
             child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.cast, color: Colors.white, size: 22, shadows: [Shadow(color: Colors.black, blurRadius: 8)]),
-                tooltip: "Transmitir para TV",
-                onPressed: () async {
-                  // Abre configurações nativas de cast do Android
+              child: GestureDetector(
+                onTap: () async {
+                  // Tenta abrir app de cast local (LocalCast, Videostream, etc.)
+                  final castUrl = _videoPlayerController?.dataSource ?? '';
+                  bool abriu = false;
+                  // Tenta LocalCast
                   try {
-                    await SystemChannels.platform.invokeMethod('SystemNavigator.routeUpdated');
+                    abriu = await launchUrl(Uri.parse('localcast://?url=${Uri.encodeComponent(castUrl)}'), mode: LaunchMode.externalApplication);
                   } catch (_) {}
-                  if (mounted) {
+                  // Tenta Videostream
+                  if (!abriu) {
+                    try {
+                      abriu = await launchUrl(Uri.parse('videostream://?url=${Uri.encodeComponent(castUrl)}'), mode: LaunchMode.externalApplication);
+                    } catch (_) {}
+                  }
+                  if (!abriu && mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text("Ativa o Cast no menu de notificações do teu Android ou usa um Chromecast"),
+                      content: Text("Instala o LocalCast ou Videostream para transmitir para a TV"),
                       backgroundColor: Color(0xFF1C1C1C),
                       duration: Duration(seconds: 4),
                       behavior: SnackBarBehavior.floating,
                     ));
                   }
                 },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.cast, color: Colors.white, size: 20),
+                ),
               ),
             ),
           ),
@@ -2193,6 +2228,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               const SizedBox(height: 8),
                               Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressione e segure o episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
                             ],
+
+                            // Seletor de idioma — aparece quando há dublado E legendado disponíveis
+                            if (_serversDisponiveis.isNotEmpty)
+                              _buildSeletorIdioma(_serversDisponiveis, epAtivoNome.isNotEmpty ? epAtivoNome : widget.item['titulo']),
+
                             if (recomendacoes.isNotEmpty) ...[
                               const SizedBox(height: 20),
                               Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
