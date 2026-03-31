@@ -2061,43 +2061,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
 
-        // Botão cast — só visível quando vídeo está a reproduzir
-        if (isPlaying && !isServerLoading && _chewieController != null)
-          Positioned(
-            bottom: 48, right: 8,
-            child: SafeArea(
-              child: GestureDetector(
-                onTap: () async {
-                  // Tenta abrir app de cast local (LocalCast, Videostream, etc.)
-                  final castUrl = _videoPlayerController?.dataSource ?? '';
-                  bool abriu = false;
-                  // Tenta LocalCast
-                  try {
-                    abriu = await launchUrl(Uri.parse('localcast://?url=${Uri.encodeComponent(castUrl)}'), mode: LaunchMode.externalApplication);
-                  } catch (_) {}
-                  // Tenta Videostream
-                  if (!abriu) {
-                    try {
-                      abriu = await launchUrl(Uri.parse('videostream://?url=${Uri.encodeComponent(castUrl)}'), mode: LaunchMode.externalApplication);
-                    } catch (_) {}
-                  }
-                  if (!abriu && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text("Instala o LocalCast ou Videostream para transmitir para a TV"),
-                      backgroundColor: Color(0xFF1C1C1C),
-                      duration: Duration(seconds: 4),
-                      behavior: SnackBarBehavior.floating,
-                    ));
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.cast, color: Colors.white, size: 20),
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -2137,11 +2100,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           children: [
                             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Expanded(child: Text(cleanTitle(widget.item['titulo']), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
+                              // Botão Transmitir para TV
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Material(
+                                  color: const Color(0xFF1C1C1C),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(6),
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)),
+                                      child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]),
+                                    ),
+                                  ),
+                                ),
+                              ),
                               if (widget.item['tipo'] == 'filmes')
-                                GestureDetector(
-                                  onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
-                                  child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))])),
-                                )
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8),
+                                  child: Material(
+                                    color: const Color(0xFF1C1C1C),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(6),
+                                      onTap: () => _abrirServidores(widget.item['id'], widget.item['titulo'], true),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)),
+                                        child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ]),
                             const SizedBox(height: 10),
                             Text("${widget.item['tipo'].toString().toUpperCase()}", style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
@@ -2392,6 +2384,298 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// TELA TRANSMITIR PARA TV
+// ==========================================
+class TransmitirTvScreen extends StatelessWidget {
+  const TransmitirTvScreen({super.key});
+
+  static const _appUrl = 'https://play.google.com/store/apps/details?id=screen.mirroring.screenmirroring&hl=pt';
+
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0B0B0F),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Transmitir para TV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [const Color(0xFFE50914).withOpacity(0.8), const Color(0xFF8B0000)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(children: [
+                const Icon(Icons.cast_connected, color: Colors.white, size: 52),
+                const SizedBox(height: 12),
+                Text("Ver o CDCINE na TV", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 28, letterSpacing: 1)),
+                const SizedBox(height: 6),
+                const Text("Segue estes passos simples para ver o teu conteúdo favorito no ecrã grande!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white80, fontSize: 13, height: 1.5)),
+              ]),
+            ),
+            const SizedBox(height: 28),
+
+            // Passos
+            _passo(1, Icons.download_outlined, "Instala o app gratuito",
+              "Descarrega o app \"Espelhar Celular na TV\" gratuitamente na Google Play Store. É rápido e fácil!",
+              botao: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                onPressed: () => launchUrl(Uri.parse(_appUrl), mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.download, color: Colors.white, size: 18),
+                label: const Text("Baixar na Play Store", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            _passo(2, Icons.wifi, "Liga o Wi‑Fi",
+              "Garante que o teu telemóvel e a tua TV estão ligados à mesma rede Wi‑Fi em casa.",
+              dica: "Dica: Usa o Wi-Fi de casa, não os dados móveis!",
+            ),
+            _passo(3, Icons.tv, "Abre o app e seleciona a TV",
+              "Abre o \"Espelhar Celular na TV\", clica em Ligar e o app vai procurar automaticamente a tua TV. Clica no nome da tua TV para conectar.",
+            ),
+            _passo(4, Icons.play_circle_outline, "Volta ao CDCINE e reproduz",
+              "Com a ligação feita, volta ao CDCINE, escolhe o teu filme ou série e carrega em play. O conteúdo aparece na TV!",
+            ),
+
+            const SizedBox(height: 24),
+
+            // Info compatibilidade
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
+              child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Icon(Icons.info_outline, color: Colors.white54, size: 16), SizedBox(width: 8), Text("Compatível com:", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13))]),
+                SizedBox(height: 10),
+                _CompatItem(icon: Icons.check_circle, text: "Smart TVs (Samsung, LG, Sony, etc.)"),
+                _CompatItem(icon: Icons.check_circle, text: "Chromecast e Google TV"),
+                _CompatItem(icon: Icons.check_circle, text: "Fire TV Stick (Amazon)"),
+                _CompatItem(icon: Icons.check_circle, text: "Qualquer TV com Wi-Fi ou HDMI"),
+              ]),
+            ),
+            const SizedBox(height: 24),
+
+            // Botão principal
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF01875F),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => launchUrl(Uri.parse(_appUrl), mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.open_in_new, color: Colors.white),
+                label: const Text("Baixar app gratuito", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Center(child: Text("Gratuito • Sem anúncios forçados • Fácil de usar", style: TextStyle(color: Colors.white30, fontSize: 11))),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _passo(int num, IconData icon, String titulo, String descricao, {Widget? botao, String? dica}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(children: [
+            Container(width: 40, height: 40, decoration: BoxDecoration(color: const Color(0xFFE50914), shape: BoxShape.circle), child: Center(child: Text('$num', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)))),
+            Container(width: 2, height: 60, color: Colors.white10, margin: const EdgeInsets.symmetric(vertical: 4)),
+          ]),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 8),
+            Row(children: [Icon(icon, color: const Color(0xFFE50914), size: 18), const SizedBox(width: 8), Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))]),
+            const SizedBox(height: 6),
+            Text(descricao, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5)),
+            if (dica != null) ...[
+              const SizedBox(height: 6),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.withOpacity(0.3))), child: Text(dica, style: const TextStyle(color: Colors.amber, fontSize: 11))),
+            ],
+            if (botao != null) ...[const SizedBox(height: 10), botao],
+            const SizedBox(height: 8),
+          ])),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompatItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _CompatItem({required this.icon, required this.text});
+  @override Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(children: [Icon(icon, color: Colors.green, size: 14), const SizedBox(width: 8), Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12))]),
+  );
+}
+
+// ==========================================
+// TELA DE TRANSMITIR PARA TV
+// ==========================================
+class TransmitirTvScreen extends StatelessWidget {
+  const TransmitirTvScreen({super.key});
+
+  static const String _appUrl = 'https://play.google.com/store/apps/details?id=screen.mirroring.screenmirroring';
+
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0B0B0F),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Transmitir para TV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header visual
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1a0a0a), Color(0xFF0B0B0F)],
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE50914).withOpacity(0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFE50914).withOpacity(0.4), width: 2),
+                    ),
+                    child: const Icon(Icons.cast, color: Color(0xFFE50914), size: 48),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text("Vê o CDCINE na tua TV!", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text("Usa o Miracast / Wi-Fi Direct para espelhar o teu ecrã na TV sem cabos.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.5)),
+                ],
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Como fazer:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  _passo(1, "Instala o app", "Descarrega o app gratuito 'Espelhar Celular na TV - Cast' na Play Store.", Icons.download_rounded),
+                  _passo(2, "Liga à mesma rede", "Certifica-te que o teu telemóvel e a TV estão ligados ao mesmo Wi-Fi.", Icons.wifi),
+                  _passo(3, "Abre o app", "Abre o 'Espelhar Celular na TV' e seleciona a tua TV na lista de dispositivos.", Icons.tv),
+                  _passo(4, "Inicia o espelhamento", "Carrega em 'Iniciar Espelhamento' e aceita a ligação na TV.", Icons.screen_share),
+                  _passo(5, "Reproduz no CDCINE", "Volta ao CDCINE, abre o vídeo e ele aparecerá automaticamente na TV!", Icons.play_circle_filled),
+
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue.withOpacity(0.25)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                        SizedBox(width: 10),
+                        Expanded(child: Text("Funciona com qualquer SmartTV ou TV com Miracast/DLNA. Também compatível com Fire Stick e Chromecast.", style: TextStyle(color: Colors.blue, fontSize: 12, height: 1.5))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => launchUrl(Uri.parse(_appUrl), mode: LaunchMode.externalApplication),
+                        child: Ink(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [Color(0xFFE50914), Color(0xFFb00610)]),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.download_rounded, color: Colors.white, size: 22),
+                                SizedBox(width: 10),
+                                Text("Baixar app gratuito", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Center(child: Text("Gratuito • Sem publicidade excessiva • Funciona offline", style: TextStyle(color: Colors.white30, fontSize: 11))),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _passo(int num, String titulo, String desc, IconData icone) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.15), shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE50914).withOpacity(0.4))),
+            child: Center(child: Text('$num', style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 15))),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Icon(icone, color: Colors.white70, size: 16),
+                  const SizedBox(width: 6),
+                  Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                ]),
+                const SizedBox(height: 4),
+                Text(desc, style: const TextStyle(color: Colors.white54, fontSize: 13, height: 1.4)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
