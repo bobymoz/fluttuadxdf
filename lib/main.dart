@@ -1538,6 +1538,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _rewardedLoaded = false;
   List<Map> _serversDisponiveis = [];
   String _idiomaAtivo = '';
+  String _urlAtiva = '';
 
   bool isDataLoaded = false;
   String sinopse = "";
@@ -1822,6 +1823,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
             orElse: () => servers.firstWhere(
               (s) => s['idioma'].toString().toLowerCase().contains(idioma.toLowerCase()),
               orElse: () => servers.first));
+          if (server['url'] == _urlAtiva) return; // já está no idioma ativo, não faz nada
+          savedPositionSeconds = 0; // reset posição ao trocar idioma
           setState(() => _idiomaAtivo = server['idioma'].toString());
           _iniciarExoPlayer(server['url'], nomeVideo);
         },
@@ -1911,22 +1914,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _iniciarExoPlayer(String url, String tituloEpisodio, {VideoPlayerController? controllerPreinit}) async {
+    // Reset posição se o URL mudou (ex: troca de idioma Dublado→Legendado)
+    if (_urlAtiva.isNotEmpty && _urlAtiva != url) {
+      savedPositionSeconds = 0;
+    }
+    _urlAtiva = url;
+
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
     setState(() { _showControls = false; _isBuffering = false; isPlaying = true; isServerLoading = true; });
 
-    _videoPlayerController = controllerPreinit ?? VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
-    );
+    try {
+      _videoPlayerController = controllerPreinit ?? VideoPlayerController.networkUrl(
+        Uri.parse(url),
+        httpHeaders: {"Referer": smartPlayUrl, "User-Agent": "Mozilla/5.0"},
+      );
 
-    if (controllerPreinit == null) {
-      await _videoPlayerController!.initialize();
-    }
+      if (controllerPreinit == null) {
+        await _videoPlayerController!.initialize();
+      }
 
-    if (savedPositionSeconds > 0) {
-      await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
-    }
+      if (savedPositionSeconds > 0) {
+        await _videoPlayerController!.seekTo(Duration(seconds: savedPositionSeconds));
+      }
 
     _chewieController = ChewieController(
       videoPlayerController: _videoPlayerController!,
@@ -1977,6 +1987,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
       if (mounted) _mostrarRewardedPopup();
     });
+    } catch (e) {
+      if (mounted) {
+        setState(() { isServerLoading = false; isPlaying = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erro ao carregar o vídeo. Tenta outra opção."), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   String _formatDuration(Duration d) {
