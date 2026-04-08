@@ -23,7 +23,6 @@ import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 // ==========================================
 class SecurityDecoyManager {
   static void initiateHoneypot() {
-    // Estas requisições vão poluir os logs de quem tentar analisar o tráfego do app
     Future.delayed(const Duration(seconds: 4), () async {
       try { await http.post(Uri.parse("https://api.netflix.com/v1/auth/device_login"), body: {"device_id": "hack_attempt", "status": "banned_ip_u_mad_bro"}); } catch (_) {}
     });
@@ -37,7 +36,7 @@ class SecurityDecoyManager {
 }
 
 // ==========================================
-// DADOS OFUSCADOS (ANTI-MT MANAGER / LUCKYPATCHER)
+// DADOS OFUSCADOS (ANTI-MT MANAGER)
 // ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
@@ -46,7 +45,6 @@ String get _unityInterstitialId => String.fromCharCodes([67, 100]);
 String get _unityRewardedId => String.fromCharCodes([82, 101, 119, 97, 114, 100, 101, 100, 95, 65, 110, 100, 114, 111, 105, 100]);
 
 String get _xAppData {
-  // Token preenchido com "lixo" (caracteres @, #, !) para quebrar conversores Base64 automáticos
   const String rawToken = "e@PkOFd4c497w3sSB#sX6zGd0LB99wClG4Oeg!APbFuXntwCta1ZpssySVM42uOEtfyjxtbt2KRXfphRLyz83N@Uwb8ifQFP09RvmOmZA5r4O#sRE/zhKZ/jgGZLuzQR+SIKHL7CetT0FQjH//aywJngtiRa4HBvu9vXFRx9OX4U5+FjqXqqQUDa3mW+N1ZENSi1WXNSSM+Yy7omuI4EZ5xDAz+LHLbjBOSYZjNAnyer5fxKGkkySMOWW5gGNRDyesFJJP8nurYCqd5wKUVqCcnQfMD1dp6wTGaKMNSlv95GlpkPSLYoB2G5pC+IE+et3EZ7CUG/x9eFOG+PkepRpp01FjPtmQ64Q1+e68GU8rtS4gwhTk2ssbzq1IiwxesBTPqeSvyu//s6C0otNGSYIkqGIXadiomNNACPhjFFVOOhvDEkvShlZnfG+whDv8gK2L4jxHbAcJrMAWo3WYMn640+55++8dBb76oMDQQmZaX/hYmdDI/FLKLH0O3nmKKD9GRqkVIhtM5JsdKhewTwU3i/lThJiP7XmmKZadZmSYFDIcmtc9nof/NBjdDlOUl7ILxFVNXBNoZFMZgJ4up3ttGp+ktS0IjB+KpfTrDt6dV5BkEPoQ3lTaGH7HzKwA+4jU9zNNC0xOUmp+n8T93dJ8LyKfcxdCxS5MSOUhD+j/R0BSqGyIab7l7MqCrDUnzqY2CsSum7VK7C2vWnpS7nkhrULjfUGyAN0Sl6Ztztk5x7Lhs16UARlZnO1ZItD5aNd9KU6iuxIroffWLmbHccGPW2CQ1yYe/f5r+9M5LcKHpd2e/pZ5+QzGD7NcXI9QoIhDjoFV2LFopZFEWHEBUaE7MPF8MymF3sdLg3uR+x7chq5JvdLtE8SDAU6hB8fgqG/LQmgZBFcjBFIWWHYH69t/DA9i2/blQQEPovjPJ2fCEbQKwtvlTyC5IiZVir7Yw8FUQJ/5U/O8VvDoA7ioKoxaAbDLSvcH4JkFoUYAk0Uajvq3L0TeQfAirXVIK2sFYhXdm4zbiqHPNa5o7K+O8beyAIIEX6QcEFo7eyK2EolLOp8neonv2bRpUHHU/GrwhTSmqjSh0x1HWA/fQoJh2qcfTg1xY5e3UKOQVsJDoF1pxQz2EP8rKwODDEP3qvDGLTRLw3G7eTCqVKE4AwqYK5hvOMc0sHUaXX9BLFecM02q3OWAFEUIZpplWhRUQZG/QmA2GF6+TV3kXfoNPngcuGZ62Hovhtby04l1TvwepP852Lp52Q=";
   return rawToken.replaceAll('@', '').replaceAll('#', '').replaceAll('!', '');
 }
@@ -65,7 +63,6 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Iniciar Trolagem de Rede
   SecurityDecoyManager.initiateHoneypot();
 
   await UnityAds.init(
@@ -514,7 +511,7 @@ class _MainScreenState extends State<MainScreen> {
             BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"), 
             BottomNavigationBarItem(icon: Icon(Icons.movie), label: "Filmes"), 
             BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: "Séries"), 
-            BottomNavigationBarItem(icon: Icon(Icons.auto_awesome), label: "Animes"), 
+            BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"), // Ícone de anime corrigido
             BottomNavigationBarItem(icon: Icon(Icons.connected_tv), label: "TV"), 
             BottomNavigationBarItem(icon: Icon(Icons.category), label: "Gêneros")
           ],
@@ -587,13 +584,17 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               ],
             ),
 
+          // Correção Skeleton: Agora mostra múltiplos skeletons para toda a lista
           if (loadingSections)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))), 
-                _buildHorizontalSkeleton()
-              ]
+              children: List.generate(4, (index) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Shimmer.fromColors(baseColor: Colors.grey[900]!, highlightColor: Colors.grey[800]!, child: Container(height: 20, width: 100, color: Colors.black))), 
+                  _buildHorizontalSkeleton()
+                ],
+              )),
             )
           else if (homeData != null)
             ...((homeData!['sections'] ?? homeData!['content']?['sections'] ?? []) as List).map((sec) {
@@ -857,15 +858,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  // NOVA FUNÇÃO: Limpa 100% o player anterior antes de iniciar o novo (Anti-Erro na troca de idioma)
+  Future<void> _cleanPlayer() async {
+    final oldChewie = _chewieController;
+    final oldVideo = _videoPlayerController;
+    _chewieController = null;
+    _videoPlayerController = null;
+    if (mounted) setState(() {});
+    oldChewie?.dispose();
+    if (oldVideo != null) await oldVideo.dispose();
+  }
+
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
     if (savedEpId != null && savedEpId != idVideo) savedPositionSeconds = 0;
 
     if (!isParaDownload) {
-      await _videoPlayerController?.pause();
-      _chewieController?.dispose(); 
-      _chewieController = null; 
-      _videoPlayerController?.dispose(); 
-      _videoPlayerController = null;
+      await _cleanPlayer();
       setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; _serversDisponiveis = []; _urlAtiva = ''; _idiomaAtivo = ''; });
     }
 
@@ -913,18 +921,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_playerInitializing) return; 
     _playerInitializing = true;
     
-    await _videoPlayerController?.pause();
-    _chewieController?.dispose(); 
-    _chewieController = null; 
-    _videoPlayerController?.dispose(); 
-    _videoPlayerController = null;
+    await _cleanPlayer();
     
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
 
     final posParaSeek = savedPositionSeconds;
     try {
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": _smartPlayUrl, "User-Agent": "Mozilla/5.0"});
+      String referer = utf8.decode(base64.decode(_b64Ref));
+      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": referer, "User-Agent": "Mozilla/5.0"});
       
+      // Timeout de 60 segundos conforme pedido
       await _videoPlayerController!.initialize().timeout(const Duration(seconds: 60));
       
       if (posParaSeek > 0 && posParaSeek < _videoPlayerController!.value.duration.inSeconds) {
@@ -935,7 +941,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         videoPlayerController: _videoPlayerController!, autoPlay: true, looping: false, startAt: posParaSeek > 0 ? Duration(seconds: posParaSeek) : null, allowFullScreen: true, allowMuting: true, showControlsOnInitialize: false,
         materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), bufferedColor: Colors.white38, backgroundColor: Colors.white24),
         errorBuilder: (context, errorMessage) {
-          return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Erro ao carregar formato de vídeo.\nPor favor, tenta outro idioma/servidor.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white))));
+          // Se o Chewie disparar um erro, nós tentamos o auto-fallback manualmente
+          WidgetsBinding.instance.addPostFrameCallback((_) { _tentarProximoServidor(); });
+          return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Erro. A mudar de servidor...", textAlign: TextAlign.center, style: TextStyle(color: Colors.white))));
         },
       );
 
@@ -960,8 +968,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
       });
     } catch (e) {
-      if (mounted) { setState(() { isServerLoading = false; isPlaying = false; }); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro ao carregar o vídeo."), backgroundColor: Colors.red)); }
+      // Se der Timeout ou Erro ao inicializar o player, avança automaticamente
+      print("Erro ao carregar video: $e");
+      _tentarProximoServidor();
     } finally { _playerInitializing = false; }
+  }
+
+  // AUTO-FALLBACK: Muda de servidor automaticamente se der erro
+  void _tentarProximoServidor() {
+    int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
+    if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
+      var nextServer = _serversDisponiveis[currentIndex + 1];
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a mudar para servidor alternativo!"), duration: Duration(seconds: 2)));
+      _idiomaAtivo = nextServer['idioma'].toString();
+      _iniciarExoPlayer(nextServer['url'], epAtivoNome);
+    } else {
+      if (mounted) {
+        setState(() { isServerLoading = false; isPlaying = false; });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam para este idioma."), backgroundColor: Colors.red));
+      }
+    }
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) {
@@ -987,15 +1013,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       await _pipChannel.invokeMethod('enterPiP');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) requer permissão ou não é suportado pelo teu dispositivo.", style: TextStyle(fontSize: 12))));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu dispositivo ou o AndroidManifest está errado.", style: TextStyle(fontSize: 12))));
     }
   }
 
   Widget _buildSeletorIdioma() {
     if (_serversDisponiveis.isEmpty) return const SizedBox.shrink();
+    
     final Map<String, Map> unicos = {};
     for (var s in _serversDisponiveis) { if (!unicos.containsKey(s['idioma'])) unicos[s['idioma'].toString()] = s; }
     
+    // CORREÇÃO: Esconde a opção de escolher se só tiver 1 idioma!
+    if (unicos.length <= 1) return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1005,7 +1035,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         Wrap(
           spacing: 8, runSpacing: 8,
           children: unicos.values.map((server) {
-            final isAtivo = server['url'] == _urlAtiva;
+            // CORREÇÃO: O idioma ativo baseia-se no nome, para ficar sempre vermelho corretamente
+            final isAtivo = server['idioma'].toString() == _idiomaAtivo;
             return Material(
               color: Colors.transparent,
               child: InkWell(
@@ -1188,7 +1219,7 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
-// POPUPS DE ANÚNCIOS (ORIGINAIS RESTAURADOS)
+// POPUPS DE ANÚNCIOS
 // ==========================================
 class _InterstitialInApp extends StatefulWidget { final VoidCallback onComplete; const _InterstitialInApp({required this.onComplete}); @override State<_InterstitialInApp> createState() => _InterstitialInAppState(); }
 class _InterstitialInAppState extends State<_InterstitialInApp> {
