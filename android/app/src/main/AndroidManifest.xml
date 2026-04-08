@@ -34,6 +34,7 @@
         <activity
   android:name="com.unity3d.ads.adunit.AdUnitActivity"
   android:configChanges="fontScale|keyboard|keyboardHidden|locale|mnc|mcc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|touchscreen"
+  android:supportsPictureInPicture="true" android:windowSoftInputMode="adjustResize"
   android:hardwareAccelerated="true"
   android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
