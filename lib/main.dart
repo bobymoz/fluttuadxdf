@@ -1056,12 +1056,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
     if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
       var nextServer = _serversDisponiveis[currentIndex + 1];
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a tentar servidor alternativo!"), duration: Duration(seconds: 2)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro... saía do player e entre novamente!"), duration: Duration(seconds: 2)));
       _iniciarExoPlayer(nextServer['url'], epAtivoNome);
     } else {
       if (mounted) {
         setState(() { isServerLoading = false; isPlaying = false; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam."), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("erro.reinicie o aplicativo."), backgroundColor: Colors.red));
       }
     }
   }
@@ -1090,7 +1090,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       await _pipChannel.invokeMethod('enterPiP');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel ou falta código nativo.", style: TextStyle(fontSize: 12))));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel.", style: TextStyle(fontSize: 12))));
     }
   }
 
