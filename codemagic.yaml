@@ -11,18 +11,18 @@ workflows:
       - name: Baixar dependências
         script: flutter pub get
 
-      - name: GERAR ÍCONE DO APP (Correção)
+      - name: GERAR ÍCONE DO APP
         script: dart run flutter_launcher_icons
 
-      - name: Build APK Release (Ofuscado e Otimizado)
+      - name: Build APK Release (Ofuscado Único)
         script: |
-          flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/debug-info --split-per-abi
+          flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/debug-info
 
     artifacts:
-      - build/app/outputs/flutter-apk/app-*.apk
+      - build/app/outputs/flutter-apk/app-release.apk
       - build/app/outputs/debug-info/*
       
     publishing:
       email:
         recipients:
-          - seu_email@gmail.com # Substitua pelo seu email real
+          - seu_email@gmail.com
