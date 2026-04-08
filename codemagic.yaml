@@ -5,19 +5,24 @@ workflows:
     environment:
       flutter: stable
     scripts:
+      - name: Limpar cache e lixo de builds antigas
+        script: flutter clean
+
       - name: Baixar dependências
-        script: flutter packages pub get
-      
+        script: flutter pub get
 
       - name: GERAR ÍCONE DO APP (Correção)
         script: dart run flutter_launcher_icons
 
-      - name: Build APK Release
-        script: flutter build apk --release
+      - name: Build APK Release (Ofuscado e Otimizado)
+        script: |
+          flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/debug-info --split-per-abi
 
     artifacts:
-      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/app-*.apk
+      - build/app/outputs/debug-info/*
+      
     publishing:
       email:
         recipients:
-          - seu_email@gmail.com
+          - seu_email@gmail.com # Substitua pelo seu email real
