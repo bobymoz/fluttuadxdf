@@ -14,7 +14,6 @@ import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
 
 // ==========================================
@@ -39,7 +38,6 @@ class SecurityDecoyManager {
 // ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
-// ADSTERRA SMART LINK OFUSCADO E BLINDADO
 String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 112, 114, 111, 102, 105, 116, 97, 98, 108, 101, 99, 112, 109, 114, 97, 116, 101, 110, 101, 116, 119, 111, 114, 107, 46, 99, 111, 109, 47, 106, 114, 101, 99, 121, 104, 116, 113, 63, 107, 101, 121, 61, 98, 98, 97, 98, 48, 101, 50, 50, 102, 50, 102, 99, 54, 49, 51, 52, 53, 99, 49, 56, 100, 55, 48, 102, 57, 52, 102, 98, 99, 97, 101, 53]);
 
 String get _xAppData {
@@ -59,7 +57,6 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Iniciar Trolagem de Rede para Sniffers
   SecurityDecoyManager.initiateHoneypot();
 
   runApp(const CDcineApp());
@@ -349,14 +346,26 @@ class DownloadManager {
   static String currentTitle = ""; static CancelToken? cancelToken;
 
   static Future<void> startDownload(String url, String title, bool isMp4) async {
-    if (Platform.isAndroid && await _getAndroidSdk() < 29) { final status = await Permission.storage.request(); if (!status.isGranted) return; }
+    if (Platform.isAndroid && await _getAndroidSdk() < 29) { 
+      final status = await Permission.storage.request(); 
+      if (!status.isGranted) return; 
+    }
+    
     currentTitle = cleanTitle(title); progress.value = 0.0; activeDownloadsCount.value = 1; showFloatingOverlay.value = true; cancelToken = CancelToken();
+    
     try {
-      Directory dir = Directory('/storage/emulated/0/Download');
-      if (!await dir.exists()) { dir = Directory('/storage/emulated/0/Documents'); if (!await dir.exists()) await dir.create(recursive: true); }
-      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '').trim(); if (safeTitle.isEmpty) safeTitle = 'video_${DateTime.now().millisecondsSinceEpoch}';
+      Directory? dir;
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download');
+        if (!await dir.exists()) {
+          try { await dir.create(recursive: true); } catch (e) { dir = Directory('/storage/emulated/0/Documents'); if (!await dir.exists()) await dir.create(recursive: true); }
+        }
+      }
+      
+      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '').trim(); 
+      if (safeTitle.isEmpty) safeTitle = 'video_${DateTime.now().millisecondsSinceEpoch}';
       String ext = isMp4 ? "mp4" : "ts";
-      final savePath = "${dir.path}/CDCINE_$safeTitle.$ext";
+      final savePath = "${dir?.path}/CDCINE_$safeTitle.$ext";
 
       await Dio().download(url, savePath, cancelToken: cancelToken, options: Options(headers: {"Referer": _smartPlayUrl, "User-Agent": "Mozilla/5.0"}), onReceiveProgress: (rec, total) { if (total != -1) progress.value = rec / total; });
       progress.value = -2.0; activeDownloadsCount.value = 0;
@@ -770,16 +779,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
-  String _idiomaAtivo = ''; String _urlAtiva = '';
+  String _urlAtiva = '';
   
   bool isDataLoaded = false; bool isPlaying = false; bool isServerLoading = false; bool isSynopsisExpanded = false;
   bool _isFullscreen = false; bool _isBuffering = false;
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
-  Timer? _saveTimer; bool _playerInitializing = false;
+  Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
 
   @override void initState() { super.initState(); _salvarHistoricoGeral(); _checkResumeData(); _loadDetails(); }
-  @override void dispose() { _saveTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
+  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -863,7 +872,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     if (!isParaDownload) {
       await _cleanPlayer();
-      setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; _serversDisponiveis = []; _urlAtiva = ''; _idiomaAtivo = ''; });
+      setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; _serversDisponiveis = []; _urlAtiva = ''; });
     }
 
     final tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
@@ -884,6 +893,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _serversDisponiveis = servers;
 
+    // Removemos a escolha de idiomas! O sistema procura o Dublado ou escolhe o primeiro auto!
     Map? serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['idioma'].toString().toLowerCase().contains('dub'), orElse: () => null);
     serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
     serverEscolhido ??= servers.first;
@@ -900,7 +910,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       );
     } else {
-      _idiomaAtivo = serverEscolhido['idioma'].toString();
       _playerInitializing = false; 
       _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
     }
@@ -946,8 +955,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() { isServerLoading = false; });
       _iniciarSalvamentoContinuo();
 
-      // Chamada do anúncio Smart Link ao reproduzir
-      _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
+      // POPUP: Aparece depois de 60 segundos de reprodução
+      _adTimer?.cancel();
+      _adTimer = Timer(const Duration(seconds: 60), () async {
+        if (mounted && isPlaying) {
+          _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
+        }
+      });
 
     } catch (e) {
       _tentarProximoServidor();
@@ -958,13 +972,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
     if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
       var nextServer = _serversDisponiveis[currentIndex + 1];
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a mudar para servidor alternativo!"), duration: Duration(seconds: 2)));
-      _idiomaAtivo = nextServer['idioma'].toString();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a tentar servidor alternativo!"), duration: Duration(seconds: 2)));
       _iniciarExoPlayer(nextServer['url'], epAtivoNome);
     } else {
       if (mounted) {
         setState(() { isServerLoading = false; isPlaying = false; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam para este idioma."), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam."), backgroundColor: Colors.red));
       }
     }
   }
@@ -978,7 +991,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
           onSuccess: () { 
-            Navigator.pop(ctxPopup); 
+            Navigator.of(ctxPopup, rootNavigator: true).pop(); // Bug de pop consertado!
             onSuccess(); 
           }
         )
@@ -990,48 +1003,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       await _pipChannel.invokeMethod('enterPiP');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu dispositivo ou o AndroidManifest está errado.", style: TextStyle(fontSize: 12))));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel ou falta código nativo.", style: TextStyle(fontSize: 12))));
     }
-  }
-
-  Widget _buildSeletorIdioma() {
-    if (_serversDisponiveis.isEmpty) return const SizedBox.shrink();
-    
-    final Map<String, Map> unicos = {};
-    for (var s in _serversDisponiveis) { if (!unicos.containsKey(s['idioma'])) unicos[s['idioma'].toString()] = s; }
-    
-    if (unicos.length <= 1) return const SizedBox.shrink();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 10),
-        Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Idioma", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))]),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8, runSpacing: 8,
-          children: unicos.values.map((server) {
-            final isAtivo = server['idioma'].toString() == _idiomaAtivo;
-            return Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: () { 
-                  if (!isAtivo) { 
-                    savedPositionSeconds = _videoPlayerController?.value.position.inSeconds ?? 0; 
-                    _playerInitializing = false; 
-                    setState(() => _idiomaAtivo = server['idioma'].toString()); 
-                    _iniciarExoPlayer(server['url'], epAtivoNome); 
-                  } 
-                },
-                child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white38)), child: Text(server['idioma'], style: TextStyle(color: isAtivo ? Colors.white : Colors.grey[300], fontSize: 13, fontWeight: FontWeight.bold))),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
   }
 
   Widget _buildPlayerArea() {
@@ -1061,59 +1034,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
       onWillPop: () async { if (_isFullscreen) { _exitFullscreen(); return false; } return true; },
       child: Scaffold(
         backgroundColor: const Color(0xFF0F0F13),
-        body: Stack(
-          children: [
-            Column(
-              children: [
-                Container(padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top), color: Colors.black, child: AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea())),
-                Expanded(
-                  child: !isDataLoaded
-                    ? _buildPlayerSkeleton()
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
-                              Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                              Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                              if (tipo == 'filmes') Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(widget.item['id'].toString(), nomeTitulo, true), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                            ]),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Container(color: Colors.black, child: AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea())),
+              Expanded(
+                child: !isDataLoaded
+                  ? _buildPlayerSkeleton()
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 30), // Retirado o espaco exagerado
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
+                            Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            if (tipo == 'filmes') Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(widget.item['id'].toString(), nomeTitulo, true), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                          ]),
+                          const SizedBox(height: 10),
+                          Row(children: [
+                            Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                            if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
+                            if (details?['lang'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['lang']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
+                          ]),
+                          const SizedBox(height: 15),
+                          GestureDetector(onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)), if (sinopse.length > 150) Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))])),
+                          const SizedBox(height: 20),
+                          
+                          if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); }); _carregarEpisodios(val); } }))),
                             const SizedBox(height: 10),
-                            Row(children: [
-                              Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
-                              if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
-                              if (details?['lang'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['lang']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
-                            ]),
-                            const SizedBox(height: 15),
-                            GestureDetector(onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)), if (sinopse.length > 150) Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))])),
-                            const SizedBox(height: 20),
-                            
-                            if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
-                              Container(padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); }); _carregarEpisodios(val); } }))),
-                              const SizedBox(height: 10),
-                            ],
-                            if (tipo != 'filmes') ...[
-                              if (episodios.isEmpty) SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
-                              else SizedBox(height: 45, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: episodios.length, itemBuilder: (ctx, i) { var ep = episodios[i]; bool isAtivo = epAtivoNome == "$nomeTitulo - ${ep['full_nome']}"; return Padding(padding: const EdgeInsets.only(right: 8), child: Material(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false), onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true), child: Container(width: 45, height: 45, decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))))))); })),
-                              const SizedBox(height: 8), Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressiona e segura no episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
-                            ],
-
-                            if (_serversDisponiveis.isNotEmpty) _buildSeletorIdioma(),
-
-                            if (recomendacoes.isNotEmpty) ...[
-                              const SizedBox(height: 20), Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]), const SizedBox(height: 10),
-                              SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i])))))
-                            ]
                           ],
-                        ),
+                          if (tipo != 'filmes') ...[
+                            if (episodios.isEmpty) SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
+                            else SizedBox(height: 45, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: episodios.length, itemBuilder: (ctx, i) { var ep = episodios[i]; bool isAtivo = epAtivoNome == "$nomeTitulo - ${ep['full_nome']}"; return Padding(padding: const EdgeInsets.only(right: 8), child: Material(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false), onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true), child: Container(width: 45, height: 45, decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))))))); })),
+                            const SizedBox(height: 8), Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressiona e segura no episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
+                          ],
+
+                          if (recomendacoes.isNotEmpty) ...[
+                            const SizedBox(height: 20), Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]), const SizedBox(height: 10),
+                            SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i])))))
+                          ]
+                        ],
                       ),
-                ),
-              ],
-            ),
-            if (_isFullscreen) Positioned.fill(child: Container(color: Colors.black, child: _buildPlayerArea())),
-          ],
+                    ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1165,7 +1134,7 @@ class _TvPlayerScreen extends StatefulWidget { final String name, url, logo; con
 class _TvPlayerScreenState extends State<_TvPlayerScreen> { VideoPlayerController? _ctrl; ChewieController? _chewie; bool _loading = true; bool _error = false; @override void initState() { super.initState(); _init(); } Future<void> _init() async { try { _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url), httpHeaders: {"User-Agent": "Mozilla/5.0", "Referer": "https://www.google.pt/"}); await _ctrl!.initialize(); _chewie = ChewieController(videoPlayerController: _ctrl!, autoPlay: true, isLive: true, materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), bufferedColor: Colors.white24, backgroundColor: Colors.white12)); if (mounted) setState(() => _loading = false); } catch (_) { if (mounted) setState(() { _loading = false; _error = true; }); } } @override void dispose() { _chewie?.dispose(); _ctrl?.dispose(); super.dispose(); } @override Widget build(BuildContext context) { return Scaffold(backgroundColor: Colors.black, appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white), title: Row(children: [if (widget.logo.isNotEmpty) ...[CachedNetworkImage(imageUrl: widget.logo, height: 28, fit: BoxFit.contain, errorWidget: (_, __, ___) => const Icon(Icons.tv, color: Colors.white, size: 22)), const SizedBox(width: 10)], Expanded(child: Text(widget.name, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)), Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.white, size: 8), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))]))])), body: _loading ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))) : _error ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.signal_wifi_off, color: Colors.white54, size: 64), const SizedBox(height: 16), const Text("Canal indisponível", style: TextStyle(color: Colors.white70, fontSize: 16)), const SizedBox(height: 8), const Text("Este canal pode não funcionar\nfora de Portugal.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 13))])) : Chewie(controller: _chewie!)); } }
 
 // ==========================================
-// TELAS EXTRAS (Histórico, Downloads, DMCA, Transmitir)
+// TELAS EXTRAS
 // ==========================================
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -1194,73 +1163,8 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
-// SISTEMA DE ANÚNCIOS (SMART LINK + ANTI-BYPASS)
+// SISTEMA DE ANÚNCIOS (SMART LINK NO BROWSER)
 // ==========================================
-class _SmartLinkAdDialog extends StatefulWidget {
-  final VoidCallback onAdFinished;
-  const _SmartLinkAdDialog({required this.onAdFinished});
-  @override State<_SmartLinkAdDialog> createState() => _SmartLinkAdDialogState();
-}
-class _SmartLinkAdDialogState extends State<_SmartLinkAdDialog> {
-  int _timeLeft = 15;
-  Timer? _timer;
-
-  @override void initState() {
-    super.initState();
-    // Anti-Tamper Check 1
-    if (_adsterraLink.length < 10 || !_adsterraLink.contains('key')) { exit(0); }
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) { t.cancel(); return; }
-      setState(() { if (_timeLeft > 0) _timeLeft--; });
-    });
-  }
-
-  @override void dispose() { _timer?.cancel(); super.dispose(); }
-
-  @override Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(15),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: SizedBox(
-            width: double.infinity,
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: Stack(
-              children: [
-                Container(color: Colors.white), // Fundo base
-                InAppWebView(
-                  initialUrlRequest: URLRequest(url: WebUri(_adsterraLink)),
-                  initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true),
-                ),
-                Positioned(
-                  top: 10, right: 10,
-                  child: GestureDetector(
-                    onTap: () {
-                      if (_timeLeft == 0) {
-                        Navigator.pop(context);
-                        widget.onAdFinished();
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(color: _timeLeft == 0 ? const Color(0xFFE50914) : Colors.black87, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)),
-                      child: Text(_timeLeft > 0 ? "Aguarde $_timeLeft s" : "✕ Fechar Anúncio", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                    ),
-                  ),
-                )
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _RewardedPopup extends StatefulWidget { 
   final VoidCallback onSuccess; 
   final String tituloAdicional;
@@ -1268,34 +1172,50 @@ class _RewardedPopup extends StatefulWidget {
   @override State<_RewardedPopup> createState() => _RewardedPopupState(); 
 }
 class _RewardedPopupState extends State<_RewardedPopup> {
-  int _countdown = 60; bool _aguardando = false; Timer? _timer; 
+  int _countdown60 = 60; 
+  int _countdown15 = 15;
+  bool _aguardando60 = false; 
+  bool _anuncioRapidoAberto = false;
+  Timer? _timer60; 
+  Timer? _timer15;
   
-  @override void dispose() { _timer?.cancel(); super.dispose(); }
+  @override void initState() {
+    super.initState();
+    if (_adsterraLink.length < 10) exit(0); // Anti-tamper
+  }
+
+  @override void dispose() { 
+    _timer60?.cancel(); 
+    _timer15?.cancel();
+    super.dispose(); 
+  }
   
   void _iniciarContagemLenta() { 
-    setState(() { _aguardando = true; _countdown = 60; }); 
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) { 
+    setState(() { _aguardando60 = true; _countdown60 = 60; }); 
+    _timer60 = Timer.periodic(const Duration(seconds: 1), (t) { 
       if (!mounted) { t.cancel(); return; } 
-      setState(() => _countdown--); 
-      if (_countdown <= 0) { 
+      setState(() => _countdown60--); 
+      if (_countdown60 <= 0) { 
         t.cancel(); 
         widget.onSuccess(); 
       } 
     }); 
   }
 
-  void _abrirAnuncioRapido() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (ctxAd) => _SmartLinkAdDialog(
-        onAdFinished: () {
-          Navigator.pop(ctxAd); // Fecha o Ad
-          widget.onSuccess();   // Aciona o video/download (O popup vai fechar através do callback do pai)
-        }
-      )
-    );
+  void _abrirAnuncioRapido() async {
+    // Abre o navegador nativo por cima do app
+    await launchUrl(Uri.parse(_adsterraLink), mode: LaunchMode.inAppBrowserView);
+    
+    setState(() { _anuncioRapidoAberto = true; _countdown15 = 15; });
+    
+    // Conta 15 segundos em background
+    _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _countdown15--);
+      if (_countdown15 <= 0) {
+        t.cancel();
+      }
+    });
   }
 
   @override Widget build(BuildContext context) { 
@@ -1314,22 +1234,38 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)), 
             const SizedBox(height: 24), 
             
-            SizedBox(
-              width: double.infinity, 
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
-                onPressed: _abrirAnuncioRapido, 
-                icon: const Icon(Icons.bolt, color: Colors.white), 
-                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))
-              )
-            ), 
+            if (!_anuncioRapidoAberto) ...[
+              SizedBox(
+                width: double.infinity, 
+                child: ElevatedButton.icon(
+                  autofocus: true,
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+                  onPressed: _abrirAnuncioRapido, 
+                  icon: const Icon(Icons.bolt, color: Colors.white), 
+                  label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))
+                )
+              ), 
+            ] else ...[
+              SizedBox(
+                width: double.infinity, 
+                child: _countdown15 > 0 
+                  ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown15 / 15, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("A verificar... $_countdown15 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) 
+                  : ElevatedButton.icon(
+                      autofocus: true,
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+                      onPressed: widget.onSuccess, 
+                      icon: const Icon(Icons.play_arrow, color: Colors.white), 
+                      label: const Text("Continuar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))
+                    )
+              ), 
+            ],
             const SizedBox(height: 12), 
             
             SizedBox(
               width: double.infinity, 
-              child: _aguardando 
-                ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) 
-                : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500)))
+              child: _aguardando60 
+                ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) 
+                : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _anuncioRapidoAberto ? null : _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500)))
             )
           ]
         )
