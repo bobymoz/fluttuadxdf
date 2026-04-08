@@ -16,10 +16,9 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:unity_ads_plugin/unity_ads_plugin.dart';
 
 // ==========================================
-// SISTEMA DE DECOY (TROLAGEM PARA SNIFFERS DE REDE)
+// SISTEMA DE DECOY (TROLAGEM PARA SNIFFERS)
 // ==========================================
 class SecurityDecoyManager {
   static void initiateHoneypot() {
@@ -36,13 +35,12 @@ class SecurityDecoyManager {
 }
 
 // ==========================================
-// DADOS OFUSCADOS (ANTI-MT MANAGER)
+// DADOS OFUSCADOS (ANTI-MT MANAGER / LUCKYPATCHER)
 // ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
-String get _unityGameId => String.fromCharCodes([54, 48, 55, 55, 48, 53, 53]);
-String get _unityInterstitialId => String.fromCharCodes([67, 100]);
-String get _unityRewardedId => String.fromCharCodes([82, 101, 119, 97, 114, 100, 101, 100, 95, 65, 110, 100, 114, 111, 105, 100]);
+// ADSTERRA SMART LINK OFUSCADO E BLINDADO
+String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 112, 114, 111, 102, 105, 116, 97, 98, 108, 101, 99, 112, 109, 114, 97, 116, 101, 110, 101, 116, 119, 111, 114, 107, 46, 99, 111, 109, 47, 106, 114, 101, 99, 121, 104, 116, 113, 63, 107, 101, 121, 61, 98, 98, 97, 98, 48, 101, 50, 50, 102, 50, 102, 99, 54, 49, 51, 52, 53, 99, 49, 56, 100, 55, 48, 102, 57, 52, 102, 98, 99, 97, 101, 53]);
 
 String get _xAppData {
   const String rawToken = "e@PkOFd4c497w3sSB#sX6zGd0LB99wClG4Oeg!APbFuXntwCta1ZpssySVM42uOEtfyjxtbt2KRXfphRLyz83N@Uwb8ifQFP09RvmOmZA5r4O#sRE/zhKZ/jgGZLuzQR+SIKHL7CetT0FQjH//aywJngtiRa4HBvu9vXFRx9OX4U5+FjqXqqQUDa3mW+N1ZENSi1WXNSSM+Yy7omuI4EZ5xDAz+LHLbjBOSYZjNAnyer5fxKGkkySMOWW5gGNRDyesFJJP8nurYCqd5wKUVqCcnQfMD1dp6wTGaKMNSlv95GlpkPSLYoB2G5pC+IE+et3EZ7CUG/x9eFOG+PkepRpp01FjPtmQ64Q1+e68GU8rtS4gwhTk2ssbzq1IiwxesBTPqeSvyu//s6C0otNGSYIkqGIXadiomNNACPhjFFVOOhvDEkvShlZnfG+whDv8gK2L4jxHbAcJrMAWo3WYMn640+55++8dBb76oMDQQmZaX/hYmdDI/FLKLH0O3nmKKD9GRqkVIhtM5JsdKhewTwU3i/lThJiP7XmmKZadZmSYFDIcmtc9nof/NBjdDlOUl7ILxFVNXBNoZFMZgJ4up3ttGp+ktS0IjB+KpfTrDt6dV5BkEPoQ3lTaGH7HzKwA+4jU9zNNC0xOUmp+n8T93dJ8LyKfcxdCxS5MSOUhD+j/R0BSqGyIab7l7MqCrDUnzqY2CsSum7VK7C2vWnpS7nkhrULjfUGyAN0Sl6Ztztk5x7Lhs16UARlZnO1ZItD5aNd9KU6iuxIroffWLmbHccGPW2CQ1yYe/f5r+9M5LcKHpd2e/pZ5+QzGD7NcXI9QoIhDjoFV2LFopZFEWHEBUaE7MPF8MymF3sdLg3uR+x7chq5JvdLtE8SDAU6hB8fgqG/LQmgZBFcjBFIWWHYH69t/DA9i2/blQQEPovjPJ2fCEbQKwtvlTyC5IiZVir7Yw8FUQJ/5U/O8VvDoA7ioKoxaAbDLSvcH4JkFoUYAk0Uajvq3L0TeQfAirXVIK2sFYhXdm4zbiqHPNa5o7K+O8beyAIIEX6QcEFo7eyK2EolLOp8neonv2bRpUHHU/GrwhTSmqjSh0x1HWA/fQoJh2qcfTg1xY5e3UKOQVsJDoF1pxQz2EP8rKwODDEP3qvDGLTRLw3G7eTCqVKE4AwqYK5hvOMc0sHUaXX9BLFecM02q3OWAFEUIZpplWhRUQZG/QmA2GF6+TV3kXfoNPngcuGZ62Hovhtby04l1TvwepP852Lp52Q=";
@@ -53,8 +51,6 @@ const String telegramUrl = "https://t.me/cdcine";
 const MethodChannel _pipChannel = MethodChannel('cdcine/pip');
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-const String _c2 = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background-color: transparent; overflow: hidden; }</style></head><body><script>atOptions = {'key' : '408e7bfeab9af6c469fca0766541b341','format' : 'iframe','height' : 250,'width' : 300,'params' : {}};</script><script src="https://www.highperformanceformat.com/408e7bfeab9af6c469fca0766541b341/invoke.js"></script></body></html>""";
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
@@ -63,14 +59,9 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
+  // Iniciar Trolagem de Rede para Sniffers
   SecurityDecoyManager.initiateHoneypot();
 
-  await UnityAds.init(
-    gameId: _unityGameId,
-    testMode: false,
-    onComplete: () => debugPrint('CoreAds OK'),
-    onFailed: (error, msg) => debugPrint('CoreAds Err'),
-  );
   runApp(const CDcineApp());
 }
 
@@ -511,7 +502,7 @@ class _MainScreenState extends State<MainScreen> {
             BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"), 
             BottomNavigationBarItem(icon: Icon(Icons.movie), label: "Filmes"), 
             BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: "Séries"), 
-            BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"), // Ícone de anime corrigido
+            BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"), 
             BottomNavigationBarItem(icon: Icon(Icons.connected_tv), label: "TV"), 
             BottomNavigationBarItem(icon: Icon(Icons.category), label: "Gêneros")
           ],
@@ -584,7 +575,6 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               ],
             ),
 
-          // Correção Skeleton: Agora mostra múltiplos skeletons para toda a lista
           if (loadingSections)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start, 
@@ -786,10 +776,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isFullscreen = false; bool _isBuffering = false;
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
-  Timer? _saveTimer; Timer? _adTimer; bool _rewardedLoaded = false; bool _playerInitializing = false;
+  Timer? _saveTimer; bool _playerInitializing = false;
 
   @override void initState() { super.initState(); _salvarHistoricoGeral(); _checkResumeData(); _loadDetails(); }
-  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
+  @override void dispose() { _saveTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -858,7 +848,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // NOVA FUNÇÃO: Limpa 100% o player anterior antes de iniciar o novo (Anti-Erro na troca de idioma)
   Future<void> _cleanPlayer() async {
     final oldChewie = _chewieController;
     final oldVideo = _videoPlayerController;
@@ -927,10 +916,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final posParaSeek = savedPositionSeconds;
     try {
-      String referer = utf8.decode(base64.decode(_b64Ref));
-      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": referer, "User-Agent": "Mozilla/5.0"});
+      _videoPlayerController = VideoPlayerController.networkUrl(Uri.parse(url), httpHeaders: {"Referer": _smartPlayUrl, "User-Agent": "Mozilla/5.0"});
       
-      // Timeout de 60 segundos conforme pedido
       await _videoPlayerController!.initialize().timeout(const Duration(seconds: 60));
       
       if (posParaSeek > 0 && posParaSeek < _videoPlayerController!.value.duration.inSeconds) {
@@ -941,7 +928,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         videoPlayerController: _videoPlayerController!, autoPlay: true, looping: false, startAt: posParaSeek > 0 ? Duration(seconds: posParaSeek) : null, allowFullScreen: true, allowMuting: true, showControlsOnInitialize: false,
         materialProgressColors: ChewieProgressColors(playedColor: const Color(0xFFE50914), handleColor: const Color(0xFFE50914), bufferedColor: Colors.white38, backgroundColor: Colors.white24),
         errorBuilder: (context, errorMessage) {
-          // Se o Chewie disparar um erro, nós tentamos o auto-fallback manualmente
           WidgetsBinding.instance.addPostFrameCallback((_) { _tentarProximoServidor(); });
           return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Erro. A mudar de servidor...", textAlign: TextAlign.center, style: TextStyle(color: Colors.white))));
         },
@@ -960,21 +946,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() { isServerLoading = false; });
       _iniciarSalvamentoContinuo();
 
-      _rewardedLoaded = false; UnityAds.load(placementId: _unityRewardedId, onComplete: (id) { if (mounted) setState(() => _rewardedLoaded = true); });
-      _adTimer?.cancel();
-      _adTimer = Timer(const Duration(minutes: 3), () async {
-        if (!mounted) return;
-        if (!_rewardedLoaded) { for (int i = 0; i < 10; i++) { await Future.delayed(const Duration(seconds: 1)); if (_rewardedLoaded || !mounted) break; } }
-        if (mounted) _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
-      });
+      // Chamada do anúncio Smart Link ao reproduzir
+      _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
+
     } catch (e) {
-      // Se der Timeout ou Erro ao inicializar o player, avança automaticamente
-      print("Erro ao carregar video: $e");
       _tentarProximoServidor();
     } finally { _playerInitializing = false; }
   }
 
-  // AUTO-FALLBACK: Muda de servidor automaticamente se der erro
   void _tentarProximoServidor() {
     int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
     if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
@@ -994,18 +973,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
-      builder: (ctx) => PopScope(canPop: false, child: _RewardedPopup(
-        tituloAdicional: mensagemDownload,
-        onVerAnuncio: () { 
-          Navigator.pop(ctx); 
-          if (_rewardedLoaded) { 
-            UnityAds.showVideoAd(placementId: _unityRewardedId, onComplete: (id) { _rewardedLoaded = false; onSuccess(); }, onFailed: (id, error, msg) { onSuccess(); }, onSkipped: (id) { onSuccess(); }); 
-          } else { 
-            UnityAds.load(placementId: _unityRewardedId, onComplete: (id) { UnityAds.showVideoAd(placementId: _unityRewardedId, onComplete: (id) { _rewardedLoaded = false; onSuccess(); }, onFailed: (id, error, msg) { onSuccess(); }, onSkipped: (id) { onSuccess(); }); }, onFailed: (id, error, msg) { onSuccess(); }); 
-          } 
-        },
-        onAguardar: () { Navigator.pop(ctx); onSuccess(); },
-      )),
+      builder: (ctxPopup) => PopScope(
+        canPop: false, 
+        child: _RewardedPopup(
+          tituloAdicional: mensagemDownload,
+          onSuccess: () { 
+            Navigator.pop(ctxPopup); 
+            onSuccess(); 
+          }
+        )
+      ),
     );
   }
 
@@ -1023,7 +1000,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final Map<String, Map> unicos = {};
     for (var s in _serversDisponiveis) { if (!unicos.containsKey(s['idioma'])) unicos[s['idioma'].toString()] = s; }
     
-    // CORREÇÃO: Esconde a opção de escolher se só tiver 1 idioma!
     if (unicos.length <= 1) return const SizedBox.shrink();
 
     return Column(
@@ -1035,7 +1011,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         Wrap(
           spacing: 8, runSpacing: 8,
           children: unicos.values.map((server) {
-            // CORREÇÃO: O idioma ativo baseia-se no nome, para ficar sempre vermelho corretamente
             final isAtivo = server['idioma'].toString() == _idiomaAtivo;
             return Material(
               color: Colors.transparent,
@@ -1045,7 +1020,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!isAtivo) { 
                     savedPositionSeconds = _videoPlayerController?.value.position.inSeconds ?? 0; 
                     _playerInitializing = false; 
-                    setState(() => _idiomaAtivo = server['idioma']); 
+                    setState(() => _idiomaAtivo = server['idioma'].toString()); 
                     _iniciarExoPlayer(server['url'], epAtivoNome); 
                   } 
                 },
@@ -1219,23 +1194,146 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
-// POPUPS DE ANÚNCIOS
+// SISTEMA DE ANÚNCIOS (SMART LINK + ANTI-BYPASS)
 // ==========================================
-class _InterstitialInApp extends StatefulWidget { final VoidCallback onComplete; const _InterstitialInApp({required this.onComplete}); @override State<_InterstitialInApp> createState() => _InterstitialInAppState(); }
-class _InterstitialInAppState extends State<_InterstitialInApp> {
-  int _countdown = 5; Timer? _timer; @override void initState() { super.initState(); _timer = Timer.periodic(const Duration(seconds: 1), (t) { if (!mounted) { t.cancel(); return; } setState(() => _countdown--); if (_countdown <= 0) { t.cancel(); widget.onComplete(); } }); } @override void dispose() { _timer?.cancel(); super.dispose(); }
-  @override Widget build(BuildContext context) { return PopScope(canPop: false, child: Dialog(backgroundColor: Colors.black, insetPadding: EdgeInsets.zero, child: SizedBox(width: double.infinity, child: Column(mainAxisSize: MainAxisSize.min, children: [SizedBox(height: 250, child: InAppWebView(initialData: InAppWebViewInitialData(data: _c2), initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true))), Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20), color: const Color(0xFF141414), child: Row(children: [const Icon(Icons.info_outline, color: Colors.white54, size: 16), const SizedBox(width: 8), const Expanded(child: Text("Anúncio — obrigado por apoiar o CDCINE!", style: TextStyle(color: Colors.white54, fontSize: 12))), if (_countdown > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)), child: Text("$_countdown seg", style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.bold))) else GestureDetector(onTap: widget.onComplete, child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(20)), child: const Text("Fechar ✕", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))))]))])))); }
+class _SmartLinkAdDialog extends StatefulWidget {
+  final VoidCallback onAdFinished;
+  const _SmartLinkAdDialog({required this.onAdFinished});
+  @override State<_SmartLinkAdDialog> createState() => _SmartLinkAdDialogState();
+}
+class _SmartLinkAdDialogState extends State<_SmartLinkAdDialog> {
+  int _timeLeft = 15;
+  Timer? _timer;
+
+  @override void initState() {
+    super.initState();
+    // Anti-Tamper Check 1
+    if (_adsterraLink.length < 10 || !_adsterraLink.contains('key')) { exit(0); }
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() { if (_timeLeft > 0) _timeLeft--; });
+    });
+  }
+
+  @override void dispose() { _timer?.cancel(); super.dispose(); }
+
+  @override Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(15),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: Stack(
+              children: [
+                Container(color: Colors.white), // Fundo base
+                InAppWebView(
+                  initialUrlRequest: URLRequest(url: WebUri(_adsterraLink)),
+                  initialSettings: InAppWebViewSettings(javaScriptEnabled: true, transparentBackground: true),
+                ),
+                Positioned(
+                  top: 10, right: 10,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (_timeLeft == 0) {
+                        Navigator.pop(context);
+                        widget.onAdFinished();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(color: _timeLeft == 0 ? const Color(0xFFE50914) : Colors.black87, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)),
+                      child: Text(_timeLeft > 0 ? "Aguarde $_timeLeft s" : "✕ Fechar Anúncio", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ),
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _RewardedPopup extends StatefulWidget { 
-  final VoidCallback onVerAnuncio; 
-  final VoidCallback onAguardar; 
+  final VoidCallback onSuccess; 
   final String tituloAdicional;
-  const _RewardedPopup({required this.onVerAnuncio, required this.onAguardar, this.tituloAdicional = "Para continuar a assistir"}); 
+  const _RewardedPopup({required this.onSuccess, this.tituloAdicional = "Para continuar a assistir"}); 
   @override State<_RewardedPopup> createState() => _RewardedPopupState(); 
 }
 class _RewardedPopupState extends State<_RewardedPopup> {
-  int _countdown = 30; bool _aguardando = false; Timer? _timer; @override void dispose() { _timer?.cancel(); super.dispose(); }
-  void _iniciarContagem() { setState(() { _aguardando = true; _countdown = 30; }); _timer = Timer.periodic(const Duration(seconds: 1), (t) { if (!mounted) { t.cancel(); return; } setState(() => _countdown--); if (_countdown <= 0) { t.cancel(); widget.onAguardar(); } }); }
-  @override Widget build(BuildContext context) { return Dialog(backgroundColor: Colors.transparent, child: Container(decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]), padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))), const SizedBox(height: 16), Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)), const SizedBox(height: 8), const Text("Para manter o CDCINE gratuito,\npreciso da tua ajuda!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5)), const SizedBox(height: 20), SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: widget.onVerAnuncio, icon: const Icon(Icons.play_circle_outline, color: Colors.white), label: const Text("Ver anúncio (~10 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)))), const SizedBox(height: 10), SizedBox(width: double.infinity, child: _aguardando ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown / 30, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagem, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 30 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))))]))); }
+  int _countdown = 60; bool _aguardando = false; Timer? _timer; 
+  
+  @override void dispose() { _timer?.cancel(); super.dispose(); }
+  
+  void _iniciarContagemLenta() { 
+    setState(() { _aguardando = true; _countdown = 60; }); 
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) { 
+      if (!mounted) { t.cancel(); return; } 
+      setState(() => _countdown--); 
+      if (_countdown <= 0) { 
+        t.cancel(); 
+        widget.onSuccess(); 
+      } 
+    }); 
+  }
+
+  void _abrirAnuncioRapido() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (ctxAd) => _SmartLinkAdDialog(
+        onAdFinished: () {
+          Navigator.pop(ctxAd); // Fecha o Ad
+          widget.onSuccess();   // Aciona o video/download (O popup vai fechar através do callback do pai)
+        }
+      )
+    );
+  }
+
+  @override Widget build(BuildContext context) { 
+    return Dialog(
+      backgroundColor: Colors.transparent, 
+      child: Container(
+        decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]), 
+        padding: const EdgeInsets.all(24), 
+        child: Column(
+          mainAxisSize: MainAxisSize.min, 
+          children: [
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))), 
+            const SizedBox(height: 16), 
+            Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)), 
+            const SizedBox(height: 8), 
+            const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)), 
+            const SizedBox(height: 24), 
+            
+            SizedBox(
+              width: double.infinity, 
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+                onPressed: _abrirAnuncioRapido, 
+                icon: const Icon(Icons.bolt, color: Colors.white), 
+                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))
+              )
+            ), 
+            const SizedBox(height: 12), 
+            
+            SizedBox(
+              width: double.infinity, 
+              child: _aguardando 
+                ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) 
+                : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500)))
+            )
+          ]
+        )
+      )
+    ); 
+  }
 }
