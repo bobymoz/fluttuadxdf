@@ -1093,19 +1093,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) {
-    if (_isFullscreen) _exitFullscreen();
-    // Pausa o vídeo antes de mostrar o popup
-    _videoPlayerController?.pause();
+    if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
       builder: (ctxPopup) => PopScope(
-        canPop: false,
+        canPop: false, 
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
-          onSuccess: () {
-            Navigator.of(ctxPopup, rootNavigator: true).pop();
-            // Retoma a reprodução ao fechar o popup
-            onSuccess();
+          onSuccess: () { 
+            Navigator.of(ctxPopup, rootNavigator: true).pop(); // Bug de pop consertado!
+            onSuccess(); 
           }
         )
       ),
@@ -1281,82 +1278,97 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
-// ── Widget de Banner de Anúncio Permanente ────────────────────────────────
-// Exibe um WebView pequeno com o link de anúncio, sempre visível abaixo
-// das recomendações — preenche o espaço vazio e gera receita passiva.
+// ── Banner de Anúncio Permanente ──────────────────────────────────────────
+// Carrega o script de banner do Adsterra num WebView local (loadHtmlString).
+// O smart link (_adsterraLink) é usado APENAS no popup de recompensa.
 class _BannerAdWidget extends StatefulWidget {
   const _BannerAdWidget();
   @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
 }
 class _BannerAdWidgetState extends State<_BannerAdWidget> {
-  WebViewController? _ctrl;
+  late final WebViewController _ctrl;
   bool _loaded = false;
+
+  // HTML mínimo que carrega o script de banner do Adsterra
+  static const String _bannerHtml = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #141414; display: flex; align-items: center; justify-content: center; min-height: 90px; overflow: hidden; }
+    #container-7f576864101a2ea1fe13415641ddaa54 { width: 100%; }
+  </style>
+</head>
+<body>
+  <script async="async" data-cfasync="false"
+    src="https://pl29099042.profitablecpmratenetwork.com/7f576864101a2ea1fe13415641ddaa54/invoke.js">
+  </script>
+  <div id="container-7f576864101a2ea1fe13415641ddaa54"></div>
+</body>
+</html>
+''';
 
   @override void initState() {
     super.initState();
     _ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0B0B0F))
+      ..setBackgroundColor(const Color(0xFF141414))
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
-          // Clique no anúncio abre no browser externo
-          final uri = Uri.tryParse(req.url);
-          if (uri != null && uri.host != Uri.tryParse(_adsterraLink)?.host) {
-            launchUrl(uri, mode: LaunchMode.externalApplication);
+          // Cliques no anúncio abrem no browser externo
+          if (!req.url.contains('profitablecpmratenetwork.com') &&
+              !req.url.startsWith('about:') &&
+              !req.url.startsWith('data:')) {
+            launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
       ))
-      ..loadRequest(Uri.parse(_adsterraLink));
+      ..loadHtmlString(_bannerHtml, baseUrl: 'https://pl29099042.profitablecpmratenetwork.com');
   }
 
   @override Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF141414),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white10),
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(children: [
+              Container(width: 3, height: 10, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 6)),
+              const Text("PUBLICIDADE", style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.bold)),
+            ]),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Rótulo "Publicidade" discreto
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                child: Row(children: [
-                  Container(width: 3, height: 12, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 6)),
-                  const Text("PUBLICIDADE", style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.bold)),
-                ]),
-              ),
-              // WebView do anúncio (altura de banner padrão 90px)
-              ClipRRect(
-                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
-                child: SizedBox(
-                  height: 90,
-                  child: _ctrl == null
-                      ? const SizedBox.shrink()
-                      : Stack(
-                          children: [
-                            WebViewWidget(controller: _ctrl!),
-                            if (!_loaded)
-                              Container(
-                                color: const Color(0xFF141414),
-                                child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-            ],
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10),
+            ),
+            child: SizedBox(
+              height: 100,
+              child: Stack(children: [
+                WebViewWidget(controller: _ctrl),
+                if (!_loaded)
+                  Container(
+                    color: const Color(0xFF141414),
+                    child: const Center(child: SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
+                  ),
+              ]),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
