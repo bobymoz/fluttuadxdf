@@ -1288,25 +1288,46 @@ class _BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<_BannerAdWidget> {
   late final WebViewController _ctrl;
   bool _loaded = false;
+  double _height = 250; // altura inicial generosa para não cortar o banner
 
-  // HTML mínimo que carrega o script de banner do Adsterra
+  // HTML que reporta a altura real do banner de volta ao Flutter
   static const String _bannerHtml = '''
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #141414; display: flex; align-items: center; justify-content: center; min-height: 90px; overflow: hidden; }
-    #container-7f576864101a2ea1fe13415641ddaa54 { width: 100%; }
+    html, body { background: #141414; width: 100%; overflow-x: hidden; }
+    #container-7f576864101a2ea1fe13415641ddaa54 { width: 100%; display: block; }
   </style>
 </head>
 <body>
+  <div id="container-7f576864101a2ea1fe13415641ddaa54"></div>
   <script async="async" data-cfasync="false"
     src="https://pl29099042.profitablecpmratenetwork.com/7f576864101a2ea1fe13415641ddaa54/invoke.js">
   </script>
-  <div id="container-7f576864101a2ea1fe13415641ddaa54"></div>
+  <script>
+    // Reporta altura real ao Flutter quando o banner carrega
+    function reportHeight() {
+      var container = document.getElementById('container-7f576864101a2ea1fe13415641ddaa54');
+      var h = Math.max(
+        document.body.scrollHeight,
+        document.body.offsetHeight,
+        container ? container.scrollHeight : 0,
+        container ? container.offsetHeight : 0
+      );
+      if (h > 30) { BannerHeight.postMessage(h.toString()); }
+    }
+    // Tenta várias vezes até o banner estar completamente renderizado
+    setTimeout(reportHeight, 500);
+    setTimeout(reportHeight, 1000);
+    setTimeout(reportHeight, 2000);
+    setTimeout(reportHeight, 3500);
+    setTimeout(reportHeight, 6000);
+    new MutationObserver(function() { setTimeout(reportHeight, 300); }).observe(document.body, { childList: true, subtree: true, attributes: true });
+  </script>
 </body>
 </html>
 ''';
@@ -1316,13 +1337,20 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
     _ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF141414))
+      ..addJavaScriptChannel('BannerHeight', onMessageReceived: (msg) {
+        final h = double.tryParse(msg.message);
+        if (h != null && h > 30 && mounted) {
+          setState(() => _height = h + 20); // +20 de margem generosa para não cortar
+        }
+      })
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           // Cliques no anúncio abrem no browser externo
           if (!req.url.contains('profitablecpmratenetwork.com') &&
               !req.url.startsWith('about:') &&
-              !req.url.startsWith('data:')) {
+              !req.url.startsWith('data:') &&
+              !req.url.startsWith('javascript:')) {
             launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
@@ -1350,22 +1378,23 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
               const Text("PUBLICIDADE", style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.bold)),
             ]),
           ),
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            height: _height,
+            decoration: const BoxDecoration(
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10),
+              ),
             ),
-            child: SizedBox(
-              height: 100,
-              child: Stack(children: [
-                WebViewWidget(controller: _ctrl),
-                if (!_loaded)
-                  Container(
-                    color: const Color(0xFF141414),
-                    child: const Center(child: SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
-                  ),
-              ]),
-            ),
+            child: Stack(children: [
+              WebViewWidget(controller: _ctrl),
+              if (!_loaded)
+                Container(
+                  color: const Color(0xFF141414),
+                  child: const Center(child: SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
+                ),
+            ]),
           ),
         ],
       ),
@@ -1498,7 +1527,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          // Bloqueia tentativas de abrir browser externo
+          // Bloqueia tentativas de abrir browser externo via intent
           final uri = Uri.tryParse(req.url);
           if (uri != null && uri.scheme == 'intent') return NavigationDecision.prevent;
           return NavigationDecision.navigate;
@@ -1511,6 +1540,10 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
+      // Abre automaticamente no navegador externo quando faltam 5 segundos
+      if (_countdown15 == 5) {
+        launchUrl(Uri.parse(_adsterraLink), mode: LaunchMode.externalApplication);
+      }
       if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
     });
   }
