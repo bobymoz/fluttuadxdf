@@ -50,11 +50,6 @@ const String telegramUrl = "https://t.me/cdcine";
 const MethodChannel _pipChannel = MethodChannel('cdcine/pip');
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// ==========================================
-// MUTEX: impede dois popups ao mesmo tempo
-// ==========================================
-bool _popupAtivo = false;
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
@@ -313,7 +308,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-const String _appVersion = "1.1.0";
+const String _appVersion = "1.0.0";
 const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 class VersionGateScreen extends StatefulWidget { const VersionGateScreen({super.key}); @override State<VersionGateScreen> createState() => _VersionGateScreenState(); }
 class _VersionGateScreenState extends State<VersionGateScreen> {
@@ -894,30 +889,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       String url = p["file"] ?? p["url"] ?? p["link"] ?? "";
       String tipoRaw = p["type"]?.toString() ?? "Video";
       String idioma = p["lang"]?.toString() ?? "Opção";
-      // Detectar formato pela URL e pelo campo type
+      // Prioridade do servidor para seleção automática (não descarta nenhum formato)
       bool isMp4 = tipoRaw.toUpperCase().contains("MP4") || url.toLowerCase().contains(".mp4");
-      bool isHls = tipoRaw.toUpperCase().contains("M3U") || tipoRaw.toUpperCase().contains("HLS") ||
-                   url.toLowerCase().contains(".m3u8") || url.toLowerCase().contains(".m3u");
-      // TXT camuflado: tratar como HLS se a URL terminar em .txt mas tiver conteúdo de vídeo
-      bool isTxt = url.toLowerCase().endsWith(".txt");
-      bool isTs = url.toLowerCase().contains(".ts");
-      bool isPlayable = isMp4 || isHls || isTxt || isTs || url.isNotEmpty;
-      return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isHls": isHls, "isTxt": isTxt, "isPlayable": isPlayable};
+      bool isDub = idioma.toLowerCase().contains("dub");
+      return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isDub": isDub};
     }).where((s) => (s['url'] as String).isNotEmpty).toList();
 
     _serversDisponiveis = servers;
 
-    // Prioridade: dublado MP4 > dublado qualquer > MP4 > HLS > qualquer
-    Map? serverEscolhido = servers.cast<Map?>().firstWhere(
-      (s) => s!['idioma'].toString().toLowerCase().contains('dub') && s['isMp4'] == true,
-      orElse: () => null,
-    );
-    serverEscolhido ??= servers.cast<Map?>().firstWhere(
-      (s) => s!['idioma'].toString().toLowerCase().contains('dub'),
-      orElse: () => null,
-    );
+    // Prioridade: dublado MP4 > dublado qualquer > MP4 > qualquer
+    Map? serverEscolhido;
+    serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['isDub'] == true, orElse: () => null);
+    serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isDub'] == true, orElse: () => null);
     serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
-    serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isHls'] == true, orElse: () => null);
     serverEscolhido ??= servers.isNotEmpty ? servers.first : null;
 
     if (serverEscolhido == null) return;
@@ -937,98 +921,140 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // Detecta se a URL é HLS/M3U mesmo camuflada como TXT
-  bool _isHlsUrl(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.m3u8') || lower.contains('.m3u') || lower.contains('.ts');
+  // ── Sonda a URL para descobrir o tipo real do conteúdo antes de reproduzir
+  Future<_ProbeResult> _probeUrl(String url) async {
+    final hdrs = {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+      "Referer": _smartPlayUrl,
+      "Accept": "*/*",
+    };
+    try {
+      // HEAD rápido para ver Content-Type sem baixar o corpo
+      http.Response? head;
+      try {
+        head = await http.head(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 10));
+      } catch (_) {}
+      final ct = (head?.headers['content-type'] ?? '').toLowerCase();
+      if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) {
+        return _ProbeResult(url: url, isHls: true);
+      }
+      if (ct.contains('mp4') || ct.contains('video/mp4') || ct.contains('octet-stream')) {
+        // octet-stream pode ser MP4 — confia na extensão se existir
+        if (url.toLowerCase().contains('.mp4')) return _ProbeResult(url: url, isHls: false);
+      }
+      // Extensão conhecida na URL → confia nela
+      final lurl = url.toLowerCase();
+      if (lurl.contains('.mp4')) return _ProbeResult(url: url, isHls: false);
+      if (lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts')) {
+        return _ProbeResult(url: url, isHls: true);
+      }
+      // Content-Type ambíguo (text/plain, text/html, etc.) → baixar primeiros bytes
+      final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 15));
+      final body = get.body.trimLeft();
+      if (body.startsWith('#EXTM3U')) {
+        // É um manifesto M3U8 devolvido como texto puro.
+        // Gravamos num ficheiro temporário para o ExoPlayer conseguir lê-lo.
+        try {
+          final dir = Directory.systemTemp;
+          final fname = 'cdcine_${DateTime.now().millisecondsSinceEpoch}.m3u8';
+          final f = File('${dir.path}/$fname');
+          await f.writeAsString(body);
+          return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
+        } catch (_) {
+          // Se não conseguir gravar em ficheiro, usa URL original e espera que ExoPlayer resolva
+          return _ProbeResult(url: url, isHls: true);
+        }
+      }
+      // Desconhecido → tenta como MP4/genérico
+      return _ProbeResult(url: url, isHls: false);
+    } catch (_) {
+      // Erro na sonda → tenta de qualquer forma com a URL original
+      final lurl = url.toLowerCase();
+      return _ProbeResult(url: url, isHls: lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts'));
+    }
   }
 
   void _iniciarExoPlayer(String url, String tituloEpisodio) async {
-    if (_playerInitializing) return; 
+    if (_playerInitializing) return;
     _playerInitializing = true;
-    
+
     await _cleanPlayer();
-    
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
 
     final posParaSeek = savedPositionSeconds;
-    
-    // Timeout maior para servidores lentos (HLS/M3U costumam demorar mais)
-    final bool isHls = _isHlsUrl(url);
-    final timeoutDuration = isHls ? const Duration(seconds: 90) : const Duration(seconds: 75);
-    
     try {
-      // Para URLs TXT camufladas: tentar como HLS primeiro via headers específicos
-      final Map<String, String> headers = {
+      // 1️⃣ Sondar a URL ANTES de passar ao player
+      final probe = await _probeUrl(url);
+
+      final hdrs = probe.isLocalFile ? <String, String>{} : {
         "Referer": _smartPlayUrl,
-        "User-Agent": "Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-        if (isHls) "Accept": "*/*",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+        "Accept": "*/*",
       };
 
       _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(url),
-        httpHeaders: headers,
+        Uri.parse(probe.url),
+        httpHeaders: hdrs,
       );
-      
-      await _videoPlayerController!.initialize().timeout(timeoutDuration);
-      
-      if (posParaSeek > 0 && posParaSeek < _videoPlayerController!.value.duration.inSeconds) {
+
+      final timeout = probe.isHls ? const Duration(seconds: 90) : const Duration(seconds: 60);
+      await _videoPlayerController!.initialize().timeout(timeout);
+
+      if (posParaSeek > 0 &&
+          _videoPlayerController!.value.duration.inSeconds > 0 &&
+          posParaSeek < _videoPlayerController!.value.duration.inSeconds) {
         await _videoPlayerController!.seekTo(Duration(seconds: posParaSeek));
       }
 
+      // HLS ao vivo = sem duração definida
+      final bool isLive = probe.isHls && _videoPlayerController!.value.duration == Duration.zero;
+
       _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!, 
-        autoPlay: true, 
-        looping: false, 
-        startAt: posParaSeek > 0 ? Duration(seconds: posParaSeek) : null, 
-        allowFullScreen: true, 
-        allowMuting: true, 
+        videoPlayerController: _videoPlayerController!,
+        autoPlay: true,
+        looping: false,
+        startAt: posParaSeek > 0 ? Duration(seconds: posParaSeek) : null,
+        allowFullScreen: true,
+        allowMuting: true,
         showControlsOnInitialize: false,
-        isLive: isHls, // Streams HLS tratados como live
+        isLive: isLive,
         materialProgressColors: ChewieProgressColors(
-          playedColor: const Color(0xFFE50914), 
-          handleColor: const Color(0xFFE50914), 
-          bufferedColor: Colors.white38, 
+          playedColor: const Color(0xFFE50914),
+          handleColor: const Color(0xFFE50914),
+          bufferedColor: Colors.white38,
           backgroundColor: Colors.white24,
         ),
         errorBuilder: (context, errorMessage) {
-          // Debounce: espera 6s antes de trocar de servidor para evitar erro falso
+          // Debounce: espera antes de trocar para evitar erro falso durante carregamento lento
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Future.delayed(const Duration(seconds: 6), () {
               if (mounted && isPlaying) _tentarProximoServidor();
             });
           });
           return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(width: 32, height: 32, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)),
-                  SizedBox(height: 12),
-                  Text("A carregar servidor...", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
-                ],
-              ),
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(width: 32, height: 32, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)),
+              SizedBox(height: 12),
+              Text("A carregar...", style: TextStyle(color: Colors.white70, fontSize: 13)),
+            ]),
           );
         },
       );
 
-      Timer? _bufferDebounce;
+      Timer? bufferDebounce;
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
         final buf = _videoPlayerController!.value.isBuffering;
         if (buf != _isBuffering) {
           if (buf) {
-            _bufferDebounce?.cancel();
-            // Espera 4s antes de mostrar o spinner de buffering (evita flicker)
-            _bufferDebounce = Timer(const Duration(seconds: 4), () {
+            bufferDebounce?.cancel();
+            bufferDebounce = Timer(const Duration(seconds: 4), () {
               if (mounted && _videoPlayerController != null && _videoPlayerController!.value.isBuffering) {
                 setState(() => _isBuffering = true);
               }
             });
           } else {
-            _bufferDebounce?.cancel();
+            bufferDebounce?.cancel();
             if (mounted) setState(() => _isBuffering = false);
           }
         }
@@ -1037,38 +1063,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() { isServerLoading = false; });
       _iniciarSalvamentoContinuo();
 
-      // POPUP: Aparece depois de 60 segundos de reprodução
       _adTimer?.cancel();
-      _adTimer = Timer(const Duration(seconds: 60), () async {
+      _adTimer = Timer(const Duration(seconds: 60), () {
         if (mounted && isPlaying) {
           _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
         }
       });
 
     } catch (e) {
-      // Debounce no catch também: espera antes de tentar próximo servidor
-      await Future.delayed(const Duration(seconds: 4));
+      await Future.delayed(const Duration(seconds: 3));
       if (mounted) _tentarProximoServidor();
-    } finally { _playerInitializing = false; }
+    } finally {
+      _playerInitializing = false;
+    }
   }
 
   void _tentarProximoServidor() {
     int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
     if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
       var nextServer = _serversDisponiveis[currentIndex + 1];
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Erro... saía do player e entre novamente!"), duration: Duration(seconds: 2)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a tentar servidor alternativo!"), duration: Duration(seconds: 2)));
       _iniciarExoPlayer(nextServer['url'], epAtivoNome);
     } else {
       if (mounted) {
         setState(() { isServerLoading = false; isPlaying = false; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("erro.reinicie o aplicativo."), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam."), backgroundColor: Colors.red));
       }
     }
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) {
-    if (_popupAtivo) return; // Já há um popup aberto, ignora
-    _popupAtivo = true;
     if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
@@ -1077,20 +1101,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
           onSuccess: () { 
-            Navigator.of(ctxPopup, rootNavigator: true).pop();
-            _popupAtivo = false;
+            Navigator.of(ctxPopup, rootNavigator: true).pop(); // Bug de pop consertado!
             onSuccess(); 
           }
         )
       ),
-    ).then((_) { _popupAtivo = false; }); // garante reset mesmo se fechar de forma inesperada
+    );
   }
 
   void _entrarPiP() async {
     try {
       await _pipChannel.invokeMethod('enterPiP');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel.", style: TextStyle(fontSize: 12))));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel ou falta código nativo.", style: TextStyle(fontSize: 12))));
     }
   }
 
@@ -1151,23 +1174,94 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           const SizedBox(height: 20),
                           
                           if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(dropdownColor: Colors.grey[900], value: tempSelecionada, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(), onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); }); _carregarEpisodios(val); } }))),
+                            // Seletor de temporada — funciona com D-pad na TV Box
+                            SizedBox(
+                              width: double.infinity,
+                              child: DropdownButtonFormField<String>(
+                                decoration: InputDecoration(
+                                  filled: true,
+                                  fillColor: Colors.grey[900],
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2)),
+                                ),
+                                dropdownColor: Colors.grey[900],
+                                value: tempSelecionada,
+                                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                                items: temporadas.map((t) => DropdownMenuItem<String>(
+                                  value: t['id'].toString(),
+                                  child: Text(t['name'] ?? "Temporada ${t['number']}"),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    setState(() { tempSelecionada = val; episodios.clear(); });
+                                    _carregarEpisodios(val);
+                                  }
+                                },
+                              ),
+                            ),
                             const SizedBox(height: 10),
                           ],
                           if (tipo != 'filmes') ...[
-                            if (episodios.isEmpty) SizedBox(height: 45, child: ListView.builder(itemCount: 5, scrollDirection: Axis.horizontal, itemBuilder: (c,i) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!, child: Container(width: 45, margin: const EdgeInsets.only(right: 10), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6))))))
-                            else SizedBox(height: 45, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: episodios.length, itemBuilder: (ctx, i) { var ep = episodios[i]; bool isAtivo = epAtivoNome == "$nomeTitulo - ${ep['full_nome']}"; return Padding(padding: const EdgeInsets.only(right: 8), child: Material(color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false), onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true), child: Container(width: 45, height: 45, decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: isAtivo ? Colors.transparent : Colors.white12)), child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 20) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold))))))); })),
-                            const SizedBox(height: 8), Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Pressiona e segura no episódio para transferir..", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
+                            if (episodios.isEmpty)
+                              SizedBox(height: 56, child: ListView.builder(
+                                itemCount: 5, scrollDirection: Axis.horizontal,
+                                itemBuilder: (c, i) => Shimmer.fromColors(
+                                  baseColor: Colors.grey[850]!, highlightColor: Colors.grey[700]!,
+                                  child: Container(width: 56, margin: const EdgeInsets.only(right: 8), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8))),
+                                ),
+                              ))
+                            else
+                              // Lista de episódios com ElevatedButton para foco D-pad na TV Box
+                              SizedBox(
+                                height: 56,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: episodios.length,
+                                  itemBuilder: (ctx, i) {
+                                    final ep = episodios[i];
+                                    final bool isAtivo = epAtivoNome == "$nomeTitulo - ${ep['full_nome']}";
+                                    return Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: SizedBox(
+                                        width: 56,
+                                        height: 56,
+                                        child: ElevatedButton(
+                                          autofocus: isAtivo && i == 0,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isAtivo ? const Color(0xFFE50914) : const Color(0xFF1C1C1C),
+                                            padding: EdgeInsets.zero,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            side: BorderSide(color: isAtivo ? Colors.transparent : Colors.white12),
+                                            // Anel de foco visível na TV Box (D-pad)
+                                          ).copyWith(
+                                            overlayColor: MaterialStateProperty.resolveWith((states) {
+                                              if (states.contains(MaterialState.focused)) return Colors.white24;
+                                              return null;
+                                            }),
+                                          ),
+                                          onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false),
+                                          onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
+                                          child: isAtivo
+                                              ? const Icon(Icons.play_arrow, color: Colors.white, size: 22)
+                                              : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segura o episódio para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
                           ],
 
                           if (recomendacoes.isNotEmpty) ...[
-                            const SizedBox(height: 20), Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]), const SizedBox(height: 10),
+                            const SizedBox(height: 20),
+                            Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
+                            const SizedBox(height: 10),
                             SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i]))))),
-                            const SizedBox(height: 16),
-                          ],
-                          // ── BANNER ADSTERRA NATIVO ──
-                          const _AdsterraBanner(),
-                          const SizedBox(height: 24),
+                            const SizedBox(height: 12),
+                          ]
                         ],
                       ),
                     ),
@@ -1178,6 +1272,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+}
+
+// ── Resultado da sonda de URL ─────────────────────────────────────────────
+class _ProbeResult {
+  final String url;
+  final bool isHls;
+  final bool isLocalFile;
+  const _ProbeResult({required this.url, required this.isHls, this.isLocalFile = false});
 }
 
 // ==========================================
@@ -1254,219 +1356,104 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
-// BANNER NATIVO ADSTERRA (abaixo das recomendações)
-// Renderiza via WebView com HTML do invoke.js
-// Qualquer clique abre no browser externo do utilizador
-// ==========================================
-class _AdsterraBanner extends StatefulWidget {
-  const _AdsterraBanner();
-  @override State<_AdsterraBanner> createState() => _AdsterraBannerState();
-}
-class _AdsterraBannerState extends State<_AdsterraBanner> {
-  WebViewController? _ctrl;
-
-  // HTML que o Adsterra precisa para renderizar o banner nativo
-  static const String _bannerHtml = '''<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#0B0B0F; overflow-x:hidden; }
-</style>
-</head>
-<body>
-<script async="async" data-cfasync="false" src="https://pl29099042.profitablecpmratenetwork.com/7f576864101a2ea1fe13415641ddaa54/invoke.js"></script>
-<div id="container-7f576864101a2ea1fe13415641ddaa54"></div>
-</body>
-</html>''';
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0B0B0F))
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) {
-          // about:blank e data: deixa carregar (inicialização interna)
-          final url = request.url;
-          if (url == 'about:blank' || url.startsWith('data:')) {
-            return NavigationDecision.navigate;
-          }
-          // Domínio Adsterra (invoke.js) — deixa carregar para registrar impressão
-          if (url.contains('profitablecpmratenetwork.com') ||
-              url.contains('adsterra.com') ||
-              url.contains('invoke.js')) {
-            return NavigationDecision.navigate;
-          }
-          // Qualquer clique do utilizador → abre no browser externo
-          final uri = Uri.tryParse(url);
-          if (uri != null) {
-            launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) {});
-          }
-          return NavigationDecision.prevent;
-        },
-      ))
-      ..loadHtmlString(_bannerHtml, baseUrl: 'https://pl29099042.profitablecpmratenetwork.com');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_ctrl == null) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      height: 120,
-      decoration: BoxDecoration(
-        color: const Color(0xFF0B0B0F),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: WebViewWidget(controller: _ctrl!),
-    );
-  }
-}
-
-// ==========================================
 // SISTEMA DE ANÚNCIOS (WEBVIEW IN-APP POPUP)
 // ==========================================
-class _RewardedPopup extends StatefulWidget { 
-  final VoidCallback onSuccess; 
+class _RewardedPopup extends StatefulWidget {
+  final VoidCallback onSuccess;
   final String tituloAdicional;
-  const _RewardedPopup({required this.onSuccess, this.tituloAdicional = "Para continuar a assistir"}); 
-  @override State<_RewardedPopup> createState() => _RewardedPopupState(); 
+  const _RewardedPopup({required this.onSuccess, this.tituloAdicional = "Para continuar a assistir"});
+  @override State<_RewardedPopup> createState() => _RewardedPopupState();
 }
 class _RewardedPopupState extends State<_RewardedPopup> {
-  int _countdown60 = 60; 
+  int _countdown60 = 60;
   int _countdown15 = 15;
-  bool _aguardando60 = false; 
+  bool _aguardando60 = false;
   bool _anuncioAberto = false;
-  bool _anuncioFechavel = false;
-  bool _adsterraJaCarregou = false; // controla a primeira carga vs cliques
-  Timer? _timer60; 
+  bool _podeFechar = false;
+  Timer? _timer60;
   Timer? _timer15;
-  WebViewController? _webViewController;
-  
+  WebViewController? _webCtrl;
+
   @override void initState() {
     super.initState();
     if (_adsterraLink.length < 10) exit(0); // Anti-tamper
   }
 
-  @override void dispose() { 
-    _timer60?.cancel(); 
+  @override void dispose() {
+    _timer60?.cancel();
     _timer15?.cancel();
-    super.dispose(); 
+    super.dispose();
   }
-  
-  void _iniciarContagemLenta() { 
-    setState(() { _aguardando60 = true; _countdown60 = 60; }); 
-    _timer60 = Timer.periodic(const Duration(seconds: 1), (t) { 
-      if (!mounted) { t.cancel(); return; } 
-      setState(() => _countdown60--); 
-      if (_countdown60 <= 0) { 
-        t.cancel(); 
-        widget.onSuccess(); 
-      } 
-    }); 
+
+  void _iniciarContagemLenta() {
+    setState(() { _aguardando60 = true; _countdown60 = 60; });
+    _timer60 = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _countdown60--);
+      if (_countdown60 <= 0) { t.cancel(); widget.onSuccess(); }
+    });
   }
 
   void _abrirAnuncioInApp() {
-    // Carrega o smart link no WebView mas intercepta QUALQUER navegação
-    // (clique em anúncio, redirect, etc.) e abre no browser externo.
-    // Isso garante que o Adsterra contabiliza o clique corretamente.
-    final controller = WebViewController()
+    final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) {
-          final uri = Uri.tryParse(request.url);
-          if (uri == null) return NavigationDecision.prevent;
-          // A primeira carga é o próprio smart link — deixa carregar no WebView
-          // para o Adsterra registrar a impressão. Qualquer redirect/clique
-          // posterior abre no browser do utilizador.
-          final isSmartLink = request.url.contains('profitablecpmratenetwork.com') ||
-                              request.url.contains(_adsterraLink.substring(8, 40));
-          if (isSmartLink && !_adsterraJaCarregou) {
-            _adsterraJaCarregou = true;
-            return NavigationDecision.navigate; // primeira carga: fica no WebView
-          }
-          // Qualquer outro destino (clique no anúncio): abre no browser externo
-          launchUrl(uri, mode: LaunchMode.externalApplication).catchError((_) {});
-          return NavigationDecision.prevent;
+        onNavigationRequest: (req) {
+          // Bloqueia tentativas de abrir browser externo
+          final uri = Uri.tryParse(req.url);
+          if (uri != null && uri.scheme == 'intent') return NavigationDecision.prevent;
+          return NavigationDecision.navigate;
         },
       ))
       ..loadRequest(Uri.parse(_adsterraLink));
-    
-    setState(() { 
-      _anuncioAberto = true; 
-      _anuncioFechavel = false;
-      _countdown15 = 15;
-      _webViewController = controller;
-    });
-    
+
+    setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
+
     _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
-      if (_countdown15 <= 0) {
-        t.cancel();
-        setState(() => _anuncioFechavel = true);
-      }
+      if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
     });
   }
 
   @override Widget build(BuildContext context) {
-    // Tela de anúncio WebView in-app
-    if (_anuncioAberto && _webViewController != null) {
+    // Modo WebView — anúncio a correr dentro do app
+    if (_anuncioAberto && _webCtrl != null) {
       return Dialog(
         insetPadding: const EdgeInsets.all(12),
         backgroundColor: Colors.transparent,
         child: Container(
           width: double.infinity,
           height: MediaQuery.of(context).size.height * 0.75,
-          decoration: BoxDecoration(
-            color: const Color(0xFF0B0B0F),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white12),
-          ),
+          decoration: BoxDecoration(color: const Color(0xFF0B0B0F), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white12)),
           child: Column(
             children: [
               // Header com contador e botão fechar
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF141414),
-                  borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: const BoxDecoration(color: Color(0xFF141414), borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16))),
                 child: Row(
                   children: [
                     const Icon(Icons.live_tv, color: Color(0xFFE50914), size: 18),
                     const SizedBox(width: 8),
                     const Expanded(child: Text("Suporta o CDCINE 🙏", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500))),
-                    if (!_anuncioFechavel)
+                    if (!_podeFechar)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: _countdown15 / 15, color: Colors.white54, strokeWidth: 2)),
                           const SizedBox(width: 6),
-                          Text("${_countdown15}s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          Text("$_countdown15s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
                         ]),
                       )
                     else
-                      Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: widget.onSuccess,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(color: const Color(0xFFE50914), borderRadius: BorderRadius.circular(20)),
-                            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(Icons.close, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text("Fechar", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ]),
-                          ),
-                        ),
+                      ElevatedButton.icon(
+                        autofocus: true,
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                        onPressed: widget.onSuccess,
+                        icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                        label: const Text("Fechar", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                       ),
                   ],
                 ),
@@ -1475,7 +1462,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
-                  child: WebViewWidget(controller: _webViewController!),
+                  child: WebViewWidget(controller: _webCtrl!),
                 ),
               ),
             ],
@@ -1486,41 +1473,39 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 
     // Tela de escolha inicial
     return Dialog(
-      backgroundColor: Colors.transparent, 
+      backgroundColor: Colors.transparent,
       child: Container(
-        decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]), 
-        padding: const EdgeInsets.all(24), 
+        decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min, 
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))), 
-            const SizedBox(height: 16), 
-            Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)), 
-            const SizedBox(height: 8), 
-            const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)), 
-            const SizedBox(height: 24), 
-            
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))),
+            const SizedBox(height: 16),
+            Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+            const SizedBox(height: 24),
             SizedBox(
-              width: double.infinity, 
+              width: double.infinity,
               child: ElevatedButton.icon(
                 autofocus: true,
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
-                onPressed: _abrirAnuncioInApp, 
-                icon: const Icon(Icons.bolt, color: Colors.white), 
-                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))
-              )
-            ), 
-            const SizedBox(height: 12), 
-            
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _abrirAnuncioInApp,
+                icon: const Icon(Icons.bolt, color: Colors.white),
+                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 12),
             SizedBox(
-              width: double.infinity, 
-              child: _aguardando60 
-                ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))])) 
-                : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500)))
-            )
-          ]
-        )
-      )
-    ); 
+              width: double.infinity,
+              child: _aguardando60
+                  ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))]))
+                  : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
