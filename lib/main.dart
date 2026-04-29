@@ -1444,7 +1444,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
                           SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: _countdown15 / 15, color: Colors.white54, strokeWidth: 2)),
                           const SizedBox(width: 6),
-                          Text("$_countdown15s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          Text("${_countdown15}s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
                         ]),
                       )
                     else
