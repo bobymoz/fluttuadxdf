@@ -45,8 +45,8 @@ class MainActivity : FlutterActivity() {
         override fun onRouteRemoved(router: MediaRouter, info: RouteInfo) {
             sendEvent("route_removed", info.name.toString())
         }
-        override fun onRoutePresentationDisplayChanged(router: MediaRouter, info: RouteInfo) {
-            if (info == router.selectedRoute) connectToRoute(info)
+        override fun onRoutePresentationDisplayChanged(router: MediaRouter, type: Int, info: RouteInfo) {
+            if (info == router.getSelectedRoute(MediaRouter.ROUTE_TYPE_LIVE_VIDEO)) connectToRoute(info)
         }
     }
 
@@ -179,7 +179,7 @@ class MainActivity : FlutterActivity() {
             mapOf(
                 "name"        to route.name.toString(),
                 "description" to (route.description?.toString() ?: ""),
-                "isSelected"  to (route == mediaRouter.selectedRoute).toString()
+                "isSelected"  to (route == mediaRouter.getSelectedRoute(MediaRouter.ROUTE_TYPE_LIVE_VIDEO)).toString()
             )
         }
     }
