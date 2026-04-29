@@ -1093,16 +1093,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) {
-    if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
+    if (_isFullscreen) _exitFullscreen();
+    // Pausa o vídeo antes de mostrar o popup
+    _videoPlayerController?.pause();
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
       builder: (ctxPopup) => PopScope(
-        canPop: false, 
+        canPop: false,
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
-          onSuccess: () { 
-            Navigator.of(ctxPopup, rootNavigator: true).pop(); // Bug de pop consertado!
-            onSuccess(); 
+          onSuccess: () {
+            Navigator.of(ctxPopup, rootNavigator: true).pop();
+            // Retoma a reprodução ao fechar o popup
+            onSuccess();
           }
         )
       ),
@@ -1261,7 +1264,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 10),
                             SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i]))))),
                             const SizedBox(height: 12),
-                          ]
+                          ],
+
+                          // ── Banner de anúncio permanente ──────────────────
+                          const _BannerAdWidget(),
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -1270,6 +1277,86 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Widget de Banner de Anúncio Permanente ────────────────────────────────
+// Exibe um WebView pequeno com o link de anúncio, sempre visível abaixo
+// das recomendações — preenche o espaço vazio e gera receita passiva.
+class _BannerAdWidget extends StatefulWidget {
+  const _BannerAdWidget();
+  @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
+}
+class _BannerAdWidgetState extends State<_BannerAdWidget> {
+  WebViewController? _ctrl;
+  bool _loaded = false;
+
+  @override void initState() {
+    super.initState();
+    _ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF0B0B0F))
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
+        onNavigationRequest: (req) {
+          // Clique no anúncio abre no browser externo
+          final uri = Uri.tryParse(req.url);
+          if (uri != null && uri.host != Uri.tryParse(_adsterraLink)?.host) {
+            launchUrl(uri, mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadRequest(Uri.parse(_adsterraLink));
+  }
+
+  @override Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Rótulo "Publicidade" discreto
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                child: Row(children: [
+                  Container(width: 3, height: 12, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 6)),
+                  const Text("PUBLICIDADE", style: TextStyle(color: Colors.white24, fontSize: 9, letterSpacing: 1, fontWeight: FontWeight.bold)),
+                ]),
+              ),
+              // WebView do anúncio (altura de banner padrão 90px)
+              ClipRRect(
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
+                child: SizedBox(
+                  height: 90,
+                  child: _ctrl == null
+                      ? const SizedBox.shrink()
+                      : Stack(
+                          children: [
+                            WebViewWidget(controller: _ctrl!),
+                            if (!_loaded)
+                              Container(
+                                color: const Color(0xFF141414),
+                                child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
