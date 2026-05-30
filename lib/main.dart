@@ -338,62 +338,127 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
 }
 
 // ==========================================
-// DOWNLOADS
+// DOWNLOADS — via 1DM+ (intent externo)
 // ==========================================
 class DownloadManager {
+  // Mantemos notifiers para compatibilidade com DraggableOverlay (não usado ativamente)
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static ValueNotifier<int> activeDownloadsCount = ValueNotifier(0);
   static ValueNotifier<bool> showFloatingOverlay = ValueNotifier(false);
-  static String currentTitle = ""; static CancelToken? cancelToken;
+  static String currentTitle = "";
+  // CancelToken ainda importado mas não usado (mantém imports funcionais)
+  static CancelToken? cancelToken;
 
+  /// Abre o 1DM+ com a URL do vídeo via Android Intent.
+  /// Se o app não estiver instalado mostra diálogo pedindo instalação.
   static Future<void> startDownload(String url, String title, bool isMp4) async {
-    if (Platform.isAndroid && await _getAndroidSdk() < 29) { 
-      final status = await Permission.storage.request(); 
-      if (!status.isGranted) return; 
+    final cleanedTitle = cleanTitle(title);
+    currentTitle = cleanedTitle;
+
+    // Salva no histórico local de "enviados para 1DM+"
+    final prefs = await SharedPreferences.getInstance();
+    List<String> hist = prefs.getStringList('downloads_1dm') ?? [];
+    final entry = json.encode({'url': url, 'title': cleanedTitle, 'ts': DateTime.now().toIso8601String()});
+    if (!hist.any((e) { try { return json.decode(e)['url'] == url; } catch(_) { return false; } })) {
+      hist.insert(0, entry);
+      if (hist.length > 100) hist = hist.sublist(0, 100);
+      await prefs.setStringList('downloads_1dm', hist);
     }
-    
-    currentTitle = cleanTitle(title); progress.value = 0.0; activeDownloadsCount.value = 1; showFloatingOverlay.value = true; cancelToken = CancelToken();
-    
-    try {
-      Directory? dir;
-      if (Platform.isAndroid) {
-        dir = Directory('/storage/emulated/0/Download');
-        if (!await dir.exists()) {
-          try { await dir.create(recursive: true); } catch (e) { dir = Directory('/storage/emulated/0/Documents'); if (!await dir.exists()) await dir.create(recursive: true); }
+
+    // Intent Android para abrir 1DM+ diretamente com a URL
+    // scheme: intent://  host: download  package: idm.internet.download.manager.plus
+    final intentUrl =
+        'intent://$url#Intent;'
+        'action=android.intent.action.VIEW;'
+        'scheme=https;'
+        'package=idm.internet.download.manager.plus;'
+        'S.url=${Uri.encodeComponent(url)};'
+        'S.filename=${Uri.encodeComponent(cleanedTitle)};'
+        'end';
+
+    final uri = Uri.parse(intentUrl);
+    final canOpen = await canLaunchUrl(uri);
+    if (canOpen) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      // Fallback: tenta abrir pelo scheme idm+ diretamente
+      final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
+      final canIdm = await canLaunchUrl(idmUri);
+      if (canIdm) {
+        await launchUrl(idmUri, mode: LaunchMode.externalApplication);
+      } else {
+        // 1DM+ não encontrado — mostra diálogo de instalação
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null) {
+          _mostrarDialogo1DMNaoEncontrado(ctx);
         }
       }
-      
-      String safeTitle = currentTitle.replaceAll(RegExp(r'[^\w\s]+'), '').trim(); 
-      if (safeTitle.isEmpty) safeTitle = 'video_${DateTime.now().millisecondsSinceEpoch}';
-      String ext = isMp4 ? "mp4" : "ts";
-      final savePath = "${dir?.path}/CDCINE_$safeTitle.$ext";
-
-      await Dio().download(url, savePath, cancelToken: cancelToken, options: Options(headers: {"Referer": _smartPlayUrl, "User-Agent": "Mozilla/5.0"}), onReceiveProgress: (rec, total) { if (total != -1) progress.value = rec / total; });
-      progress.value = -2.0; activeDownloadsCount.value = 0;
-      final prefs = await SharedPreferences.getInstance(); List<String> files = prefs.getStringList('downloads') ?? []; if (!files.contains(savePath)) { files.add(savePath); prefs.setStringList('downloads', files); }
-      Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
-    } catch (e) {
-      activeDownloadsCount.value = 0; progress.value = CancelToken.isCancel(e as DioException) ? -1.0 : -3.0;
-      Future.delayed(const Duration(seconds: 4), () { progress.value = -1.0; showFloatingOverlay.value = false; });
     }
   }
-  static Future<int> _getAndroidSdk() async { try { final match = RegExp(r'API (\d+)').firstMatch(Platform.operatingSystemVersion); if (match != null) return int.parse(match.group(1)!); } catch (_) {} return 30; }
 
-  static void hideOverlay() { showFloatingOverlay.value = false; }
-  static void confirmCancelDownload(BuildContext context) {
+  static void _mostrarDialogo1DMNaoEncontrado(BuildContext context) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1F1F1F),
-        title: const Text("Cancelar", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text("Deseja cancelar a transferência?", style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Não", style: TextStyle(color: Colors.grey))),
-          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), onPressed: () { cancelToken?.cancel(); progress.value = -1.0; activeDownloadsCount.value = 0; showFloatingOverlay.value = false; Navigator.pop(ctx); }, child: const Text("Sim", style: TextStyle(color: Colors.white))),
-        ],
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white10),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Ícone do 1DM+
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset('assets/1dm.png', width: 72, height: 72,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.download, color: Colors.white, size: 60)),
+              ),
+              const SizedBox(height: 16),
+              const Text("1DM+ não encontrado", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              const Text(
+                "Para baixar este conteúdo, instala o app 1DM+ (IDM+ Download Manager).\nÉ gratuito e o único capaz de baixar este tipo de vídeo.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF01875F),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    launchUrl(
+                      Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus'),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+                  icon: const Icon(Icons.download, color: Colors.white),
+                  label: const Text("Baixar 1DM+ na Play Store", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Fechar", style: TextStyle(color: Colors.white54)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  static void hideOverlay() { showFloatingOverlay.value = false; }
+  static void confirmCancelDownload(BuildContext context) {}
 }
 
 class DraggableDownloadOverlay extends StatefulWidget { const DraggableDownloadOverlay({super.key}); @override State<DraggableDownloadOverlay> createState() => _DraggableDownloadOverlayState(); }
@@ -781,6 +846,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
   String _urlAtiva = '';
+  int _epAtivoIndex = -1; // índice do episódio activo na lista
   
   bool isDataLoaded = false; bool isPlaying = false; bool isServerLoading = false; bool isSynopsisExpanded = false;
   bool _isFullscreen = false; bool _isBuffering = false;
@@ -853,6 +919,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
       if (!_autoPlayDisparado && savedEpId != null) {
         _autoPlayDisparado = true;
+        // Determinar índice do episódio guardado
+        final idx = episodios.indexWhere((e) => e['id'] == savedEpId);
+        if (idx != -1) setState(() => _epAtivoIndex = idx);
         _abrirServidores(savedEpId!, savedEpNome ?? "Episódio", false);
       }
     }
@@ -866,6 +935,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (mounted) setState(() {});
     oldChewie?.dispose();
     if (oldVideo != null) await oldVideo.dispose();
+  }
+
+  /// Avança para o próximo episódio (chamável mesmo em fullscreen)
+  void _proximoEpisodio() {
+    if (episodios.isEmpty) return;
+    final nextIdx = _epAtivoIndex + 1;
+    if (nextIdx >= episodios.length) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Já é o último episódio.")));
+      return;
+    }
+    final ep = episodios[nextIdx];
+    final nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
+    setState(() => _epAtivoIndex = nextIdx);
+    _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false);
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
@@ -1139,7 +1222,189 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override Widget build(BuildContext context) {
     String nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
     String tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? "filmes";
+    final bool isTV = MediaQuery.of(context).size.width > 900; // TV Box / tablet landscape
 
+    // ── FULLSCREEN ───────────────────────────────────────────────────────────────
+    if (_isFullscreen) {
+      return WillPopScope(
+        onWillPop: () async { _exitFullscreen(); return false; },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildPlayerArea(),
+              // Botão "Próximo episódio" em fullscreen (séries)
+              if (tipo != 'filmes' && isPlaying && !isServerLoading && episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1)
+                Positioned(
+                  bottom: 80,
+                  right: 20,
+                  child: Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _proximoEpisodio,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: const [
+                          Text("Próximo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          SizedBox(width: 6),
+                          Icon(Icons.skip_next, color: Colors.white, size: 22),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── LAYOUT TV (widescreen side-by-side) ──────────────────────────────────────
+    if (isTV && tipo != 'filmes') {
+      return WillPopScope(
+        onWillPop: () async { return true; },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF0F0F13),
+          body: SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Coluna esquerda: Player + info
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Player
+                      AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
+                      // Título + botões
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))),
+                          InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12))]))),
+                          const SizedBox(width: 8),
+                          InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12))]))),
+                        ]),
+                      ),
+                      // Meta
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                        child: Row(children: [
+                          Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                          if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
+                        ]),
+                      ),
+                      // Sinopse
+                      if (isDataLoaded) Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                        child: GestureDetector(
+                          onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                            if (sinopse.length > 100) Padding(padding: const EdgeInsets.only(top: 4), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12))),
+                          ]),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // Banner de anúncio
+                      const _BannerAdWidget(),
+                    ],
+                  ),
+                ),
+                // Coluna direita: Lista de episódios
+                Container(
+                  width: 300,
+                  color: const Color(0xFF0B0B0B),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Seletor de temporada
+                      if (temporadas.isNotEmpty) Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: DropdownButtonFormField<String>(
+                          decoration: InputDecoration(filled: true, fillColor: Colors.grey[900], contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2))),
+                          dropdownColor: Colors.grey[900],
+                          value: tempSelecionada,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                          items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(),
+                          onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _epAtivoIndex = -1; }); _carregarEpisodios(val); } },
+                        ),
+                      ),
+                      // Botão próximo episódio
+                      if (episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 10)),
+                              onPressed: _proximoEpisodio,
+                              icon: const Icon(Icons.skip_next, color: Colors.white, size: 18),
+                              label: const Text("Próximo episódio", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ),
+                      const Divider(color: Colors.white10, height: 1),
+                      // Lista de episódios scroll vertical (navegável com D-pad)
+                      Expanded(
+                        child: episodios.isEmpty
+                          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                          : ListView.builder(
+                              itemCount: episodios.length,
+                              itemBuilder: (ctx, i) {
+                                final ep = episodios[i];
+                                final bool isAtivo = i == _epAtivoIndex;
+                                return Material(
+                                  color: isAtivo ? const Color(0xFFE50914).withOpacity(0.15) : Colors.transparent,
+                                  child: InkWell(
+                                    focusColor: Colors.white24,
+                                    onTap: () { setState(() => _epAtivoIndex = i); _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); },
+                                    onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          left: BorderSide(color: isAtivo ? const Color(0xFFE50914) : Colors.transparent, width: 3),
+                                          bottom: const BorderSide(color: Colors.white10, width: 0.5),
+                                        ),
+                                      ),
+                                      child: Row(children: [
+                                        Container(
+                                          width: 32, height: 32,
+                                          decoration: BoxDecoration(color: isAtivo ? const Color(0xFFE50914) : Colors.grey[800], borderRadius: BorderRadius.circular(6)),
+                                          child: Center(child: isAtivo ? const Icon(Icons.play_arrow, color: Colors.white, size: 18) : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 12, fontWeight: FontWeight.bold))),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(child: Text(ep['full_nome'], style: TextStyle(color: isAtivo ? Colors.white : Colors.white70, fontSize: 13, fontWeight: isAtivo ? FontWeight.bold : FontWeight.normal), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                                        // Ícone de download para séries no layout TV
+                                        IconButton(
+                                          icon: Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white54, size: 18)),
+                                          onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
+                                          tooltip: "Baixar com 1DM+",
+                                          iconSize: 18,
+                                        ),
+                                      ]),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ── LAYOUT NORMAL (mobile / portrait) ────────────────────────────────────────
     return WillPopScope(
       onWillPop: () async { if (_isFullscreen) { _exitFullscreen(); return false; } return true; },
       child: Scaffold(
@@ -1161,7 +1426,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                            if (tipo == 'filmes') Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(widget.item['id'].toString(), nomeTitulo, true), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.download, color: Colors.white, size: 16), SizedBox(width: 5), Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            if (tipo == 'filmes') Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(widget.item['id'].toString(), nomeTitulo, true), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), const Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                           ]),
                           const SizedBox(height: 10),
                           Row(children: [
@@ -1174,7 +1439,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           const SizedBox(height: 20),
                           
                           if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
-                            // Seletor de temporada — funciona com D-pad na TV Box
                             SizedBox(
                               width: double.infinity,
                               child: DropdownButtonFormField<String>(
@@ -1194,7 +1458,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 )).toList(),
                                 onChanged: (val) {
                                   if (val != null) {
-                                    setState(() { tempSelecionada = val; episodios.clear(); });
+                                    setState(() { tempSelecionada = val; episodios.clear(); _epAtivoIndex = -1; });
                                     _carregarEpisodios(val);
                                   }
                                 },
@@ -1203,6 +1467,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 10),
                           ],
                           if (tipo != 'filmes') ...[
+                            // Botão próximo episódio (mobile)
+                            if (episodios.isNotEmpty && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length - 1)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), padding: const EdgeInsets.symmetric(vertical: 10)),
+                                    onPressed: _proximoEpisodio,
+                                    icon: const Icon(Icons.skip_next, color: Colors.white, size: 18),
+                                    label: const Text("Próximo episódio", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
+                              ),
                             if (episodios.isEmpty)
                               SizedBox(height: 56, child: ListView.builder(
                                 itemCount: 5, scrollDirection: Axis.horizontal,
@@ -1212,7 +1490,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ))
                             else
-                              // Lista de episódios com ElevatedButton para foco D-pad na TV Box
                               SizedBox(
                                 height: 56,
                                 child: ListView.builder(
@@ -1220,7 +1497,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   itemCount: episodios.length,
                                   itemBuilder: (ctx, i) {
                                     final ep = episodios[i];
-                                    final bool isAtivo = epAtivoNome == "$nomeTitulo - ${ep['full_nome']}";
+                                    final bool isAtivo = i == _epAtivoIndex;
                                     return Padding(
                                       padding: const EdgeInsets.only(right: 8),
                                       child: SizedBox(
@@ -1233,14 +1510,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                             padding: EdgeInsets.zero,
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                             side: BorderSide(color: isAtivo ? Colors.transparent : Colors.white12),
-                                            // Anel de foco visível na TV Box (D-pad)
                                           ).copyWith(
                                             overlayColor: MaterialStateProperty.resolveWith((states) {
                                               if (states.contains(MaterialState.focused)) return Colors.white24;
                                               return null;
                                             }),
                                           ),
-                                          onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false),
+                                          onPressed: () { setState(() => _epAtivoIndex = i); _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); },
                                           onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
                                           child: isAtivo
                                               ? const Icon(Icons.play_arrow, color: Colors.white, size: 22)
@@ -1252,7 +1528,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             const SizedBox(height: 8),
-                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segura o episódio para transferir.", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
+                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segura o episódio para baixar com 1DM+.", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
                           ],
 
                           if (recomendacoes.isNotEmpty) ...[
@@ -1465,8 +1741,87 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
 class DownloadsScreen extends StatefulWidget { const DownloadsScreen({super.key}); @override State<DownloadsScreen> createState() => _DownloadsScreenState(); }
 class _DownloadsScreenState extends State<DownloadsScreen> {
-  List<String> files = []; @override void initState() { super.initState(); carregar(); } void carregar() async { final prefs = await SharedPreferences.getInstance(); setState(() => files = prefs.getStringList('downloads') ?? []); }
-  @override Widget build(BuildContext context) { return Scaffold(appBar: AppBar(title: const Text("As Minhas Transferências")), body: Column(children: [ValueListenableBuilder<double>(valueListenable: DownloadManager.progress, builder: (context, progress, child) { if (progress >= 0.0 && progress <= 1.0) { return Card(color: Colors.grey[900], margin: const EdgeInsets.all(10), child: ListTile(leading: CircularProgressIndicator(value: progress, color: const Color(0xFFE50914)), title: Text(DownloadManager.currentTitle, style: const TextStyle(color: Colors.white)), subtitle: Text("A transferir: ${(progress * 100).toStringAsFixed(0)}%", style: const TextStyle(color: Colors.greenAccent)), trailing: IconButton(icon: const Icon(Icons.cancel, color: Colors.red), tooltip: "Cancelar", onPressed: () => DownloadManager.confirmCancelDownload(context)))); } return const SizedBox.shrink(); }), const Divider(color: Colors.white24), Expanded(child: files.isEmpty ? const Center(child: Text("Nenhuma transferência concluída.", style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: files.length, itemBuilder: (c, i) { String name = files[i].split('/').last.replaceAll('CDCINE_', ''); return ListTile(leading: const Icon(Icons.video_file, color: Colors.greenAccent, size: 40), title: Text(name, style: const TextStyle(color: Colors.white)), subtitle: const Text("Guardado na Galeria - Clique para ver"), trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { final prefs = await SharedPreferences.getInstance(); files.removeAt(i); prefs.setStringList('downloads', files); setState(() {}); }), onTap: () { OpenFilex.open(files[i]); }); }))])); }
+  List<Map<String, dynamic>> _entries = [];
+  @override void initState() { super.initState(); _carregar(); }
+  Future<void> _carregar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('downloads_1dm') ?? [];
+    setState(() { _entries = raw.map((e) { try { return json.decode(e) as Map<String, dynamic>; } catch(_) { return <String,dynamic>{}; } }).where((e) => e['url'] != null).toList(); });
+  }
+  Future<void> _remover(int i) async {
+    final prefs = await SharedPreferences.getInstance();
+    _entries.removeAt(i);
+    await prefs.setStringList('downloads_1dm', _entries.map((e) => json.encode(e)).toList());
+    setState(() {});
+  }
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0F),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0B0B0F),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Row(children: [
+          Image.asset('assets/1dm.png', width: 26, height: 26, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 22)),
+          const SizedBox(width: 10),
+          const Text("Enviados ao 1DM+", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+      body: Column(children: [
+        // Banner informativo
+        Container(
+          margin: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.25))),
+          child: Row(children: [
+            Image.asset('assets/1dm.png', width: 32, height: 32, errorBuilder: (_,__,___) => const Icon(Icons.info, color: Colors.blue, size: 28)),
+            const SizedBox(width: 12),
+            const Expanded(child: Text("O download é gerido pelo app 1DM+.\nAbre o 1DM+ para ver o progresso e os ficheiros.", style: TextStyle(color: Colors.blue, fontSize: 12, height: 1.5))),
+            TextButton(
+              onPressed: () => launchUrl(Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus'), mode: LaunchMode.externalApplication),
+              child: const Text("Obter\n1DM+", textAlign: TextAlign.center, style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ),
+        const Divider(color: Colors.white12),
+        Expanded(
+          child: _entries.isEmpty
+            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Image.asset('assets/1dm.png', width: 64, height: 64, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white24, size: 64)),
+                const SizedBox(height: 16),
+                const Text("Nenhum download enviado ainda.", style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                const Text("Acessa um filme ou série e clica em BAIXAR.", style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ]))
+            : ListView.builder(
+                itemCount: _entries.length,
+                itemBuilder: (c, i) {
+                  final e = _entries[i];
+                  final title = e['title'] ?? 'Sem título';
+                  final ts = e['ts'] != null ? DateTime.tryParse(e['ts'] as String) : null;
+                  final tsStr = ts != null ? "${ts.day.toString().padLeft(2,'0')}/${ts.month.toString().padLeft(2,'0')} ${ts.hour.toString().padLeft(2,'0')}:${ts.minute.toString().padLeft(2,'0')}" : '';
+                  return ListTile(
+                    leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.asset('assets/1dm.png', width: 40, height: 40, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.greenAccent, size: 36))),
+                    title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(tsStr.isNotEmpty ? "Enviado a $tsStr · Verifica no 1DM+" : "Verifica no 1DM+", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new, color: Colors.blueAccent, size: 20),
+                        tooltip: "Abrir no 1DM+",
+                        onPressed: () => DownloadManager.startDownload(e['url'] as String, title, true),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                        tooltip: "Remover do histórico",
+                        onPressed: () => _remover(i),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+        ),
+      ]),
+    );
+  }
 }
 
 class TransmitirTvScreen extends StatelessWidget {
