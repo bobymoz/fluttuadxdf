@@ -226,7 +226,7 @@ class CDcineApp extends StatelessWidget {
         primaryColor: const Color(0xFFE50914),
         focusColor: Colors.white24,
         appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B0B0F), elevation: 0),
-        pageTransitionsTheme: const PageTransitionsTheme(builders: { TargetPlatform.android: ZoomPageTransitionsBuilder(), TargetPlatform.iOS: CupertinoPageTransitionsBuilder() }),
+        pageTransitionsTheme: PageTransitionsTheme(builders: { TargetPlatform.android: ZoomPageTransitionsBuilder(), TargetPlatform.iOS: CupertinoPageTransitionsBuilder() }),
       ),
       builder: (context, child) => Stack(children: [child!, const DraggableDownloadOverlay()]),
       home: const _ConnectivityGate(),
