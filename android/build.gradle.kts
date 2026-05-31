@@ -20,21 +20,19 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Força Kotlin e Java a compilarem na versão 17 em todos os plugins
+// O bloco afterEvaluate garante que nossa regra de versão 17
+// seja aplicada por último, impedindo que plugins a desfaçam.
 subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
+    afterEvaluate {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
         }
-    }
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
+        tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+            sourceCompatibility = "17"
+            targetCompatibility = "17"
         }
-    }
-    tasks.withType<JavaCompile>().configureEach {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
     }
 }
 
