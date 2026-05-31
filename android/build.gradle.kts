@@ -20,19 +20,20 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// O bloco afterEvaluate garante que nossa regra de versão 17
-// seja aplicada por último, impedindo que plugins a desfaçam.
 subprojects {
-    afterEvaluate {
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            kotlinOptions {
-                jvmTarget = "17"
-            }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
-        tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
-            sourceCompatibility = "17"
-            targetCompatibility = "17"
+    }
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
+    }
+    tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
     }
 }
 
