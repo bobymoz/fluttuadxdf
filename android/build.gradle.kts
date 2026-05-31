@@ -15,11 +15,12 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Força JVM 17 em todos os plugins via configureEach (sem afterEvaluate)
+// Força Kotlin e Java a compilarem na versão 17 em todos os plugins
 subprojects {
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         kotlinOptions {
@@ -31,12 +32,12 @@ subprojects {
             jvmTarget = "17"
         }
     }
-}
-tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+    tasks.withType<JavaCompile>().configureEach {
         sourceCompatibility = "17"
         targetCompatibility = "17"
     }
 }
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
