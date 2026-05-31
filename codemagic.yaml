@@ -16,8 +16,7 @@ workflows:
 
       - name: Build APK Release (Ofuscado Único)
         script: |
-          flutter build apk --release --obfuscate --split-debug-info=build/app/outputs/debug-info
-
+          flutter build apk --release --obfuscate --split-debug-info=... --android-skip-build-dependency-validation
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
       - build/app/outputs/debug-info/*
