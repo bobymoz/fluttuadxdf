@@ -366,16 +366,23 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Intent Android para abrir 1DM (versão FREE) diretamente com a URL
-    // scheme: intent://  host: download  package: idm.internet.download.manager
+      // Lista de pacotes do 1DM a tentar (FREE e PLUS)
+  final packages = [
+    'idm.internet.download.manager',       // 1DM FREE
+    'idm.internet.download.manager.plus',  // 1DM+ (pago)
+    'idm.internet.download.manager.adm',   // ADM (alternativo)
+  ];
+
+  for (final pkg in packages) {
     final intentUrl =
         'intent://$url#Intent;'
         'action=android.intent.action.VIEW;'
         'scheme=https;'
-        'package=idm.internet.download.manager;'
+        'package=$pkg;'
         'S.url=${Uri.encodeComponent(url)};'
         'S.filename=${Uri.encodeComponent(cleanedTitle)};'
         'end';
+
 
     final uri = Uri.parse(intentUrl);
     final canOpen = await canLaunchUrl(uri);
