@@ -13,7 +13,59 @@ import 'package:shimmer/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:video_player/video_player.dart';
+import 'package:video_playestatic Future<void> startDownload(String url, String title, bool isMp4) async {
+    final cleanedTitle = cleanTitle(title);
+    currentTitle = cleanedTitle;
+
+    // Salva no histórico local de "enviados para 1DM"
+    final prefs = await SharedPreferences.getInstance();
+    List<String> hist = prefs.getStringList('downloads_1dm') ?? [];
+    final entry = json.encode({'url': url, 'title': cleanedTitle, 'ts': DateTime.now().toIso8601String()});
+    if (!hist.any((e) { try { return json.decode(e)['url'] == url; } catch(_) { return false; } })) {
+      hist.insert(0, entry);
+      if (hist.length > 100) hist = hist.sublist(0, 100);
+      await prefs.setStringList('downloads_1dm', hist);
+    }
+
+    final packages = [
+      'idm.internet.download.manager',       // 1DM FREE
+      'idm.internet.download.manager.plus',  // 1DM+ (pago)
+      'com.dv.adm',                          // ADM (Pacote corrigido)
+    ];
+
+    for (final pkg in packages) {
+      // TENTATIVA 1: Intent direta simplificada (deixa o 1DM ler o link livremente)
+      try {
+        final intentUrl = 'intent:$url#Intent;action=android.intent.action.VIEW;package=$pkg;S.title=${Uri.encodeComponent(cleanedTitle)};end';
+        if (await launchUrl(Uri.parse(intentUrl), mode: LaunchMode.externalApplication)) {
+          return; // Sucesso!
+        }
+      } catch (_) {}
+
+      // TENTATIVA 2: Forçar via "Compartilhamento" (SEND). 
+      // Isso envia o link como texto direto pro 1DM, ativando o rastreador M3U8 dele.
+      try {
+        final sendIntent = 'intent:#Intent;action=android.intent.action.SEND;type=text/plain;S.android.intent.extra.TEXT=${Uri.encodeComponent(url)};package=$pkg;end';
+        if (await launchUrl(Uri.parse(sendIntent), mode: LaunchMode.externalApplication)) {
+          return; // Sucesso!
+        }
+      } catch (_) {}
+    }
+
+    // TENTATIVA 3: Fallback genérico
+    try {
+      final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
+      if (await launchUrl(idmUri, mode: LaunchMode.externalApplication)) {
+        return; // Sucesso!
+      }
+    } catch (_) {}
+
+    // Se TODAS as 3 abordagens falharem, aí sim mostramos o erro
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) {
+      _mostrarDialogo1DMNaoEncontrado(ctx);
+    }
+  }r/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -352,7 +404,7 @@ class DownloadManager {
 
   /// Abre o 1DM com a URL do vídeo via Android Intent.
   /// Se o app não estiver instalado mostra diálogo pedindo instalação.
-  static Future<void> startDownload(String url, String title, bool isMp4) async {
+static Future<void> startDownload(String url, String title, bool isMp4) async {
     final cleanedTitle = cleanTitle(title);
     currentTitle = cleanedTitle;
 
@@ -366,56 +418,45 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Tenta abrir com cada pacote do 1DM diretamente
     final packages = [
       'idm.internet.download.manager',       // 1DM FREE
       'idm.internet.download.manager.plus',  // 1DM+ (pago)
-      'idm.internet.download.manager.adm',   // ADM
+      'com.dv.adm',                          // ADM (Pacote corrigido)
     ];
 
-    // MÁGICA AQUI: Se for o .txt camuflado (isMp4 = false), forçamos o tipo HLS/M3U8
-    final String mimeType = isMp4 ? "video/mp4" : "application/x-mpegURL";
-
     for (final pkg in packages) {
+      // TENTATIVA 1: Intent direta simplificada (deixa o 1DM ler o link livremente)
       try {
-        final parsedOriginalUrl = Uri.parse(url);
-        final host = parsedOriginalUrl.host;
-        final path = parsedOriginalUrl.path;
-        final scheme = parsedOriginalUrl.scheme;
+        final intentUrl = 'intent:$url#Intent;action=android.intent.action.VIEW;package=$pkg;S.title=${Uri.encodeComponent(cleanedTitle)};end';
+        if (await launchUrl(Uri.parse(intentUrl), mode: LaunchMode.externalApplication)) {
+          return; // Sucesso!
+        }
+      } catch (_) {}
 
-        final intentUrl =
-            'intent://$host$path#Intent;'
-            'scheme=$scheme;'
-            'type=$mimeType;'
-            'action=android.intent.action.VIEW;'
-            'package=$pkg;'
-            'S.url=${Uri.encodeComponent(url)};'
-            'S.filename=${Uri.encodeComponent(cleanedTitle)};'
-            'end';
-
-        await launchUrl(Uri.parse(intentUrl), mode: LaunchMode.externalApplication);
-        return; // Abriu com sucesso
-      } catch (e) {
-        debugPrint("Tentativa falhou para o pacote $pkg: $e");
-      }
+      // TENTATIVA 2: Forçar via "Compartilhamento" (SEND). 
+      // Isso envia o link como texto direto pro 1DM, ativando o rastreador M3U8 dele.
+      try {
+        final sendIntent = 'intent:#Intent;action=android.intent.action.SEND;type=text/plain;S.android.intent.extra.TEXT=${Uri.encodeComponent(url)};package=$pkg;end';
+        if (await launchUrl(Uri.parse(sendIntent), mode: LaunchMode.externalApplication)) {
+          return; // Sucesso!
+        }
+      } catch (_) {}
     }
 
-    // Fallback: scheme idm+ genérico
+    // TENTATIVA 3: Fallback genérico
     try {
       final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
-      await launchUrl(idmUri, mode: LaunchMode.externalApplication);
-      return;
-    } catch (e) {
-      debugPrint("Fallback idm+download falhou: $e");
-    }
+      if (await launchUrl(idmUri, mode: LaunchMode.externalApplication)) {
+        return; // Sucesso!
+      }
+    } catch (_) {}
 
-    // Nenhum 1DM encontrado — mostra diálogo de instalação
+    // Se TODAS as 3 abordagens falharem, aí sim mostramos o erro
     final ctx = navigatorKey.currentContext;
     if (ctx != null) {
       _mostrarDialogo1DMNaoEncontrado(ctx);
     }
   }
-
   static void _mostrarDialogo1DMNaoEncontrado(BuildContext context) {
     showDialog(
       context: context,
