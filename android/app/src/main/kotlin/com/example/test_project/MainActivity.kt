@@ -3,7 +3,10 @@ package com.example.test_project
 import android.app.Presentation
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.media.MediaRouter
 import android.media.MediaRouter.RouteInfo
 import android.os.Build
@@ -23,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private val PIP_CHANNEL   = "cdcine/pip"
     private val CAST_CHANNEL  = "cdcine/cast"
     private val EVENT_CHANNEL = "cdcine/cast_events"
+    private val IDM_CHANNEL   = "cdcine/idm"
 
     // ── MediaRouter ────────────────────────────────────────────────────────
     private lateinit var mediaRouter: MediaRouter
@@ -156,6 +160,18 @@ class MainActivity : FlutterActivity() {
                     eventSink = null
                 }
             })
+
+        // ── 4. Canal 1DM — abre o gestor de downloads via Intent nativo ────
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, IDM_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                if (call.method == "openWith1DM") {
+                    val url      = call.argument<String>("url") ?: ""
+                    val filename = call.argument<String>("filename") ?: ""
+                    result.success(openWith1DM(url, filename))
+                } else {
+                    result.notImplemented()
+                }
+            }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -207,6 +223,41 @@ class MainActivity : FlutterActivity() {
     private fun sendEvent(type: String, data: String?) {
         runOnUiThread {
             eventSink?.success(mapOf("type" to type, "data" to (data ?: "")))
+        }
+    }
+}
+
+    // ── Abre o 1DM FREE ou 1DM+ via Intent nativo ─────────────────────────
+    private fun openWith1DM(url: String, filename: String): Boolean {
+        val packages = listOf(
+            "idm.internet.download.manager",
+            "idm.internet.download.manager.plus",
+            "idm.internet.download.manager.adm"
+        )
+        for (pkg in packages) {
+            if (isPackageInstalled(pkg)) {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setPackage(pkg)
+                        data = Uri.parse(url)
+                        putExtra("url", url)
+                        putExtra("filename", filename)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                    return true
+                } catch (e: Exception) { /* tenta o próximo */ }
+            }
+        }
+        return false
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
         }
     }
 }
