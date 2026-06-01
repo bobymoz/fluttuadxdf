@@ -25,7 +25,7 @@ dependencies:
   chewie: ^1.8.0
   flutter_custom_tabs: ^2.0.0
   webview_flutter: ^4.10.0
-  unity_ads_plugin: ^0.3.30
+  unity_ads_plugin: 0.3.29
   open_filex: ^4.5.2
   
 
