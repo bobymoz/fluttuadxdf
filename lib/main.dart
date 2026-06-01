@@ -366,41 +366,40 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-      // Lista de pacotes do 1DM a tentar (FREE e PLUS)
-  final packages = [
-    'idm.internet.download.manager',       // 1DM FREE
-    'idm.internet.download.manager.plus',  // 1DM+ (pago)
-    'idm.internet.download.manager.adm',   // ADM (alternativo)
-  ];
+    // Tenta abrir com 1DM FREE, 1DM+ ou ADM — o primeiro disponível vence
+    final packages = [
+      'idm.internet.download.manager',       // 1DM FREE
+      'idm.internet.download.manager.plus',  // 1DM+ (pago)
+      'idm.internet.download.manager.adm',   // ADM (alternativo)
+    ];
 
-  for (final pkg in packages) {
-    final intentUrl =
-        'intent://$url#Intent;'
-        'action=android.intent.action.VIEW;'
-        'scheme=https;'
-        'package=$pkg;'
-        'S.url=${Uri.encodeComponent(url)};'
-        'S.filename=${Uri.encodeComponent(cleanedTitle)};'
-        'end';
-
-
-    final uri = Uri.parse(intentUrl);
-    final canOpen = await canLaunchUrl(uri);
-    if (canOpen) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      // Fallback: tenta abrir pelo scheme idm+ diretamente
-      final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
-      final canIdm = await canLaunchUrl(idmUri);
-      if (canIdm) {
-        await launchUrl(idmUri, mode: LaunchMode.externalApplication);
-      } else {
-        // 1DM não encontrado — mostra diálogo de instalação
-        final ctx = navigatorKey.currentContext;
-        if (ctx != null) {
-          _mostrarDialogo1DMNaoEncontrado(ctx);
-        }
+    for (final pkg in packages) {
+      final intentUrl =
+          'intent://$url#Intent;'
+          'action=android.intent.action.VIEW;'
+          'scheme=https;'
+          'package=$pkg;'
+          'S.url=${Uri.encodeComponent(url)};'
+          'S.filename=${Uri.encodeComponent(cleanedTitle)};'
+          'end';
+      final uri = Uri.parse(intentUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
       }
+    }
+
+    // Fallback: scheme idm+ genérico
+    final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
+    if (await canLaunchUrl(idmUri)) {
+      await launchUrl(idmUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // Nenhum 1DM encontrado — mostra diálogo de instalação
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) {
+      _mostrarDialogo1DMNaoEncontrado(ctx);
     }
   }
 
