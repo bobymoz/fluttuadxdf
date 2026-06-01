@@ -366,8 +366,7 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Usa MethodChannel nativo — chama Intent Android directamente
-    // Isto é necessário porque o Flutter bloqueia schemes não-http no Android 11+
+    // Usa MethodChannel nativo — download directo sem passos manuais
     const idmChannel = MethodChannel('cdcine/idm');
     bool abriu = false;
     try {
@@ -1511,6 +1510,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   },
                                 ),
                               ),
+                            const SizedBox(height: 6),
+                            // Dica de download abaixo dos episódios
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset('assets/1dm.png', width: 14, height: 14, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white24, size: 14)),
+                                const SizedBox(width: 6),
+                                const Text("Seleciona um episódio e clica em BAIXAR EP. para transferir", style: TextStyle(color: Colors.white24, fontSize: 11)),
+                              ],
+                            ),
                             const SizedBox(height: 8),
                           ],
 
