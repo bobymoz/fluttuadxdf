@@ -366,42 +366,18 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Tenta abrir pelo scheme nativo do 1DM (funciona com FREE e PLUS)
-    // Não usa canLaunchUrl pois retorna false no Android 11+ sem motivo
+    // Usa MethodChannel nativo — chama Intent Android directamente
+    // Isto é necessário porque o Flutter bloqueia schemes não-http no Android 11+
+    const idmChannel = MethodChannel('cdcine/idm');
     bool abriu = false;
-
-    // Tentativa 1: scheme idm+download (nativo de ambas as versões)
     try {
-      await launchUrl(
-        Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}'),
-        mode: LaunchMode.externalApplication,
-      );
-      abriu = true;
+      final result = await idmChannel.invokeMethod<bool>('openWith1DM', {
+        'url': url,
+        'filename': cleanedTitle,
+      });
+      abriu = result == true;
     } catch (_) {}
 
-    // Tentativa 2: intent para 1DM FREE
-    if (!abriu) {
-      try {
-        await launchUrl(
-          Uri.parse('intent://$url#Intent;action=android.intent.action.VIEW;scheme=https;package=idm.internet.download.manager;S.url=${Uri.encodeComponent(url)};S.filename=${Uri.encodeComponent(cleanedTitle)};end'),
-          mode: LaunchMode.externalApplication,
-        );
-        abriu = true;
-      } catch (_) {}
-    }
-
-    // Tentativa 3: intent para 1DM+ (versão paga)
-    if (!abriu) {
-      try {
-        await launchUrl(
-          Uri.parse('intent://$url#Intent;action=android.intent.action.VIEW;scheme=https;package=idm.internet.download.manager.plus;S.url=${Uri.encodeComponent(url)};S.filename=${Uri.encodeComponent(cleanedTitle)};end'),
-          mode: LaunchMode.externalApplication,
-        );
-        abriu = true;
-      } catch (_) {}
-    }
-
-    // Nenhuma tentativa funcionou — mostra diálogo de instalação
     if (!abriu) {
       final ctx = navigatorKey.currentContext;
       if (ctx != null) _mostrarDialogo1DMNaoEncontrado(ctx);
