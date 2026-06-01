@@ -6,9 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.net.Uri
 import android.media.MediaRouter
 import android.media.MediaRouter.RouteInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -89,7 +89,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // ── 1. Canal PiP (já existia — mantido igual) ──────────────────────
+        // ── 1. Canal PiP ──────────────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PIP_CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method == "enterPiP") {
@@ -107,61 +107,40 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // ── 2. Canal Cast (novo) ───────────────────────────────────────────
+        // ── 2. Canal Cast ─────────────────────────────────────────────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CAST_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-
-                    // Listar TVs/ecrãs disponíveis na rede Wi-Fi
                     "getRoutes" -> result.success(getAvailableRoutes())
-
-                    // Ligar a uma rota pelo índice
                     "selectRoute" -> {
                         val index  = call.argument<Int>("index") ?: 0
                         val routes = getAvailableRouteInfos()
                         if (index < routes.size) {
-                            mediaRouter.selectRoute(
-                                MediaRouter.ROUTE_TYPE_LIVE_VIDEO,
-                                routes[index]
-                            )
+                            mediaRouter.selectRoute(MediaRouter.ROUTE_TYPE_LIVE_VIDEO, routes[index])
                             result.success(true)
                         } else {
                             result.error("INVALID_INDEX", "Rota não encontrada", null)
                         }
                     }
-
-                    // Desligar e voltar ao ecrã do telemóvel
                     "disconnect" -> {
-                        mediaRouter.selectRoute(
-                            MediaRouter.ROUTE_TYPE_LIVE_VIDEO,
-                            mediaRouter.defaultRoute
-                        )
+                        mediaRouter.selectRoute(MediaRouter.ROUTE_TYPE_LIVE_VIDEO, mediaRouter.defaultRoute)
                         currentPresentation?.dismiss()
                         currentPresentation = null
                         result.success(true)
                     }
-
-                    // Verificar se está ligado
-                    "isConnected" -> result.success(
-                        currentPresentation != null && currentPresentation!!.isShowing
-                    )
-
+                    "isConnected" -> result.success(currentPresentation != null && currentPresentation!!.isShowing)
                     else -> result.notImplemented()
                 }
             }
 
-        // ── 3. EventChannel — envia eventos de cast para o Flutter ─────────
+        // ── 3. EventChannel Cast ──────────────────────────────────────────
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-                    eventSink = events
-                }
-                override fun onCancel(arguments: Any?) {
-                    eventSink = null
-                }
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { eventSink = events }
+                override fun onCancel(arguments: Any?) { eventSink = null }
             })
 
-        // ── 4. Canal 1DM — abre o gestor de downloads via Intent nativo ────
+        // ── 4. Canal 1DM — download directo sem passos manuais ───────────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, IDM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method == "openWith1DM") {
@@ -175,7 +154,7 @@ class MainActivity : FlutterActivity() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Helpers
+    // Helpers Cast
     // ═══════════════════════════════════════════════════════════════════════
 
     private fun getAvailableRouteInfos(): List<RouteInfo> {
@@ -226,26 +205,53 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // ── Abre o 1DM FREE ou 1DM+ via Intent nativo ─────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // Helper 1DM — envia download directo (sem passos manuais)
+    // ═══════════════════════════════════════════════════════════════════════
+
     private fun openWith1DM(url: String, filename: String): Boolean {
+        // Pacotes do 1DM em ordem de preferência
         val packages = listOf(
-            "idm.internet.download.manager",
-            "idm.internet.download.manager.plus",
-            "idm.internet.download.manager.adm"
+            "idm.internet.download.manager",       // 1DM FREE
+            "idm.internet.download.manager.plus",  // 1DM+ (pago)
+            "idm.internet.download.manager.adm"    // ADM alternativo
         )
+
         for (pkg in packages) {
-            if (isPackageInstalled(pkg)) {
+            if (!isPackageInstalled(pkg)) continue
+            try {
+                // Intent de download directo — o 1DM aceita este formato
+                // e inicia o download imediatamente sem abrir o navegador
+                val intent = Intent("idm.internet.download.manager.DOWNLOAD").apply {
+                    setPackage(pkg)
+                    putExtra("url", url)
+                    putExtra("title", filename)
+                    putExtra("filename", filename)
+                    putExtra("userAgent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                    putExtra("referUrl", url)
+                    putExtra("isResume", true)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+                return true
+            } catch (e1: Exception) {
+                // Se o Intent de download directo falhar, tenta o intent de VIEW
+                // com os extras que o 1DM usa para iniciar download directo
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                    val fallback = Intent(Intent.ACTION_VIEW).apply {
                         setPackage(pkg)
                         data = Uri.parse(url)
                         putExtra("url", url)
                         putExtra("filename", filename)
+                        putExtra("title", filename)
+                        putExtra("userAgent", "Mozilla/5.0")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    startActivity(intent)
+                    startActivity(fallback)
                     return true
-                } catch (e: Exception) { /* tenta o próximo */ }
+                } catch (e2: Exception) {
+                    // Tenta próximo pacote
+                }
             }
         }
         return false
