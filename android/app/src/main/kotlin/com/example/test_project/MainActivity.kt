@@ -225,7 +225,6 @@ class MainActivity : FlutterActivity() {
             eventSink?.success(mapOf("type" to type, "data" to (data ?: "")))
         }
     }
-}
 
     // ── Abre o 1DM FREE ou 1DM+ via Intent nativo ─────────────────────────
     private fun openWith1DM(url: String, filename: String): Boolean {
