@@ -9,7 +9,8 @@
         android:label="CDCINE"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"> <activity
+        android:usesCleartextTraffic="true">
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
@@ -21,36 +22,42 @@
             android:windowSoftInputMode="adjustResize">
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+              android:resource="@style/NormalTheme"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
+        <meta-data android:name="flutterEmbedding" android:value="2" />
         <activity
-  android:name="com.unity3d.ads.adunit.AdUnitActivity"
-  android:configChanges="fontScale|keyboard|keyboardHidden|locale|mnc|mcc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|touchscreen"
-  android:hardwareAccelerated="true"
-  android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+            android:name="com.unity3d.ads.adunit.AdUnitActivity"
+            android:configChanges="fontScale|keyboard|keyboardHidden|locale|mnc|mcc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|touchscreen"
+            android:hardwareAccelerated="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
-    
-   <queries>
-    <intent>
-        <action android:name="android.intent.action.PROCESS_TEXT"/>
-        <data android:mimeType="text/plain"/>
-    </intent>
-    
-    <intent>
-        <action android:name="android.intent.action.VIEW" />
-        <data android:scheme="idm+download" />
-    </intent>
 
-    <package android:name="idm.internet.download.manager" />
-    <package android:name="idm.internet.download.manager.plus" />
-    <package android:name="idm.internet.download.manager.adm" /> </queries>
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 1DM FREE -->
+        <package android:name="idm.internet.download.manager" />
+        <!-- 1DM+ pago -->
+        <package android:name="idm.internet.download.manager.plus" />
+        <!-- Scheme nativo idm+download -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="idm+download"/>
+        </intent>
+        <!-- Links https/http para launchUrl -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+    </queries>
 </manifest>
