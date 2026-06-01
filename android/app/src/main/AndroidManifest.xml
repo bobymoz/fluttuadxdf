@@ -39,10 +39,12 @@
   android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
     
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-    </queries>
+   <queries>
+    <intent>
+        <action android:name="android.intent.action.PROCESS_TEXT"/>
+        <data android:mimeType="text/plain"/>
+    </intent>
+    <package android:name="idm.internet.download.manager" />
+    <package android:name="idm.internet.download.manager.plus" />
+</queries>
 </manifest>
