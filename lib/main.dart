@@ -366,35 +366,36 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Tenta abrir com 1DM FREE, 1DM+ ou ADM — o primeiro disponível vence
+    // Tenta abrir com cada pacote do 1DM diretamente (sem canLaunchUrl que falha no Android 11+)
     final packages = [
       'idm.internet.download.manager',       // 1DM FREE
       'idm.internet.download.manager.plus',  // 1DM+ (pago)
-      'idm.internet.download.manager.adm',   // ADM (alternativo)
+      'idm.internet.download.manager.adm',   // ADM
     ];
 
     for (final pkg in packages) {
-      final intentUrl =
-          'intent://$url#Intent;'
-          'action=android.intent.action.VIEW;'
-          'scheme=https;'
-          'package=$pkg;'
-          'S.url=${Uri.encodeComponent(url)};'
-          'S.filename=${Uri.encodeComponent(cleanedTitle)};'
-          'end';
-      final uri = Uri.parse(intentUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return;
+      try {
+        final intentUrl =
+            'intent://$url#Intent;'
+            'action=android.intent.action.VIEW;'
+            'scheme=https;'
+            'package=$pkg;'
+            'S.url=${Uri.encodeComponent(url)};'
+            'S.filename=${Uri.encodeComponent(cleanedTitle)};'
+            'end';
+        await launchUrl(Uri.parse(intentUrl), mode: LaunchMode.externalApplication);
+        return; // Abriu com sucesso
+      } catch (_) {
+        // Este pacote não está instalado, tenta o próximo
       }
     }
 
     // Fallback: scheme idm+ genérico
-    final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
-    if (await canLaunchUrl(idmUri)) {
+    try {
+      final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
       await launchUrl(idmUri, mode: LaunchMode.externalApplication);
       return;
-    }
+    } catch (_) {}
 
     // Nenhum 1DM encontrado — mostra diálogo de instalação
     final ctx = navigatorKey.currentContext;
