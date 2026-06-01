@@ -339,7 +339,7 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
 }
 
 // ==========================================
-// DOWNLOADS — via 1DM+ (intent externo)
+// DOWNLOADS — via 1DM (intent externo)
 // ==========================================
 class DownloadManager {
   // Mantemos notifiers para compatibilidade com DraggableOverlay (não usado ativamente)
@@ -350,13 +350,13 @@ class DownloadManager {
   // CancelToken ainda importado mas não usado (mantém imports funcionais)
   static CancelToken? cancelToken;
 
-  /// Abre o 1DM+ com a URL do vídeo via Android Intent.
+  /// Abre o 1DM com a URL do vídeo via Android Intent.
   /// Se o app não estiver instalado mostra diálogo pedindo instalação.
   static Future<void> startDownload(String url, String title, bool isMp4) async {
     final cleanedTitle = cleanTitle(title);
     currentTitle = cleanedTitle;
 
-    // Salva no histórico local de "enviados para 1DM+"
+    // Salva no histórico local de "enviados para 1DM"
     final prefs = await SharedPreferences.getInstance();
     List<String> hist = prefs.getStringList('downloads_1dm') ?? [];
     final entry = json.encode({'url': url, 'title': cleanedTitle, 'ts': DateTime.now().toIso8601String()});
@@ -366,13 +366,13 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Intent Android para abrir 1DM+ diretamente com a URL
-    // scheme: intent://  host: download  package: idm.internet.download.manager.plus
+    // Intent Android para abrir 1DM (versão FREE) diretamente com a URL
+    // scheme: intent://  host: download  package: idm.internet.download.manager
     final intentUrl =
         'intent://$url#Intent;'
         'action=android.intent.action.VIEW;'
         'scheme=https;'
-        'package=idm.internet.download.manager.plus;'
+        'package=idm.internet.download.manager;'
         'S.url=${Uri.encodeComponent(url)};'
         'S.filename=${Uri.encodeComponent(cleanedTitle)};'
         'end';
@@ -388,7 +388,7 @@ class DownloadManager {
       if (canIdm) {
         await launchUrl(idmUri, mode: LaunchMode.externalApplication);
       } else {
-        // 1DM+ não encontrado — mostra diálogo de instalação
+        // 1DM não encontrado — mostra diálogo de instalação
         final ctx = navigatorKey.currentContext;
         if (ctx != null) {
           _mostrarDialogo1DMNaoEncontrado(ctx);
@@ -412,17 +412,17 @@ class DownloadManager {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Ícone do 1DM+
+              // Ícone do 1DM
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: Image.asset('assets/1dm.png', width: 72, height: 72,
                     errorBuilder: (_, __, ___) => const Icon(Icons.download, color: Colors.white, size: 60)),
               ),
               const SizedBox(height: 16),
-              const Text("1DM+ não encontrado", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text("1DM não encontrado", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
               const Text(
-                "Para baixar este conteúdo, instala o app 1DM+ (IDM+ Download Manager).\nÉ gratuito e o único capaz de baixar este tipo de vídeo.",
+                "Para baixar este conteúdo, instala o app 1DM (IDM Download Manager).\nÉ gratuito e o único capaz de baixar este tipo de vídeo.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
               ),
@@ -438,12 +438,12 @@ class DownloadManager {
                   onPressed: () {
                     Navigator.pop(ctx);
                     launchUrl(
-                      Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus'),
+                      Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager'),
                       mode: LaunchMode.externalApplication,
                     );
                   },
                   icon: const Icon(Icons.download, color: Colors.white),
-                  label: const Text("Baixar 1DM+ na Play Store", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  label: const Text("Baixar 1DM na Play Store", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(height: 10),
@@ -994,8 +994,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _mostrarRewardedPopup(
         mensagemDownload: "Para iniciar a transferência,",
         onSuccess: () {
-          ScaffoldMessenger.of(context).removeCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Row(children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)), SizedBox(width: 12), Text("A preparar transferência...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]), backgroundColor: const Color(0xFFE50914), duration: const Duration(seconds: 30), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
           DownloadManager.startDownload(serverEscolhido!['url'], nomeVideo, serverEscolhido['isMp4']);
         }
       );
@@ -1364,7 +1362,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   child: InkWell(
                                     focusColor: Colors.white24,
                                     onTap: () { setState(() => _epAtivoIndex = i); _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); },
-                                    onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                       decoration: BoxDecoration(
@@ -1385,7 +1382,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         IconButton(
                                           icon: Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white54, size: 18)),
                                           onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
-                                          tooltip: "Baixar com 1DM+",
+                                          tooltip: "Baixar com 1DM",
                                           iconSize: 18,
                                         ),
                                       ]),
@@ -1427,7 +1424,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                            if (tipo == 'filmes') Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => _abrirServidores(widget.item['id'].toString(), nomeTitulo, true), child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), const Text("BAIXAR", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            if (tipo == 'filmes' || (tipo != 'filmes' && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length)) Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () { if (tipo == 'filmes') { _abrirServidores(widget.item['id'].toString(), nomeTitulo, true); } else { final ep = episodios[_epAtivoIndex]; _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true); } }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), Text(tipo == 'filmes' ? "BAIXAR" : "BAIXAR EP.", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                           ]),
                           const SizedBox(height: 10),
                           Row(children: [
@@ -1518,7 +1515,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                             }),
                                           ),
                                           onPressed: () { setState(() => _epAtivoIndex = i); _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); },
-                                          onLongPress: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
                                           child: isAtivo
                                               ? const Icon(Icons.play_arrow, color: Colors.white, size: 22)
                                               : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)),
@@ -1529,7 +1525,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             const SizedBox(height: 8),
-                            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Row(children: [Icon(Icons.info_outline, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text("Dica: Segura o episódio para baixar com 1DM+.", style: TextStyle(color: Colors.blue, fontSize: 11)))])),
                           ],
 
                           if (recomendacoes.isNotEmpty) ...[
@@ -1723,7 +1718,7 @@ class _TvTabState extends State<TvTab> with AutomaticKeepAliveClientMixin {
       children: [
         Padding(padding: const EdgeInsets.all(12), child: TextField(style: const TextStyle(color: Colors.white, fontSize: 14), onChanged: (q) => setState(() { _search = q; _filtered = q.isEmpty ? _channels : _channels.where((c) => c['name']!.toLowerCase().contains(q.toLowerCase()) || c['group']!.toLowerCase().contains(q.toLowerCase())).toList(); }), decoration: InputDecoration(hintText: "Pesquisar canal ou grupo...", filled: true, fillColor: Colors.grey[900], prefixIcon: const Icon(Icons.search, color: Colors.grey), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none), contentPadding: EdgeInsets.zero))),
         if (_loading) Expanded(child: Center(child: CircularProgressIndicator(color: const Color(0xFFE50914))))
-        else Expanded(child: ListView.builder(itemCount: _filtered.length, itemBuilder: (ctx, i) { final ch = _filtered[i]; final showGroup = i == 0 || _filtered[i - 1]['group'] != ch['group']; return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (showGroup && _search.isEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [Container(width: 3, height: 14, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(ch['group']!, style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1))])), Material(color: Colors.transparent, child: InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _TvPlayerScreen(name: ch['name']!, url: ch['url']!, logo: ch['logo']!))), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2), leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: ch['logo']!.isNotEmpty ? CachedNetworkImage(imageUrl: ch['logo']!, width: 52, height: 34, fit: BoxFit.contain, errorWidget: (_,__,___)=>Container(width: 52, height: 34, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white24))) : Container(width: 52, height: 34, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white24))), title: Text(ch['name']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: _search.isNotEmpty && ch['group']!.isNotEmpty ? Text(ch['group']!, style: TextStyle(color: Colors.grey[600], fontSize: 11), maxLines: 1) : null, trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: Colors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.withOpacity(0.35))), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.red, size: 7), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))])))))]); }))
+        else Expanded(child: ListView.builder(itemCount: _filtered.length, itemBuilder: (ctx, i) { final ch = _filtered[i]; final showGroup = i == 0 || _filtered[i - 1]['group'] != ch['group']; return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (showGroup && _search.isEmpty) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), Row(children: [Container(width: 3, height: 14, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), Text(ch['group']!, style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1))])), Material(color: Colors.transparent, child: InkWell(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _TvPlayerScreen(name: ch['name']!, url: ch['url']!, logo: ch['logo']!))), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2), leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: ch['logo']!.isNotEmpty ? CachedNetworkImage(imageUrl: ch['logo']!, width: 52, height: 34, fit: BoxFit.contain, errorWidget: (_,__,___)=>Container(width: 52, height: 34, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white24))) : Container(width: 52, height: 34, color: Colors.grey[900], child: const Icon(Icons.tv, color: Colors.white24))), title: Text(ch['name']!, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis), subtitle: _search.isNotEmpty && ch['group']!.isNotEmpty ? Text(ch['group']!, style: TextStyle(color: Colors.grey[600], fontSize: 11), maxLines: 1) : null, trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: Colors.red.withOpacity(0.12), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.withOpacity(0.35))), child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.circle, color: Colors.red, size: 7), SizedBox(width: 4), Text("AO VIVO", style: TextStyle(color: Colors.red, fontSize: 9, fontWeight: FontWeight.bold))])))))]); }))
       ],
     );
   }
@@ -1764,7 +1759,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         title: Row(children: [
           Image.asset('assets/1dm.png', width: 26, height: 26, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 22)),
           const SizedBox(width: 10),
-          const Text("Enviados ao 1DM+", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          const Text("Enviados ao 1DM", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ]),
       ),
       body: Column(children: [
@@ -1776,10 +1771,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           child: Row(children: [
             Image.asset('assets/1dm.png', width: 32, height: 32, errorBuilder: (_,__,___) => const Icon(Icons.info, color: Colors.blue, size: 28)),
             const SizedBox(width: 12),
-            const Expanded(child: Text("O download é gerido pelo app 1DM+.\nAbre o 1DM+ para ver o progresso e os ficheiros.", style: TextStyle(color: Colors.blue, fontSize: 12, height: 1.5))),
+            const Expanded(child: Text("O download é gerido pelo app 1DM.\nAbre o 1DM para ver o progresso e os ficheiros.", style: TextStyle(color: Colors.blue, fontSize: 12, height: 1.5))),
             TextButton(
-              onPressed: () => launchUrl(Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager.plus'), mode: LaunchMode.externalApplication),
-              child: const Text("Obter\n1DM+", textAlign: TextAlign.center, style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
+              onPressed: () => launchUrl(Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager'), mode: LaunchMode.externalApplication),
+              child: const Text("Obter\n1DM", textAlign: TextAlign.center, style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
             ),
           ]),
         ),
@@ -1803,11 +1798,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                   return ListTile(
                     leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.asset('assets/1dm.png', width: 40, height: 40, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.greenAccent, size: 36))),
                     title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(tsStr.isNotEmpty ? "Enviado a $tsStr · Verifica no 1DM+" : "Verifica no 1DM+", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    subtitle: Text(tsStr.isNotEmpty ? "Enviado a $tsStr · Verifica no 1DM" : "Verifica no 1DM", style: const TextStyle(color: Colors.white38, fontSize: 11)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(
                         icon: const Icon(Icons.open_in_new, color: Colors.blueAccent, size: 20),
-                        tooltip: "Abrir no 1DM+",
+                        tooltip: "Abrir no 1DM",
                         onPressed: () => DownloadManager.startDownload(e['url'] as String, title, true),
                       ),
                       IconButton(
