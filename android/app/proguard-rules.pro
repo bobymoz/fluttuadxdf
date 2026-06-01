@@ -7,3 +7,4 @@
 -dontwarn okio.**
 -keepattributes *Annotation*
 -keepattributes SourceFile,LineNumberTable
+-dontwarn com.google.android.play.core.splitcompat.**
