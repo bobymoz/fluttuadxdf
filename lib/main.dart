@@ -352,7 +352,39 @@ class DownloadManager {
 
   /// Abre o 1DM com a URL do vídeo via Android Intent.
   /// Se o app não estiver instalado mostra diálogo pedindo instalação.
-  static Future<void> startDownload(String url, String title, bool isMp4) async {
+static Future<void> startDownload(String url, String title, bool isMp4) async {
+    final cleanedTitle = cleanTitle(title);
+    currentTitle = cleanedTitle;
+
+    // Salva no histórico local de "enviados para 1DM"
+    final prefs = await SharedPreferences.getInstance();
+    List<String> hist = prefs.getStringList('downloads_1dm') ?? [];
+    final entry = json.encode({'url': url, 'title': cleanedTitle, 'ts': DateTime.now().toIso8601String()});
+    if (!hist.any((e) { try { return json.decode(e)['url'] == url; } catch(_) { return false; } })) {
+      hist.insert(0, entry);
+      if (hist.length > 100) hist = hist.sublist(0, 100);
+      await prefs.setStringList('downloads_1dm', hist);
+    }
+
+    final packages = [
+      'idm.internet.download.manager',       // 1DM FREE
+      'idm.internet.download.manager.plus',  // 1DM+ (pago)
+      'idm.internet.download.manager.adm',   // ADM
+    ];
+
+    // MÁGICA AQUI: Se for o .txt camuflado (isMp4 = false), forçamos o tipo HLS/M3U8
+    final String mimeType = isMp4 ? "video/mp4" : "application/x-mpegURL";
+
+    for (final pkg in packages) {
+      try {
+        final parsedOriginalUrl = Uri.parse(url);
+        final host = parsedOriginalUrl.host;
+        final path = parsedOriginalUrl.path;
+        final scheme = parsedOriginalUrl.scheme;
+
+        final intentUrl =
+            'intent://$host$path#Intent;'
+            'scheme=$scheme;'  static Future<void> startDownload(String url, String title, bool isMp4) async {
     final cleanedTitle = cleanTitle(title);
     currentTitle = cleanedTitle;
 
@@ -404,6 +436,35 @@ class DownloadManager {
     }
   }
 
+            'type=$mimeType;' // <--- Diz ao 1DM para tratar como vídeo/stream e não como texto!
+            'action=android.intent.action.VIEW;'
+            'package=$pkg;'
+            'S.url=${Uri.encodeComponent(url)};'
+            'S.filename=${Uri.encodeComponent(cleanedTitle)};'
+            'end';
+
+        await launchUrl(Uri.parse(intentUrl), mode: LaunchMode.externalApplication);
+        return; // Abriu com sucesso
+      } catch (e) {
+        debugPrint("Tentativa falhou para o pacote $pkg: $e");
+      }
+    }
+
+    // Fallback: scheme idm+ genérico (o 1DM costuma interceptar isso diretamente para download)
+    try {
+      final idmUri = Uri.parse('idm+download://?url=${Uri.encodeComponent(url)}&filename=${Uri.encodeComponent(cleanedTitle)}');
+      await launchUrl(idmUri, mode: LaunchMode.externalApplication);
+      return;
+    } catch (e) {
+      debugPrint("Fallback idm+download falhou: $e");
+    }
+
+    // Nenhum 1DM encontrado — mostra diálogo de instalação
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) {
+      _mostrarDialogo1DMNaoEncontrado(ctx);
+    }
+  }
   static void _mostrarDialogo1DMNaoEncontrado(BuildContext context) {
     showDialog(
       context: context,
