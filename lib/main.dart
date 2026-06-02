@@ -215,8 +215,25 @@ Widget _buildPlayerSkeleton() {
   );
 }
 
-class CDcineApp extends StatelessWidget {
+class CDcineApp extends StatefulWidget {
   const CDcineApp({super.key});
+  @override State<CDcineApp> createState() => _CDcineAppState();
+}
+class _CDcineAppState extends State<CDcineApp> with WidgetsBindingObserver {
+  @override void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+  @override void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Invalida o acesso sem anúncios quando o app é terminado/fechado
+    if (state == AppLifecycleState.detached) {
+      AdRemovalManager.instance.invalidate();
+    }
+  }
   @override Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
@@ -1160,8 +1177,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) {
+  void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) async {
+    // Se o utilizador já removeu os anúncios (código válido e dentro das 24h), passa directamente
+    final adFree = await AdRemovalManager.instance.isAdFree();
+    if (adFree) { onSuccess(); return; }
+
     if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
+    if (!mounted) return;
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
       builder: (ctxPopup) => PopScope(
@@ -1169,7 +1191,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
           onSuccess: () { 
-            Navigator.of(ctxPopup, rootNavigator: true).pop(); // Bug de pop consertado!
+            Navigator.of(ctxPopup, rootNavigator: true).pop();
             onSuccess(); 
           }
         )
@@ -1831,35 +1853,154 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
+// ==========================================
 // SISTEMA DE ANÚNCIOS (WEBVIEW IN-APP POPUP)
 // ==========================================
+
+// ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
+// Os códigos estão em Base64 internamente — sem chamadas ao servidor.
+// URL 1 → shrtslug.biz/cdom   → código: Y2RjaW5lZXR3a2pjamJoZ3Vsamd2eWlqdWhu
+// URL 2 → stfly.vip/cdom2     → código: YWRmZ2FmZ2FmZ2FmY2Zjc2tq
+class _AdRemovalData {
+  final String url;
+  final String codeB64;
+  const _AdRemovalData(this.url, this.codeB64);
+  String get expected {
+    final bytes = base64Decode(codeB64);
+    return String.fromCharCodes(bytes).trim();
+  }
+}
+
+class AdRemovalManager {
+  AdRemovalManager._();
+  static final AdRemovalManager instance = AdRemovalManager._();
+
+  static const List<_AdRemovalData> _entries = [
+    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lZXR3a2pjamJoZ3Vsamd2eWlqdWhu'),
+    _AdRemovalData('https://stfly.vip/cdom2',    'YWRmZ2FmZ2FmZ2FmY2Zjc2tq'),
+  ];
+
+  static const String _keyExpiry   = 'adrem_expiry_ms';
+  static const String _keyClicked  = 'adrem_url_clicked';
+  static const String _keyIdx      = 'adrem_selected_idx';
+  static const Duration _validity  = Duration(hours: 24);
+
+  // Estado de sessão (só válido enquanto o processo de remoção está activo)
+  int?  _sessionIdx;
+  bool  _sessionClicked = false;
+
+  /// true se o utilizador já tem acesso sem anúncios (dentro das 24h)
+  Future<bool> isAdFree() async {
+    final prefs = await SharedPreferences.getInstance();
+    final exp = prefs.getInt(_keyExpiry);
+    if (exp == null) return false;
+    return DateTime.now().millisecondsSinceEpoch < exp;
+  }
+
+  /// Escolhe aleatoriamente uma entrada e devolve (url, índice).
+  Future<(String, int)> beginSession() async {
+    final idx = DateTime.now().millisecond % _entries.length; // pseudo-aleatório sem import de dart:math
+    _sessionIdx      = idx;
+    _sessionClicked  = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyIdx, idx);
+    await prefs.setBool(_keyClicked, false);
+    return (_entries[idx].url, idx);
+  }
+
+  /// Chamado quando o utilizador abre o link no browser.
+  Future<void> markClicked() async {
+    _sessionClicked = true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyClicked, true);
+  }
+
+  /// Valida o código. [isTV] = true → não exige clique no link.
+  Future<_AdRemResult> validate(String input, {required bool isTV}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final idx    = prefs.getInt(_keyIdx) ?? _sessionIdx;
+    if (idx == null) return _AdRemResult.error('Sessão inválida. Toca em "Remover Anúncios" primeiro.');
+
+    final clicked = prefs.getBool(_keyClicked) ?? _sessionClicked;
+    if (!isTV && !clicked) {
+      return _AdRemResult.invalid('Tens de abrir o link primeiro para obter o código!');
+    }
+
+    final expected = _entries[idx].expected;
+    if (input.trim().isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
+    if (input.trim() != expected) return _AdRemResult.invalid('Código incorrecto. Verifica e tenta de novo.');
+
+    // Código correcto → guarda expiração
+    final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
+    await prefs.setInt(_keyExpiry, exp);
+    _sessionIdx     = null;
+    _sessionClicked = false;
+    await prefs.remove(_keyClicked);
+    await prefs.remove(_keyIdx);
+    return _AdRemResult.success;
+  }
+
+  /// Invalida o acesso (chamado ao fechar o app).
+  Future<void> invalidate() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyExpiry);
+    await prefs.remove(_keyClicked);
+    await prefs.remove(_keyIdx);
+    _sessionIdx     = null;
+    _sessionClicked = false;
+  }
+}
+
+enum _AdRemResult { success, invalid, error }
+extension _AdRemResultX on _AdRemResult {
+  bool get isSuccess => this == _AdRemResult.success;
+}
+
 class _RewardedPopup extends StatefulWidget {
   final VoidCallback onSuccess;
   final String tituloAdicional;
   const _RewardedPopup({required this.onSuccess, this.tituloAdicional = "Para continuar a assistir"});
   @override State<_RewardedPopup> createState() => _RewardedPopupState();
 }
+
 class _RewardedPopupState extends State<_RewardedPopup> {
+  // ── Estado geral ──────────────────────────────────────────────────────────
   int _countdown60 = 60;
   int _countdown15 = 15;
-  bool _aguardando60 = false;
+  bool _aguardando60  = false;
   bool _anuncioAberto = false;
-  bool _podeFechar = false;
+  bool _podeFechar    = false;
   Timer? _timer60;
   Timer? _timer15;
   WebViewController? _webCtrl;
 
+  // ── Estado do ecrã de remoção de anúncios ─────────────────────────────────
+  _RemStep _remStep = _RemStep.hidden; // hidden = não mostrado ainda
+  String  _remUrl      = '';
+  bool    _remLoading  = false;
+  bool    _remUrlOpen  = false;   // utilizador clicou no link nesta sessão
+  String  _remError    = '';
+  int     _remCountdown = 0;      // contagem curta após abrir o link
+  Timer?  _remTimer;
+  final _remCodeCtrl = TextEditingController();
+
+  bool get _isTV => navigatorKey.currentContext != null &&
+      MediaQuery.of(navigatorKey.currentContext!).size.width > 900;
+
   @override void initState() {
     super.initState();
-    if (_adsterraLink.length < 10) exit(0); // Anti-tamper
+    if (_adsterraLink.length < 10) exit(0);
   }
 
   @override void dispose() {
     _timer60?.cancel();
     _timer15?.cancel();
+    _remTimer?.cancel();
+    _remCodeCtrl.dispose();
     super.dispose();
   }
 
+  // ── Métodos do popup de anúncio (mantidos iguais) ─────────────────────────
   void _iniciarContagemLenta() {
     setState(() { _aguardando60 = true; _countdown60 = 60; });
     _timer60 = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -1874,7 +2015,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          // Bloqueia tentativas de abrir browser externo via intent
           final uri = Uri.tryParse(req.url);
           if (uri != null && uri.scheme == 'intent') return NavigationDecision.prevent;
           return NavigationDecision.navigate;
@@ -1887,7 +2027,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
-      // Abre automaticamente no navegador externo quando faltam 5 segundos
       if (_countdown15 == 5) {
         launchUrl(Uri.parse(_adsterraLink), mode: LaunchMode.externalApplication);
       }
@@ -1895,8 +2034,77 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     });
   }
 
+  // ── Métodos da remoção de anúncios ────────────────────────────────────────
+  Future<void> _iniciarRemocao() async {
+    setState(() { _remLoading = true; _remError = ''; });
+    try {
+      final (url, _) = await AdRemovalManager.instance.beginSession();
+      setState(() {
+        _remUrl     = url;
+        _remStep    = _RemStep.openLink;
+        _remLoading = false;
+        _remUrlOpen = false;
+        _remError   = '';
+      });
+    } catch (_) {
+      setState(() { _remLoading = false; _remError = 'Erro. Tenta novamente.'; });
+    }
+  }
+
+  Future<void> _abrirLink() async {
+    final uri = Uri.parse(_remUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await AdRemovalManager.instance.markClicked();
+    setState(() {
+      _remUrlOpen = true;
+      _remStep    = _RemStep.enterCode;
+      _remCountdown = 5;
+    });
+    // Pequena contagem regressiva para dar tempo ao utilizador de copiar o código
+    _remTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _remCountdown--);
+      if (_remCountdown <= 0) t.cancel();
+    });
+  }
+
+  Future<void> _validarCodigo() async {
+    if (_remLoading) return;
+    setState(() { _remLoading = true; _remError = ''; });
+    final result = await AdRemovalManager.instance.validate(
+      _remCodeCtrl.text,
+      isTV: _isTV,
+    );
+    if (!mounted) return;
+    if (result.isSuccess) {
+      setState(() { _remStep = _RemStep.success; _remLoading = false; });
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) widget.onSuccess();
+    } else {
+      setState(() {
+        _remLoading = false;
+        _remError   = result == _AdRemResult.invalid
+            ? 'Código incorrecto. Verifica e tenta de novo.'
+            : 'Erro ao validar. Tenta novamente.';
+      });
+    }
+  }
+
+  void _voltarAoInicio() {
+    _remTimer?.cancel();
+    _remCodeCtrl.clear();
+    setState(() {
+      _remStep      = _RemStep.hidden;
+      _remUrl       = '';
+      _remUrlOpen   = false;
+      _remError     = '';
+      _remCountdown = 0;
+    });
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override Widget build(BuildContext context) {
-    // Modo WebView — anúncio a correr dentro do app
+    // Ecrã WebView do anúncio
     if (_anuncioAberto && _webCtrl != null) {
       return Dialog(
         insetPadding: const EdgeInsets.all(12),
@@ -1907,7 +2115,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
           decoration: BoxDecoration(color: const Color(0xFF0B0B0F), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white12)),
           child: Column(
             children: [
-              // Header com contador e botão fechar
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: const BoxDecoration(color: Color(0xFF141414), borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16))),
@@ -1937,7 +2144,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                   ],
                 ),
               ),
-              // WebView com o anúncio
               Expanded(
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
@@ -1950,7 +2156,20 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       );
     }
 
-    // Tela de escolha inicial
+    // Ecrã de remoção de anúncios (sub-fluxo)
+    if (_remStep != _RemStep.hidden) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+        child: Container(
+          decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+          padding: const EdgeInsets.all(24),
+          child: _buildRemocaoStep(),
+        ),
+      );
+    }
+
+    // ── Ecrã principal de escolha ─────────────────────────────────────────────
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -1965,6 +2184,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const SizedBox(height: 8),
             const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
             const SizedBox(height: 24),
+            // Opção 1: Ver anúncio rápido
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -1976,15 +2196,204 @@ class _RewardedPopupState extends State<_RewardedPopup> {
               ),
             ),
             const SizedBox(height: 12),
+            // Opção 2: Aguardar 60 segundos
             SizedBox(
               width: double.infinity,
               child: _aguardando60
                   ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))]))
                   : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))),
             ),
+            const SizedBox(height: 12),
+            // Opção 3: Remover anúncios (código gratuito)
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)))
+                  : OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _iniciarRemocao,
+                      icon: const Icon(Icons.no_ads_outlined, color: Color(0xFFE50914), size: 18),
+                      label: const Text("Remover anúncios (grátis)", style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
           ],
         ),
       ),
     );
   }
+
+  // ── Sub-fluxo: ecrãs de remoção de anúncios ──────────────────────────────
+  Widget _buildRemocaoStep() {
+    switch (_remStep) {
+      case _RemStep.hidden:
+        return const SizedBox.shrink();
+
+      // Passo 1: Explicação + link a abrir
+      case _RemStep.openLink:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.no_ads_outlined, color: Color(0xFFE50914), size: 52),
+            const SizedBox(height: 14),
+            Text("Remover Anúncios", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            // Explicação clara do processo
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text("Como funciona:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  SizedBox(height: 8),
+                  _RemStep_(icon: Icons.open_in_browser, text: "Abre o link abaixo no navegador"),
+                  _RemStep_(icon: Icons.ads_click,       text: "Passa pelos anúncios (é assim que o CDCINE se mantém grátis)"),
+                  _RemStep_(icon: Icons.copy_outlined,   text: "Copia o código que aparece"),
+                  _RemStep_(icon: Icons.keyboard,        text: "Volta aqui e digita o código"),
+                  _RemStep_(icon: Icons.check_circle_outline, text: "24h sem anúncios! (reinicia se fechares o app)"),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Destaque TV
+            if (_isTV)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.amber.withOpacity(0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.withOpacity(0.3))),
+                child: const Row(children: [
+                  Icon(Icons.tv, color: Colors.amber, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(child: Text("Na TV: abre o link no teu telemóvel, copia o código e digita aqui.", style: TextStyle(color: Colors.amber, fontSize: 12))),
+                ]),
+              ),
+            // Link clicável
+            GestureDetector(
+              onTap: _abrirLink,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5))),
+                child: Row(children: [
+                  const Icon(Icons.link, color: Color(0xFFE50914), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_remUrl, style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.open_in_new, color: Color(0xFFE50914), size: 16),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text("O código é completamente gratuito 🎉", style: TextStyle(color: Colors.green, fontSize: 11), textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                autofocus: true,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _isTV
+                    ? () => setState(() { _remStep = _RemStep.enterCode; })
+                    : _abrirLink,
+                icon: Icon(_isTV ? Icons.keyboard : Icons.open_in_browser, color: Colors.white),
+                label: Text(_isTV ? "Já tenho o código →" : "Abrir link e obter código", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Voltar", style: TextStyle(color: Colors.white54))),
+          ],
+        );
+
+      // Passo 2: Digitar o código
+      case _RemStep.enterCode:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.vpn_key_rounded, color: Color(0xFFE50914), size: 48),
+            const SizedBox(height: 14),
+            Text("Digita o código", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Cola ou digita o código que encontraste na página:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 16),
+            // Contador curto (só no telemóvel após abrir o link)
+            if (_remCountdown > 0 && !_isTV)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text("Aguarda ${_remCountdown}s antes de continuar...", style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            TextField(
+              controller: _remCodeCtrl,
+              autofocus: true,
+              enabled: _isTV || (_remUrlOpen && _remCountdown <= 0),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 3),
+              decoration: InputDecoration(
+                hintText: 'CÓDIGO AQUI',
+                hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 1),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              onSubmitted: (_) => _validarCodigo(),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                  : ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: (_isTV || (_remUrlOpen && _remCountdown <= 0)) ? _validarCodigo : null,
+                      child: const Text("Confirmar Código", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Recomeçar", style: TextStyle(color: Colors.white38))),
+          ],
+        );
+
+      // Passo 3: Sucesso
+      case _RemStep.success:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 72),
+            const SizedBox(height: 16),
+            Text("Anúncios Removidos!", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 26, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            const Text("🎉 24 horas sem anúncios!\nSe fechar e reabrir o app, o processo repete-se.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)),
+          ],
+        );
+    }
+  }
 }
+
+// Helper widget para os passos da explicação
+class _RemStep_ extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _RemStep_({required this.icon, required this.text});
+  @override Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFFE50914), size: 14),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.4))),
+      ]),
+    );
+  }
+}
+
+enum _RemStep { hidden, openLink, enterCode, success }
