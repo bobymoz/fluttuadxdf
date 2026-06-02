@@ -1951,9 +1951,14 @@ class AdRemovalManager {
   }
 }
 
-enum _AdRemResult { success, invalid, error }
-extension _AdRemResultX on _AdRemResult {
-  bool get isSuccess => this == _AdRemResult.success;
+class _AdRemResult {
+  final bool isSuccess;
+  final bool isError;
+  final String? message;
+  const _AdRemResult._({required this.isSuccess, required this.isError, this.message});
+  static const _AdRemResult success = _AdRemResult._(isSuccess: true,  isError: false);
+  static _AdRemResult invalid(String msg) => _AdRemResult._(isSuccess: false, isError: false, message: msg);
+  static _AdRemResult error(String msg)   => _AdRemResult._(isSuccess: false, isError: true,  message: msg);
 }
 
 class _RewardedPopup extends StatefulWidget {
@@ -2083,9 +2088,9 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     } else {
       setState(() {
         _remLoading = false;
-        _remError   = result == _AdRemResult.invalid
-            ? 'Código incorrecto. Verifica e tenta de novo.'
-            : 'Erro ao validar. Tenta novamente.';
+        _remError   = result.isError
+            ? (result.message ?? 'Erro ao validar. Tenta novamente.')
+            : (result.message ?? 'Código incorrecto. Verifica e tenta de novo.');
       });
     }
   }
@@ -2216,7 +2221,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: _iniciarRemocao,
-                      icon: const Icon(Icons.no_ads_outlined, color: Color(0xFFE50914), size: 18),
+                      icon: const Icon(Icons.block, color: Color(0xFFE50914), size: 18),
                       label: const Text("Remover anúncios (grátis)", style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.w600)),
                     ),
             ),
@@ -2241,7 +2246,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.no_ads_outlined, color: Color(0xFFE50914), size: 52),
+            const Icon(Icons.block, color: Color(0xFFE50914), size: 52),
             const SizedBox(height: 14),
             Text("Remover Anúncios", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1)),
             const SizedBox(height: 10),
