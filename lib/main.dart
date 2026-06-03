@@ -40,7 +40,7 @@ class SecurityDecoyManager {
 // ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
-String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 119, 119, 119, 46, 112, 114, 111, 102, 105, 116, 97, 98, 108, 101, 99, 112, 109, 114, 97, 116, 101, 110, 101, 116, 119, 111, 114, 107, 46, 99, 111, 109, 47, 106, 114, 101, 99, 121, 104, 116, 113, 63, 107, 101, 121, 61, 98, 98, 97, 98, 48, 101, 50, 50, 102, 50, 102, 99, 54, 49, 51, 52, 53, 99, 49, 56, 100, 55, 48, 102, 57, 52, 102, 98, 99, 97, 101, 53]);
+String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 99, 115, 99, 100, 110, 46, 99, 111, 109, 47, 115, 99, 114, 105, 112, 116, 47, 97, 99, 108, 105, 98, 46, 106, 115]);
 
 String get _xAppData {
   const String rawToken = "e@PkOFd4c497w3sSB#sX6zGd0LB99wClG4Oeg!APbFuXntwCta1ZpssySVM42uOEtfyjxtbt2KRXfphRLyz83N@Uwb8ifQFP09RvmOmZA5r4O#sRE/zhKZ/jgGZLuzQR+SIKHL7CetT0FQjH//aywJngtiRa4HBvu9vXFRx9OX4U5+FjqXqqQUDa3mW+N1ZENSi1WXNSSM+Yy7omuI4EZ5xDAz+LHLbjBOSYZjNAnyer5fxKGkkySMOWW5gGNRDyesFJJP8nurYCqd5wKUVqCcnQfMD1dp6wTGaKMNSlv95GlpkPSLYoB2G5pC+IE+et3EZ7CUG/x9eFOG+PkepRpp01FjPtmQ64Q1+e68GU8rtS4gwhTk2ssbzq1IiwxesBTPqeSvyu//s6C0otNGSYIkqGIXadiomNNACPhjFFVOOhvDEkvShlZnfG+whDv8gK2L4jxHbAcJrMAWo3WYMn640+55++8dBb76oMDQQmZaX/hYmdDI/FLKLH0O3nmKKD9GRqkVIhtM5JsdKhewTwU3i/lThJiP7XmmKZadZmSYFDIcmtc9nof/NBjdDlOUl7ILxFVNXBNoZFMZgJ4up3ttGp+ktS0IjB+KpfTrDt6dV5BkEPoQ3lTaGH7HzKwA+4jU9zNNC0xOUmp+n8T93dJ8LyKfcxdCxS5MSOUhD+j/R0BSqGyIab7l7MqCrDUnzqY2CsSum7VK7C2vWnpS7nkhrULjfUGyAN0Sl6Ztztk5x7Lhs16UARlZnO1ZItD5aNd9KU6iuxIroffWLmbHccGPW2CQ1yYe/f5r+9M5LcKHpd2e/pZ5+QzGD7NcXI9QoIhDjoFV2LFopZFEWHEBUaE7MPF8MymF3sdLg3uR+x7chq5JvdLtE8SDAU6hB8fgqG/LQmgZBFcjBFIWWHYH69t/DA9i2/blQQEPovjPJ2fCEbQKwtvlTyC5IiZVir7Yw8FUQJ/5U/O8VvDoA7ioKoxaAbDLSvcH4JkFoUYAk0Uajvq3L0TeQfAirXVIK2sFYhXdm4zbiqHPNa5o7K+O8beyAIIEX6QcEFo7eyK2EolLOp8neonv2bRpUHHU/GrwhTSmqjSh0x1HWA/fQoJh2qcfTg1xY5e3UKOQVsJDoF1pxQz2EP8rKwODDEP3qvDGLTRLw3G7eTCqVKE4AwqYK5hvOMc0sHUaXX9BLFecM02q3OWAFEUIZpplWhRUQZG/QmA2GF6+TV3kXfoNPngcuGZ62Hovhtby04l1TvwepP852Lp52Q=";
@@ -1569,8 +1569,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ── Banner de Anúncio Permanente ──────────────────────────────────────────
-// Carrega o script de banner do Adsterra num WebView local (loadHtmlString).
-// O smart link (_adsterraLink) é usado APENAS no popup de recompensa.
+// Carrega o Video Slider da Adcash num WebView local (loadHtmlString).
 class _BannerAdWidget extends StatefulWidget {
   const _BannerAdWidget();
   @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -1580,7 +1579,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   bool _loaded = false;
   double _height = 250; // altura inicial generosa para não cortar o banner
 
-  // HTML que reporta a altura real do banner de volta ao Flutter
+  // HTML com Video Slider da Adcash
   static const String _bannerHtml = '''
 <!DOCTYPE html>
 <html>
@@ -1590,27 +1589,24 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { background: #141414; width: 100%; overflow-x: hidden; }
-    #container-7f576864101a2ea1fe13415641ddaa54 { width: 100%; display: block; }
   </style>
+  <script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
 </head>
 <body>
-  <div id="container-7f576864101a2ea1fe13415641ddaa54"></div>
-  <script async="async" data-cfasync="false"
-    src="https://pl29099042.profitablecpmratenetwork.com/7f576864101a2ea1fe13415641ddaa54/invoke.js">
+  <script type="text/javascript">
+    aclib.runVideoSlider({
+      zoneId: '11388478',
+    });
   </script>
   <script>
     // Reporta altura real ao Flutter quando o banner carrega
     function reportHeight() {
-      var container = document.getElementById('container-7f576864101a2ea1fe13415641ddaa54');
       var h = Math.max(
         document.body.scrollHeight,
-        document.body.offsetHeight,
-        container ? container.scrollHeight : 0,
-        container ? container.offsetHeight : 0
+        document.body.offsetHeight
       );
       if (h > 30) { BannerHeight.postMessage(h.toString()); }
     }
-    // Tenta várias vezes até o banner estar completamente renderizado
     setTimeout(reportHeight, 500);
     setTimeout(reportHeight, 1000);
     setTimeout(reportHeight, 2000);
@@ -1637,7 +1633,8 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           // Cliques no anúncio abrem no browser externo
-          if (!req.url.contains('profitablecpmratenetwork.com') &&
+          if (!req.url.contains('acscdn.com') &&
+              !req.url.contains('adcash.com') &&
               !req.url.startsWith('about:') &&
               !req.url.startsWith('data:') &&
               !req.url.startsWith('javascript:')) {
@@ -1647,7 +1644,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
           return NavigationDecision.navigate;
         },
       ))
-      ..loadHtmlString(_bannerHtml, baseUrl: 'https://pl29099042.profitablecpmratenetwork.com');
+      ..loadHtmlString(_bannerHtml, baseUrl: 'https://acscdn.com');
   }
 
   @override Widget build(BuildContext context) {
@@ -1859,8 +1856,8 @@ class DmcaScreen extends StatelessWidget {
 
 // ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
 // Os códigos estão em Base64 internamente — sem chamadas ao servidor.
-// URL 1 → shrtslug.biz/cdom   → código: Y2RjaW5lZXR3a2pjamJoZ3Vsamd2eWlqdWhu
-// URL 2 → stfly.vip/cdom2     → código: YWRmZ2FmZ2FmZ2FmY2Zjc2tq
+// URL 1 → shrtslug.biz/cdom   → código: cdcineadcashpopunder11388490
+// URL 2 → stfly.vip/cdom2     → código: adcashvideoslider11388478
 class _AdRemovalData {
   final String url;
   final String codeB64;
@@ -1877,8 +1874,8 @@ class AdRemovalManager {
   static final AdRemovalManager instance = AdRemovalManager._();
 
   static const List<_AdRemovalData> _entries = [
-    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lZXR3a2pjamJoZ3Vsamd2eWlqdWhu'),
-    _AdRemovalData('https://stfly.vip/cdom2',    'YWRmZ2FmZ2FmZ2FmY2Zjc2tq'),
+    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lYWRjYXNocG9wdW5kZXIxMTM4ODQ5MA=='),
+    _AdRemovalData('https://stfly.vip/cdom2',    'YWRjYXNodmlkZW9zbGlkZXIxMTM4ODQ3OA=='),
   ];
 
   static const String _keyExpiry  = 'adrem_expiry_ms';
@@ -1994,10 +1991,10 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   }
 
   // URL do VAST
-  static const String _vastTagUrl = 'https://youradexchange.com/video/select.php?r=11388246';
+  static const String _vastTagUrl = 'https://youradexchange.com/video/select.php?r=11388474';
 
   void _abrirAnuncioInApp() {
-    // HTML com Video.js + IMA plugin para VAST
+    // HTML com Video.js + IMA plugin para VAST + Pop-Under da Adcash
     final html = """
 <!DOCTYPE html>
 <html>
@@ -2016,6 +2013,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
+<script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
 </head>
 <body>
 <div id="video-container">
@@ -2024,6 +2022,11 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   </video>
 </div>
 <script>
+  // Pop-Under da Adcash (disparado ao interagir com a página)
+  aclib.runPop({
+    zoneId: '11388490',
+  });
+
   var player = videojs('content-video', { muted: false });
   player.ima({
     adTagUrl: '$_vastTagUrl',
@@ -2031,7 +2034,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     showControlsForJSAds: true
   });
   player.ima.requestAds();
-  // Quando o anúncio termina, avisa o Flutter via canal JS
+  // Quando o anúncio VAST termina, avisa o Flutter via canal JS
   player.on('ads-ad-ended', function() {
     if (window.AdsDone) window.AdsDone.postMessage('done');
   });
@@ -2053,7 +2056,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
         },
       ))
       ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) {
-        // Anúncio terminou → fechar automaticamente
+        // Anúncio VAST terminou → fechar automaticamente
         if (mounted) widget.onSuccess();
       })
       ..loadHtmlString(html);
