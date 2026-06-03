@@ -1865,9 +1865,10 @@ class _AdRemovalData {
   final String url;
   final String codeB64;
   const _AdRemovalData(this.url, this.codeB64);
+  // Decodifica e normaliza: minúsculas + sem espaços nas extremidades
   String get expected {
     final bytes = base64Decode(codeB64);
-    return String.fromCharCodes(bytes).trim();
+    return utf8.decode(bytes).trim().toLowerCase();
   }
 }
 
@@ -1909,8 +1910,9 @@ class AdRemovalManager {
 
     if (input.trim().isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
 
-    final expected = _entries[idx].expected;
-    if (input.trim() != expected) return _AdRemResult.invalid('Código incorrecto. Verifica e tenta de novo.');
+    final expected = _entries[idx].expected; // já em lowercase
+    final given    = input.trim().toLowerCase();
+    if (given != expected) return _AdRemResult.invalid('Código incorrecto. Verifica e tenta de novo.');
 
     // Código correcto → guarda expiração de 24h
     final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
@@ -1991,7 +1993,56 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     });
   }
 
+  // URL do VAST
+  static const String _vastTagUrl = 'https://youradexchange.com/video/select.php?r=11388246';
+
   void _abrirAnuncioInApp() {
+    // HTML com Video.js + IMA plugin para VAST
+    final html = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; display:flex; align-items:center; justify-content:center; height:100vh; }
+  #video-container { width:100%; max-width:100vw; }
+  .video-js { width:100% !important; height:56.25vw !important; max-height:100vh; }
+</style>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
+<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
+</head>
+<body>
+<div id="video-container">
+  <video id="content-video" class="video-js vjs-default-skin" controls preload="auto" playsinline>
+    <source src="" type="video/mp4"/>
+  </video>
+</div>
+<script>
+  var player = videojs('content-video', { muted: false });
+  player.ima({
+    adTagUrl: '$_vastTagUrl',
+    disableAdControls: false,
+    showControlsForJSAds: true
+  });
+  player.ima.requestAds();
+  // Quando o anúncio termina, avisa o Flutter via canal JS
+  player.on('ads-ad-ended', function() {
+    if (window.AdsDone) window.AdsDone.postMessage('done');
+  });
+  player.on('adserror', function() {
+    if (window.AdsDone) window.AdsDone.postMessage('done');
+  });
+</script>
+</body>
+</html>
+""";
+
     final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
@@ -2001,16 +2052,17 @@ class _RewardedPopupState extends State<_RewardedPopup> {
           return NavigationDecision.navigate;
         },
       ))
-      ..loadRequest(Uri.parse(_adsterraLink));
+      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) {
+        // Anúncio terminou → fechar automaticamente
+        if (mounted) widget.onSuccess();
+      })
+      ..loadHtmlString(html);
 
     setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
 
     _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
-      if (_countdown15 == 5) {
-        launchUrl(Uri.parse(_adsterraLink), mode: LaunchMode.externalApplication);
-      }
       if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
     });
   }
