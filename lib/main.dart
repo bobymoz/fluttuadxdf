@@ -1880,14 +1880,8 @@ class AdRemovalManager {
     _AdRemovalData('https://stfly.vip/cdom2',    'YWRmZ2FmZ2FmZ2FmY2Zjc2tq'),
   ];
 
-  static const String _keyExpiry   = 'adrem_expiry_ms';
-  static const String _keyClicked  = 'adrem_url_clicked';
-  static const String _keyIdx      = 'adrem_selected_idx';
-  static const Duration _validity  = Duration(hours: 24);
-
-  // Estado de sessão (só válido enquanto o processo de remoção está activo)
-  int?  _sessionIdx;
-  bool  _sessionClicked = false;
+  static const String _keyExpiry  = 'adrem_expiry_ms';
+  static const Duration _validity = Duration(hours: 24);
 
   /// true se o utilizador já tem acesso sem anúncios (dentro das 24h)
   Future<bool> isAdFree() async {
@@ -1897,46 +1891,31 @@ class AdRemovalManager {
     return DateTime.now().millisecondsSinceEpoch < exp;
   }
 
-  /// Escolhe aleatoriamente uma entrada e devolve (url, índice).
-  Future<(String, int)> beginSession() async {
-    final idx = DateTime.now().millisecond % _entries.length; // pseudo-aleatório sem import de dart:math
-    _sessionIdx      = idx;
-    _sessionClicked  = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyIdx, idx);
-    await prefs.setBool(_keyClicked, false);
+  /// Escolhe uma entrada e devolve (url, índice).
+  /// O índice é devolvido para o widget guardar em memória — não depende de prefs.
+  (String, int) beginSession() {
+    final idx = DateTime.now().millisecond % _entries.length;
     return (_entries[idx].url, idx);
   }
 
-  /// Chamado quando o utilizador abre o link no browser.
-  Future<void> markClicked() async {
-    _sessionClicked = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyClicked, true);
-  }
-
-  /// Valida o código. [isTV] = true → não exige clique no link.
-  Future<_AdRemResult> validate(String input, {required bool isTV}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final idx    = prefs.getInt(_keyIdx) ?? _sessionIdx;
-    if (idx == null) return _AdRemResult.error('Sessão inválida. Toca em "Remover Anúncios" primeiro.');
-
-    final clicked = prefs.getBool(_keyClicked) ?? _sessionClicked;
-    if (!isTV && !clicked) {
+  /// Valida o código.
+  /// [idx] = índice escolhido em beginSession (guardado no widget state).
+  /// [urlOpened] = utilizador clicou no link nesta sessão.
+  /// [isTV] = TV não exige clique no link.
+  Future<_AdRemResult> validate(String input, {required int idx, required bool urlOpened, required bool isTV}) async {
+    if (!isTV && !urlOpened) {
       return _AdRemResult.invalid('Tens de abrir o link primeiro para obter o código!');
     }
 
-    final expected = _entries[idx].expected;
     if (input.trim().isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
+
+    final expected = _entries[idx].expected;
     if (input.trim() != expected) return _AdRemResult.invalid('Código incorrecto. Verifica e tenta de novo.');
 
-    // Código correcto → guarda expiração
+    // Código correcto → guarda expiração de 24h
     final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyExpiry, exp);
-    _sessionIdx     = null;
-    _sessionClicked = false;
-    await prefs.remove(_keyClicked);
-    await prefs.remove(_keyIdx);
     return _AdRemResult.success;
   }
 
@@ -1944,10 +1923,6 @@ class AdRemovalManager {
   Future<void> invalidate() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyExpiry);
-    await prefs.remove(_keyClicked);
-    await prefs.remove(_keyIdx);
-    _sessionIdx     = null;
-    _sessionClicked = false;
   }
 }
 
@@ -1980,14 +1955,15 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   WebViewController? _webCtrl;
 
   // ── Estado do ecrã de remoção de anúncios ─────────────────────────────────
-  _RemStep _remStep = _RemStep.hidden; // hidden = não mostrado ainda
-  String  _remUrl      = '';
-  bool    _remLoading  = false;
-  bool    _remUrlOpen  = false;   // utilizador clicou no link nesta sessão
-  String  _remError    = '';
-  int     _remCountdown = 0;      // contagem curta após abrir o link
-  Timer?  _remTimer;
-  final _remCodeCtrl = TextEditingController();
+  _RemStep _remStep    = _RemStep.hidden;
+  String   _remUrl     = '';
+  int      _remIdx     = 0;       // índice da entrada escolhida — guardado aqui em memória
+  bool     _remLoading = false;
+  bool     _remUrlOpen = false;   // utilizador clicou no link nesta sessão
+  String   _remError   = '';
+  int      _remCountdown = 0;
+  Timer?   _remTimer;
+  final    _remCodeCtrl = TextEditingController();
 
   bool get _isTV => navigatorKey.currentContext != null &&
       MediaQuery.of(navigatorKey.currentContext!).size.width > 900;
@@ -2040,26 +2016,22 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   }
 
   // ── Métodos da remoção de anúncios ────────────────────────────────────────
-  Future<void> _iniciarRemocao() async {
-    setState(() { _remLoading = true; _remError = ''; });
-    try {
-      final (url, _) = await AdRemovalManager.instance.beginSession();
-      setState(() {
-        _remUrl     = url;
-        _remStep    = _RemStep.openLink;
-        _remLoading = false;
-        _remUrlOpen = false;
-        _remError   = '';
-      });
-    } catch (_) {
-      setState(() { _remLoading = false; _remError = 'Erro. Tenta novamente.'; });
-    }
+  void _iniciarRemocao() {
+    // beginSession é síncrono — idx fica guardado aqui no widget state
+    final (url, idx) = AdRemovalManager.instance.beginSession();
+    setState(() {
+      _remUrl     = url;
+      _remIdx     = idx;
+      _remStep    = _RemStep.openLink;
+      _remLoading = false;
+      _remUrlOpen = false;
+      _remError   = '';
+    });
   }
 
   Future<void> _abrirLink() async {
     final uri = Uri.parse(_remUrl);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
-    await AdRemovalManager.instance.markClicked();
     setState(() {
       _remUrlOpen = true;
       _remStep    = _RemStep.enterCode;
@@ -2078,6 +2050,8 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     setState(() { _remLoading = true; _remError = ''; });
     final result = await AdRemovalManager.instance.validate(
       _remCodeCtrl.text,
+      idx: _remIdx,
+      urlOpened: _remUrlOpen,
       isTV: _isTV,
     );
     if (!mounted) return;
