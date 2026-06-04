@@ -1177,22 +1177,42 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
+  // Verifica se o utilizador tem bloqueador de anúncios ativo
+  // Tenta carregar o script da Adcash — se falhar, é bloqueador
+  Future<bool> _temAdBlocker() async {
+    try {
+      final uri = Uri.parse('https://acscdn.com/script/aclib.js');
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
+      final req = await client.getUrl(uri);
+      final res = await req.close();
+      client.close();
+      return res.statusCode != 200;
+    } catch (_) {
+      return true; // falhou → assume bloqueador
+    }
+  }
+
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) async {
-    // Se o utilizador já removeu os anúncios (código válido e dentro das 24h), passa directamente
+    // Se já removeu anúncios (código válido 24h) → passa directamente
     final adFree = await AdRemovalManager.instance.isAdFree();
     if (adFree) { onSuccess(); return; }
+
+    // Se tem bloqueador de anúncios ativo → passa directamente (sem modal)
+    final bloqueador = await _temAdBlocker();
+    if (bloqueador) { onSuccess(); return; }
 
     if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
     if (!mounted) return;
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
       builder: (ctxPopup) => PopScope(
-        canPop: false, 
+        canPop: false,
         child: _RewardedPopup(
           tituloAdicional: mensagemDownload,
-          onSuccess: () { 
+          onSuccess: () {
             Navigator.of(ctxPopup, rootNavigator: true).pop();
-            onSuccess(); 
+            onSuccess();
           }
         )
       ),
@@ -1569,7 +1589,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ── Banner de Anúncio Permanente ──────────────────────────────────────────
-// Carrega o Video Slider da Adcash num WebView local (loadHtmlString).
+// Carrega o script de banner do Adsterra num WebView local (loadHtmlString).
+// O smart link (_adsterraLink) é usado APENAS no popup de recompensa.
 class _BannerAdWidget extends StatefulWidget {
   const _BannerAdWidget();
   @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -1579,7 +1600,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   bool _loaded = false;
   double _height = 250; // altura inicial generosa para não cortar o banner
 
-  // HTML com Video Slider da Adcash
+  // HTML que reporta a altura real do banner de volta ao Flutter
   static const String _bannerHtml = '''
 <!DOCTYPE html>
 <html>
@@ -1587,32 +1608,31 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { background: #141414; width: 100%; overflow-x: hidden; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { background:#141414; width:100%; overflow-x:hidden; }
   </style>
-  <script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
 </head>
 <body>
+  <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
   <script type="text/javascript">
-    aclib.runVideoSlider({
-      zoneId: '11388478',
-    });
-  </script>
-  <script>
-    // Reporta altura real ao Flutter quando o banner carrega
-    function reportHeight() {
-      var h = Math.max(
-        document.body.scrollHeight,
-        document.body.offsetHeight
-      );
-      if (h > 30) { BannerHeight.postMessage(h.toString()); }
+    function initAd() {
+      if (typeof aclib !== "undefined") {
+        aclib.runVideoSlider({ zoneId: "11388478" });
+      } else {
+        setTimeout(initAd, 300);
+      }
     }
-    setTimeout(reportHeight, 500);
-    setTimeout(reportHeight, 1000);
-    setTimeout(reportHeight, 2000);
+    initAd();
+    function reportHeight() {
+      var h = Math.max(document.body.scrollHeight, document.body.offsetHeight);
+      if (h > 30) { try { BannerHeight.postMessage(h.toString()); } catch(e){} }
+    }
+    setTimeout(reportHeight, 800);
+    setTimeout(reportHeight, 1800);
     setTimeout(reportHeight, 3500);
-    setTimeout(reportHeight, 6000);
-    new MutationObserver(function() { setTimeout(reportHeight, 300); }).observe(document.body, { childList: true, subtree: true, attributes: true });
+    setTimeout(reportHeight, 6500);
+    new MutationObserver(function(){ setTimeout(reportHeight, 400); })
+      .observe(document.body, { childList:true, subtree:true, attributes:true });
   </script>
 </body>
 </html>
@@ -1626,25 +1646,24 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
       ..addJavaScriptChannel('BannerHeight', onMessageReceived: (msg) {
         final h = double.tryParse(msg.message);
         if (h != null && h > 30 && mounted) {
-          setState(() => _height = h + 20); // +20 de margem generosa para não cortar
+          setState(() => _height = h + 16);
         }
       })
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
-          // Cliques no anúncio abrem no browser externo
-          if (!req.url.contains('acscdn.com') &&
-              !req.url.contains('adcash.com') &&
-              !req.url.startsWith('about:') &&
-              !req.url.startsWith('data:') &&
-              !req.url.startsWith('javascript:')) {
-            launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
-            return NavigationDecision.prevent;
+          final u = req.url;
+          if (u.startsWith('about:') || u.startsWith('data:') || u.startsWith('javascript:')) {
+            return NavigationDecision.navigate;
           }
-          return NavigationDecision.navigate;
+          if (u.contains('acscdn.com') || u.contains('adcash.com')) {
+            return NavigationDecision.navigate;
+          }
+          launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
         },
       ))
-      ..loadHtmlString(_bannerHtml, baseUrl: 'https://acscdn.com');
+      ..loadHtmlString(_bannerHtml);
   }
 
   @override Widget build(BuildContext context) {
@@ -1856,14 +1875,14 @@ class DmcaScreen extends StatelessWidget {
 
 // ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
 // Os códigos estão em Base64 internamente — sem chamadas ao servidor.
-// URL 1 → shrtslug.biz/cdom   → código: cdcineadcashpopunder11388490
-// URL 2 → stfly.vip/cdom2     → código: adcashvideoslider11388478
+// URL 1 → shrtslug.biz/cdom   → código: Y2RjaW5lZXR3a2pjamJoZ3Vsamd2eWlqdWhu
+// URL 2 → stfly.vip/cdom2     → código: YWRmZ2FmZ2FmZ2FmY2Zjc2tq
 class _AdRemovalData {
   final String url;
   final String codeB64;
   const _AdRemovalData(this.url, this.codeB64);
-  // Decodifica e normaliza: minúsculas + sem espaços nas extremidades
-  String get expected {
+  // Decodifica → devolve código completo em minúsculas
+  String get decoded {
     final bytes = base64Decode(codeB64);
     return utf8.decode(bytes).trim().toLowerCase();
   }
@@ -1873,15 +1892,15 @@ class AdRemovalManager {
   AdRemovalManager._();
   static final AdRemovalManager instance = AdRemovalManager._();
 
+  // Código para ambas as URLs: cdcine2025
   static const List<_AdRemovalData> _entries = [
-    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lYWRjYXNocG9wdW5kZXIxMTM4ODQ5MA=='),
-    _AdRemovalData('https://stfly.vip/cdom2',    'YWRjYXNodmlkZW9zbGlkZXIxMTM4ODQ3OA=='),
+    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lMjAyNQ=='),
+    _AdRemovalData('https://stfly.vip/cdom2',    'Y2RjaW5lMjAyNQ=='),
   ];
 
   static const String _keyExpiry  = 'adrem_expiry_ms';
   static const Duration _validity = Duration(hours: 24);
 
-  /// true se o utilizador já tem acesso sem anúncios (dentro das 24h)
   Future<bool> isAdFree() async {
     final prefs = await SharedPreferences.getInstance();
     final exp = prefs.getInt(_keyExpiry);
@@ -1889,36 +1908,33 @@ class AdRemovalManager {
     return DateTime.now().millisecondsSinceEpoch < exp;
   }
 
-  /// Escolhe uma entrada e devolve (url, índice).
-  /// O índice é devolvido para o widget guardar em memória — não depende de prefs.
   (String, int) beginSession() {
     final idx = DateTime.now().millisecond % _entries.length;
     return (_entries[idx].url, idx);
   }
 
-  /// Valida o código.
-  /// [idx] = índice escolhido em beginSession (guardado no widget state).
-  /// [urlOpened] = utilizador clicou no link nesta sessão.
-  /// [isTV] = TV não exige clique no link.
+  /// Valida o código — aceita se começa pelos primeiros 6 caracteres corretos.
+  /// Tolerante a espaços, maiúsculas e qualquer sufixo extra.
   Future<_AdRemResult> validate(String input, {required int idx, required bool urlOpened, required bool isTV}) async {
     if (!isTV && !urlOpened) {
       return _AdRemResult.invalid('Tens de abrir o link primeiro para obter o código!');
     }
+    final given = input.trim().toLowerCase();
+    if (given.isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
 
-    if (input.trim().isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
+    final expected = _entries[idx].decoded;
+    // Verifica pelo prefixo (primeiros 6 chars) — tolerante a variações
+    final prefixLen = expected.length < 6 ? expected.length : 6;
+    if (given.length < prefixLen || !given.startsWith(expected.substring(0, prefixLen))) {
+      return _AdRemResult.invalid('Código incorrecto. Copia o código que aparece na página.');
+    }
 
-    final expected = _entries[idx].expected; // já em lowercase
-    final given    = input.trim().toLowerCase();
-    if (given != expected) return _AdRemResult.invalid('Código incorrecto. Verifica e tenta de novo.');
-
-    // Código correcto → guarda expiração de 24h
     final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyExpiry, exp);
     return _AdRemResult.success;
   }
 
-  /// Invalida o acesso (chamado ao fechar o app).
   Future<void> invalidate() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyExpiry);
@@ -1990,11 +2006,16 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     });
   }
 
-  // URL do VAST
+  // VAST: usado no player de vídeo interno (precisa de <video> tag)
   static const String _vastTagUrl = 'https://youradexchange.com/video/select.php?r=11388474';
+  // Pop-Under: aberto no browser externo (não precisa de player)
+  static const String _popUnderLandingUrl = 'https://youradexchange.com/video/select.php?r=11388490';
 
   void _abrirAnuncioInApp() {
-    // HTML com Video.js + IMA plugin para VAST + Pop-Under da Adcash
+    // Pop-Under Adcash:
+    //  1. WebView carrega página com aclib que dispara Pop-Under internamente
+    //  2. Ao 5.º segundo → abre o Pop-Under no browser externo (simula clique do utilizador)
+    //  3. Ao 15.º segundo → botão "Fechar" fica disponível
     final html = """
 <!DOCTYPE html>
 <html>
@@ -2002,45 +2023,38 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#000; display:flex; align-items:center; justify-content:center; height:100vh; }
-  #video-container { width:100%; max-width:100vw; }
-  .video-js { width:100% !important; height:56.25vw !important; max-height:100vh; }
+  body { background:#0B0B0F; display:flex; flex-direction:column;
+         align-items:center; justify-content:center; height:100vh;
+         font-family:sans-serif; gap:20px; }
+  .logo  { font-size:36px; font-weight:bold; color:#E50914; letter-spacing:3px; }
+  .msg   { font-size:14px; color:#aaa; text-align:center; padding:0 30px; line-height:1.6; }
+  .bar   { width:65%; height:5px; background:#222; border-radius:4px; overflow:hidden; }
+  .fill  { height:100%; background:#E50914; border-radius:4px;
+           animation:fill 15s linear forwards; }
+  @keyframes fill { from{width:0%} to{width:100%} }
 </style>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
-<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
-<script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
+<script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
 </head>
 <body>
-<div id="video-container">
-  <video id="content-video" class="video-js vjs-default-skin" controls preload="auto" playsinline>
-    <source src="" type="video/mp4"/>
-  </video>
-</div>
+  <div class="logo">CDCINE</div>
+  <div class="msg">Obrigado por apoiares o CDCINE!<br>O anúncio vai abrir em breve no browser.</div>
+  <div class="bar"><div class="fill"></div></div>
 <script>
-  // Pop-Under da Adcash (disparado ao interagir com a página)
-  aclib.runPop({
-    zoneId: '11388490',
-  });
-
-  var player = videojs('content-video', { muted: false });
-  player.ima({
-    adTagUrl: '$_vastTagUrl',
-    disableAdControls: false,
-    showControlsForJSAds: true
-  });
-  player.ima.requestAds();
-  // Quando o anúncio VAST termina, avisa o Flutter via canal JS
-  player.on('ads-ad-ended', function() {
-    if (window.AdsDone) window.AdsDone.postMessage('done');
-  });
-  player.on('adserror', function() {
-    if (window.AdsDone) window.AdsDone.postMessage('done');
-  });
+  // Dispara o Pop-Under assim que aclib carregar
+  function tryPop() {
+    if (typeof aclib !== "undefined") {
+      aclib.runPop({ zoneId: "11388490" });
+    } else { setTimeout(tryPop, 300); }
+  }
+  tryPop();
+  // Ao 5.º segundo avisa o Flutter para abrir o Pop-Under no browser externo
+  setTimeout(function() {
+    try { PopReady.postMessage("open"); } catch(e) {}
+  }, 5000);
+  // Ao 15.º segundo liberta o botão "Fechar"
+  setTimeout(function() {
+    try { AdsDone.postMessage("done"); } catch(e) {}
+  }, 15000);
 </script>
 </body>
 </html>
@@ -2052,12 +2066,23 @@ class _RewardedPopupState extends State<_RewardedPopup> {
         onNavigationRequest: (req) {
           final uri = Uri.tryParse(req.url);
           if (uri != null && uri.scheme == 'intent') return NavigationDecision.prevent;
+          final u = req.url;
+          if (!u.contains('acscdn.com') && !u.contains('adcash.com') &&
+              !u.startsWith('about:') && !u.startsWith('data:') && !u.startsWith('javascript:')) {
+            launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
           return NavigationDecision.navigate;
         },
       ))
+      ..addJavaScriptChannel('PopReady', onMessageReceived: (_) {
+        // 5 s → abre landing page do Pop-Under no browser externo
+        launchUrl(Uri.parse(_popUnderLandingUrl), mode: LaunchMode.externalApplication);
+      })
       ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) {
-        // Anúncio VAST terminou → fechar automaticamente
-        if (mounted) widget.onSuccess();
+        // 15 s → liberta o botão "Fechar"
+        if (mounted) setState(() => _podeFechar = true);
+        _timer15?.cancel();
       })
       ..loadHtmlString(html);
 
