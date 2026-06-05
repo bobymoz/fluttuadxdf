@@ -359,21 +359,16 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
 // DOWNLOADS — via 1DM (intent externo)
 // ==========================================
 class DownloadManager {
-  // Mantemos notifiers para compatibilidade com DraggableOverlay (não usado ativamente)
   static ValueNotifier<double> progress = ValueNotifier(-1.0);
   static ValueNotifier<int> activeDownloadsCount = ValueNotifier(0);
   static ValueNotifier<bool> showFloatingOverlay = ValueNotifier(false);
   static String currentTitle = "";
-  // CancelToken ainda importado mas não usado (mantém imports funcionais)
   static CancelToken? cancelToken;
 
-  /// Abre o 1DM com a URL do vídeo via Android Intent.
-  /// Se o app não estiver instalado mostra diálogo pedindo instalação.
   static Future<void> startDownload(String url, String title, bool isMp4) async {
     final cleanedTitle = cleanTitle(title);
     currentTitle = cleanedTitle;
 
-    // Salva no histórico local de "enviados para 1DM"
     final prefs = await SharedPreferences.getInstance();
     List<String> hist = prefs.getStringList('downloads_1dm') ?? [];
     final entry = json.encode({'url': url, 'title': cleanedTitle, 'ts': DateTime.now().toIso8601String()});
@@ -383,7 +378,6 @@ class DownloadManager {
       await prefs.setStringList('downloads_1dm', hist);
     }
 
-    // Usa MethodChannel nativo — download directo sem passos manuais
     const idmChannel = MethodChannel('cdcine/idm');
     bool abriu = false;
     try {
@@ -415,7 +409,6 @@ class DownloadManager {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Ícone do 1DM
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: Image.asset('assets/1dm.png', width: 72, height: 72,
@@ -1337,7 +1330,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           dropdownColor: Colors.grey[900],
                           value: tempSelecionada,
                           style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                          items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(),
+                          items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"),)).toList(),
                           onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _epAtivoIndex = -1; }); _carregarEpisodios(val); } },
                         ),
                       ),
@@ -1977,7 +1970,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     super.dispose();
   }
 
-  // ── Métodos do popup de anúncio (mantidos iguais) ─────────────────────────
   void _iniciarContagemLenta() {
     setState(() { _aguardando60 = true; _countdown60 = 60; });
     _timer60 = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -1993,11 +1985,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   static const String _popUnderUrl = 'https://youradexchange.com/video/select.php?r=11388490';
 
   void _abrirAnuncioInApp() {
-    // Este WebView faz duas coisas em simultâneo:
-    //  A) Reproduz o anúncio VAST no player Video.js + IMA (precisa de <video>)
-    //  B) Dispara o Pop-Under Adcash (aclib.runPop) na mesma página
-    //     → ao 5.º segundo o Flutter abre o browser externo como se o
-    //       utilizador tivesse clicado, gerando impressão + clique.
     final html = """
 <!DOCTYPE html>
 <html>
@@ -2005,11 +1992,10 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#000; display:flex; align-items:center; justify-content:center; height:100vh; }
-  #video-container { width:100%; max-width:100vw; }
+  body { background:#000; display:flex; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
+  #video-container { width:100%; max-width:100vw; position: relative; }
   .video-js { width:100% !important; height:56.25vw !important; max-height:100vh; }
 </style>
-<!-- Video.js + IMA para o anúncio VAST -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
 <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
@@ -2017,24 +2003,26 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
-<!-- Adcash aclib para o Pop-Under -->
 <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
 </head>
 <body>
 <div id="video-container">
-  <video id="content-video" class="video-js vjs-default-skin" controls preload="auto" playsinline>
-    <source src="" type="video/mp4"/>
+  <video id="content-video" class="video-js vjs-default-skin vjs-big-play-centered" autoplay muted playsinline controls preload="auto">
+    <source src="https://storage.googleapis.com/gvabox/media/samples/stock.mp4" type="video/mp4"/>
   </video>
 </div>
 <script>
   // ── A) VAST pre-roll no player ──────────────────────────────
-  var player = videojs('content-video', { muted: false });
+  var player = videojs('content-video');
   player.ima({
     adTagUrl: '$_vastTagUrl',
     disableAdControls: false,
     showControlsForJSAds: true
   });
+  player.ima.initializeAdDisplayContainer();
   player.ima.requestAds();
+  player.play(); // Força o inicio do Ad
+
   player.on('ads-ad-ended', function() {
     try { AdsDone.postMessage('done'); } catch(e) {}
   });
@@ -2042,19 +2030,15 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     try { AdsDone.postMessage('done'); } catch(e) {}
   });
 
-  // ── B) Pop-Under Adcash na mesma página ─────────────────────
+  // ── B) Pop-Under Adcash invisível ─────────────────────
   function tryPop() {
     if (typeof aclib !== 'undefined') {
       aclib.runPop({ zoneId: '11388490' });
     } else { setTimeout(tryPop, 300); }
   }
   tryPop();
-
-  // ── Ao 5.º segundo: avisa Flutter para abrir browser ────────
-  //    (gera impressão + clique no Pop-Under)
-  setTimeout(function() {
-    try { PopReady.postMessage('open'); } catch(e) {}
-  }, 5000);
+  
+  // O trigger dos 5 segundos agora é comandado diretamente no Flutter pelo _timer15
 </script>
 </body>
 </html>
@@ -2069,7 +2053,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
           final u = req.url;
           if (!u.contains('acscdn.com') && !u.contains('adcash.com') &&
               !u.contains('cdnjs.cloudflare.com') && !u.contains('imasdk.googleapis.com') &&
-              !u.contains('youradexchange.com') &&
+              !u.contains('youradexchange.com') && !u.contains('storage.googleapis.com') &&
               !u.startsWith('about:') && !u.startsWith('data:') && !u.startsWith('javascript:')) {
             launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
@@ -2078,12 +2062,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
         },
       ))
       ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) {
-        // VAST terminou → conta como sucesso
         if (mounted) widget.onSuccess();
-      })
-      ..addJavaScriptChannel('PopReady', onMessageReceived: (_) {
-        // 5 s → abre browser externo (impressão + clique no Pop-Under)
-        launchUrl(Uri.parse(_popUnderUrl), mode: LaunchMode.externalApplication);
       })
       ..loadHtmlString(html);
 
@@ -2092,13 +2071,18 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
+      
+      // Quando a contagem chega a 5 (ou seja, passaram-se 10 segs), o popup dispara automaticamente no navegador
+      if (_countdown15 == 5) {
+        launchUrl(Uri.parse(_popUnderUrl), mode: LaunchMode.externalApplication);
+      }
+
       if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
     });
   }
 
   // ── Métodos da remoção de anúncios ────────────────────────────────────────
   void _iniciarRemocao() {
-    // beginSession é síncrono — idx fica guardado aqui no widget state
     final (url, idx) = AdRemovalManager.instance.beginSession();
     setState(() {
       _remUrl     = url;
@@ -2118,7 +2102,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       _remStep    = _RemStep.enterCode;
       _remCountdown = 5;
     });
-    // Pequena contagem regressiva para dar tempo ao utilizador de copiar o código
     _remTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _remCountdown--);
@@ -2164,7 +2147,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 
   // ── Build ─────────────────────────────────────────────────────────────────
   @override Widget build(BuildContext context) {
-    // Ecrã WebView do anúncio
     if (_anuncioAberto && _webCtrl != null) {
       return Dialog(
         insetPadding: const EdgeInsets.all(12),
@@ -2216,7 +2198,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       );
     }
 
-    // Ecrã de remoção de anúncios (sub-fluxo)
     if (_remStep != _RemStep.hidden) {
       return Dialog(
         backgroundColor: Colors.transparent,
@@ -2229,7 +2210,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       );
     }
 
-    // ── Ecrã principal de escolha ─────────────────────────────────────────────
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -2244,7 +2224,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const SizedBox(height: 8),
             const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
             const SizedBox(height: 24),
-            // Opção 1: Ver anúncio rápido
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -2256,7 +2235,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
               ),
             ),
             const SizedBox(height: 12),
-            // Opção 2: Aguardar 60 segundos
             SizedBox(
               width: double.infinity,
               child: _aguardando60
@@ -2264,7 +2242,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                   : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))),
             ),
             const SizedBox(height: 12),
-            // Opção 3: Remover anúncios (código gratuito)
             SizedBox(
               width: double.infinity,
               child: _remLoading
@@ -2290,13 +2267,10 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     );
   }
 
-  // ── Sub-fluxo: ecrãs de remoção de anúncios ──────────────────────────────
   Widget _buildRemocaoStep() {
     switch (_remStep) {
       case _RemStep.hidden:
         return const SizedBox.shrink();
-
-      // Passo 1: Explicação + link a abrir
       case _RemStep.openLink:
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -2305,7 +2279,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const SizedBox(height: 14),
             Text("Remover Anúncios", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1)),
             const SizedBox(height: 10),
-            // Explicação clara do processo
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
@@ -2323,7 +2296,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
               ),
             ),
             const SizedBox(height: 16),
-            // Destaque TV
             if (_isTV)
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -2335,7 +2307,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
                   Expanded(child: Text("Na TV: abre o link no teu telemóvel, copia o código e digita aqui.", style: TextStyle(color: Colors.amber, fontSize: 12))),
                 ]),
               ),
-            // Link clicável
             GestureDetector(
               onTap: _abrirLink,
               child: Container(
@@ -2357,9 +2328,7 @@ class _RewardedPopupState extends State<_RewardedPopup> {
               child: ElevatedButton.icon(
                 autofocus: true,
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                onPressed: _isTV
-                    ? () => setState(() { _remStep = _RemStep.enterCode; })
-                    : _abrirLink,
+                onPressed: _isTV ? () => setState(() { _remStep = _RemStep.enterCode; }) : _abrirLink,
                 icon: Icon(_isTV ? Icons.keyboard : Icons.open_in_browser, color: Colors.white),
                 label: Text(_isTV ? "Já tenho o código →" : "Abrir link e obter código", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
               ),
@@ -2368,8 +2337,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             TextButton(onPressed: _voltarAoInicio, child: const Text("← Voltar", style: TextStyle(color: Colors.white54))),
           ],
         );
-
-      // Passo 2: Digitar o código
       case _RemStep.enterCode:
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -2380,7 +2347,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             const SizedBox(height: 8),
             const Text("Cola ou digita o código que encontraste na página:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 16),
-            // Contador curto (só no telemóvel após abrir o link)
             if (_remCountdown > 0 && !_isTV)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -2422,8 +2388,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
             TextButton(onPressed: _voltarAoInicio, child: const Text("← Recomeçar", style: TextStyle(color: Colors.white38))),
           ],
         );
-
-      // Passo 3: Sucesso
       case _RemStep.success:
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -2439,7 +2403,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   }
 }
 
-// Helper widget para os passos da explicação
 class _RemStep_ extends StatelessWidget {
   final IconData icon;
   final String text;
