@@ -869,6 +869,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _inStreamAdCtrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (req) {
+          final u = req.url;
+          if (u == 'https://adcash.com/' || u.startsWith('data:') || u.startsWith('about:')) return NavigationDecision.navigate;
+          if (u.contains('googleapis') || u.contains('gstatic') || u.contains('videojs') || u.contains('imasdk') || u.contains('acscdn') || u.contains('youradexchange')) {
+            return NavigationDecision.navigate;
+          }
+          launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
+        }
+      ))
       ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) => _closeInStreamAd());
 
     // Permite Autoplay no Android sem exigir toque do utilizador, usando invocação dinâmica segura
@@ -886,7 +897,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         <style>
           * { margin:0; padding:0; box-sizing:border-box; }
           body { background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; height:100vh; }
-          .video-js { width:100% !important; height:100% !important; }
+          .video-js { width:100vw !important; height:100vh !important; }
         </style>
         <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
@@ -897,8 +908,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
       </head>
       <body>
-        <video id="my-video" class="video-js vjs-default-skin vjs-big-play-centered" playsinline></video>
+        <video id="my-video" class="video-js vjs-default-skin" autoplay muted playsinline controls preload="auto">
+          <source src="https://storage.googleapis.com/gvabox/media/samples/stock.mp4" type="video/mp4"/>
+        </video>
         <script>
+          window.open = function(url) { window.location.href = url; return null; };
           function playAd() {
             var player = videojs("my-video");
             player.ima({
@@ -916,7 +930,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         </script>
       </body>
       </html>
-      ''');
+      ''', baseUrl: 'https://adcash.com/');
   }
 
   void _closeInStreamAd() {
@@ -1633,7 +1647,6 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   bool _loaded = false;
   double _height = 300;
 
-  // Usa protocolo HTTPS obrigatório nos scripts porque WebView sem base URL converte '//' para 'file://'
   static const String _bannerHtml = '''
 <!DOCTYPE html>
 <html>
@@ -1648,6 +1661,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
 <body>
   <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
   <script type="text/javascript">
+    window.open = function(url) { window.location.href = url; return null; };
     if(typeof aclib !== "undefined") {
         aclib.runVideoSlider({ zoneId: '11388478' });
     } else {
@@ -1679,15 +1693,17 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           final u = req.url;
-          if (u.contains('acscdn.com') || u.contains('adcash.com') ||
-              u.startsWith('about:') || u.startsWith('data:') || u.startsWith('javascript:')) {
+          if (u == 'https://adcash.com/' || u.startsWith('about:') || u.startsWith('data:')) {
+            return NavigationDecision.navigate;
+          }
+          if (u.contains('acscdn.com') || u.contains('adcash.com')) {
             return NavigationDecision.navigate;
           }
           launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
           return NavigationDecision.prevent;
         },
       ))
-      ..loadHtmlString(_bannerHtml); 
+      ..loadHtmlString(_bannerHtml, baseUrl: 'https://adcash.com/'); 
   }
 
   @override Widget build(BuildContext context) {
@@ -2039,10 +2055,16 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   <h2>A carregar parceiro...</h2>
   <p style="color:#aaa; font-size:12px;">Obrigado por apoiar o CDCINE!</p>
   <script>
+    window.open = function(url) { window.location.href = url; return null; };
+    aclib.runPop({ zoneId: '11388490' });
     function forcePop() {
-      if (typeof aclib !== 'undefined') {
-        aclib.runPop({ zoneId: '11388490' });
-      }
+      try {
+        var ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+        document.dispatchEvent(ev);
+      } catch(e) {}
+      setTimeout(function() {
+         window.location.href = "https://youradexchange.com/video/select.php?r=11388490";
+      }, 500);
     }
   </script>
 </body>
@@ -2054,14 +2076,14 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
           final u = req.url;
-          if (!u.contains('acscdn.com') && !u.startsWith('data:') && !u.startsWith('about:') && !u.startsWith('javascript:')) {
-            launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
+          if (u == 'https://adcash.com/' || u.startsWith('data:') || u.startsWith('about:')) return NavigationDecision.navigate;
+          if (u.contains('acscdn.com') || u.contains('adcash.com/script')) return NavigationDecision.navigate;
+          
+          launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
         },
       ))
-      ..loadHtmlString(html);
+      ..loadHtmlString(html, baseUrl: 'https://adcash.com/');
 
     setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
 
