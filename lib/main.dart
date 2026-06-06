@@ -842,7 +842,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
   String _urlAtiva = '';
-  int _epAtivoIndex = -1; // índice do episódio activo na lista
+  int _epAtivoIndex = -1; 
   
   bool isDataLoaded = false; bool isPlaying = false; bool isServerLoading = false; bool isSynopsisExpanded = false;
   bool _isFullscreen = false; bool _isBuffering = false;
@@ -850,99 +850,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
 
-  // Variáveis para o IN-STREAM VAST Overlay no Player
-  late final WebViewController _inStreamAdCtrl;
-  bool _showInStreamAd = false;
-  bool _inStreamAdPlayed = false;
-
   @override void initState() { 
     super.initState(); 
-    _initInStreamAd();
     _salvarHistoricoGeral(); 
     _checkResumeData(); 
     _loadDetails(); 
   }
+  
   @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
-
-  // Configura a WebView escondida que vai disparar o teu VAST URL
-  void _initInStreamAd() {
-    _inStreamAdCtrl = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (req) {
-          // Permite que qualquer script do anúncio carregue (tracker, iframe, etc).
-          // Só lança para o navegador se o utilizador clicar e tentar navegar a janela principal para fora da AdCash.
-          if (req.isMainFrame) {
-            if (req.url == 'https://adcash.com/' || req.url.startsWith('about:') || req.url.startsWith('data:')) {
-               return NavigationDecision.navigate;
-            }
-            launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        }
-      ))
-      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) => _closeInStreamAd());
-
-    try {
-      if (Platform.isAndroid) {
-        (_inStreamAdCtrl.platform as dynamic).setMediaPlaybackRequiresUserGesture(false);
-      }
-    } catch (_) {}
-
-    _inStreamAdCtrl.loadHtmlString('''
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-        <style>
-          * { margin:0; padding:0; box-sizing:border-box; }
-          body { background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; height:100vh; }
-          .video-js { width:100vw !important; height:100vh !important; }
-          /* Oculta completamente os controlos do dummy video */
-          .vjs-control-bar { display: none !important; }
-        </style>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
-        <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.js"></script>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
-      </head>
-      <body>
-        <!-- O video base não tem controls e serve só de fundo para o IMA preencher com anúncio -->
-        <video id="my-video" class="video-js vjs-default-skin" autoplay muted playsinline preload="auto">
-          <source src="https://storage.googleapis.com/gvabox/media/samples/stock.mp4" type="video/mp4"/>
-        </video>
-        <script>
-          function playAd() {
-            var player = videojs("my-video");
-            player.ima({
-                adTagUrl: "https://youradexchange.com/video/select.php?r=11388474",
-                disableAdControls: false,
-                showControlsForJSAds: true
-            });
-            player.ima.initializeAdDisplayContainer();
-            player.ima.requestAds();
-            player.play();
-
-            player.on('ads-ad-ended', function() { AdsDone.postMessage('done'); });
-            player.on('adserror', function() { AdsDone.postMessage('done'); });
-            player.on('ads-allpods-completed', function() { AdsDone.postMessage('done'); });
-          }
-        </script>
-      </body>
-      </html>
-      ''', baseUrl: 'https://adcash.com/');
-  }
-
-  void _closeInStreamAd() {
-    if (!mounted) return;
-    setState(() { _showInStreamAd = false; });
-    _videoPlayerController?.play();
-  }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -1196,20 +1111,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Timer? bufferDebounce;
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
-        
-        // Garante que o filme de trás não toca se o overlay VAST estiver ativo
-        if (_showInStreamAd && _videoPlayerController!.value.isPlaying) {
-          _videoPlayerController!.pause();
-        }
-
-        // ── Gatilho do IN-STREAM VAST aos 10 segundos ──
-        final pos = _videoPlayerController!.value.position;
-        if (pos.inSeconds >= 10 && !_inStreamAdPlayed && !_showInStreamAd && isPlaying) {
-            _inStreamAdPlayed = true;
-            setState(() { _showInStreamAd = true; });
-            _videoPlayerController!.pause();
-            _inStreamAdCtrl.runJavaScript("playAd();");
-        }
 
         final buf = _videoPlayerController!.value.isBuffering;
         if (buf != _isBuffering) {
@@ -1299,22 +1200,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ],
         if (isPlaying && !isServerLoading && _chewieController != null) Chewie(controller: _chewieController!),
         
-        // ── IN-STREAM AD (VAST OVERLAY) ──
-        if (_showInStreamAd) Stack(
-            fit: StackFit.expand,
-            children: [
-                WebViewWidget(controller: _inStreamAdCtrl),
-                Positioned(top: 10, right: 10, child: SafeArea(child: IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: _closeInStreamAd))),
-                Positioned(top: 10, left: 10, child: SafeArea(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)), child: const Text("Publicidade", style: TextStyle(color: Colors.white, fontSize: 10))))),
-            ]
-        ),
-
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
-        if (isPlaying && !isServerLoading && _isBuffering && !_showInStreamAd) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+        if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
-        if(!_showInStreamAd) Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () => Navigator.pop(context)))),
+        Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () => Navigator.pop(context)))),
       ],
     );
   }
@@ -1334,7 +1225,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             fit: StackFit.expand,
             children: [
               _buildPlayerArea(),
-              if (tipo != 'filmes' && isPlaying && !isServerLoading && episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1 && !_showInStreamAd)
+              if (tipo != 'filmes' && isPlaying && !isServerLoading && episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1)
                 Positioned(
                   bottom: 80,
                   right: 20,
@@ -1632,7 +1523,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 12),
                           ],
 
-                          // ── Banner de anúncio permanente (VIDEO SLIDER) ──
+                          // ── Banners Adsterra (Native + Display) em Combo ──
                           const _BannerAdWidget(),
                           const SizedBox(height: 16),
                         ],
@@ -1647,7 +1538,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
-// ── Banner de Anúncio — Adcash Video Slider ────────────────────────────────
+// ── Banners Combinados Adsterra ────────────────────────────────
 class _BannerAdWidget extends StatefulWidget {
   const _BannerAdWidget();
   @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -1655,7 +1546,7 @@ class _BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<_BannerAdWidget> {
   late final WebViewController _ctrl;
   bool _loaded = false;
-  double _height = 300;
+  double _height = 400; // Começa maior para dar espaço de carregamento fluído
 
   static const String _bannerHtml = '''
 <!DOCTYPE html>
@@ -1665,17 +1556,41 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    html, body { background:#141414; width:100%; overflow-x:hidden; }
+    body { background:#0F0F13; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; padding: 10px 0; overflow-x: hidden; }
   </style>
 </head>
 <body>
-  <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
+  <script async="async" data-cfasync="false" src="//pl29657400.effectivecpmnetwork.com/0b441d364002ce46271a097b97bf33af/invoke.js"></script>
+  <div id="container-0b441d364002ce46271a097b97bf33af"></div>
+
   <script type="text/javascript">
-    if(typeof aclib !== "undefined") {
-        aclib.runVideoSlider({ zoneId: '11388478' });
-    } else {
-        setTimeout(function() { aclib.runVideoSlider({ zoneId: '11388478' }); }, 1000);
+    atOptions = {
+      'key' : '923539f65a022c48ecd0ff98e61fe4bf',
+      'format' : 'iframe',
+      'height' : 250,
+      'width' : 300,
+      'params' : {}
+    };
+  </script>
+  <script type="text/javascript" src="//www.highperformanceformat.com/923539f65a022c48ecd0ff98e61fe4bf/invoke.js"></script>
+
+  <script type="text/javascript">
+    atOptions = {
+      'key' : '3a941b7c5cd244f3fe9ffadda07677fd',
+      'format' : 'iframe',
+      'height' : 50,
+      'width' : 320,
+      'params' : {}
+    };
+  </script>
+  <script type="text/javascript" src="//www.highperformanceformat.com/3a941b7c5cd244f3fe9ffadda07677fd/invoke.js"></script>
+
+  <script>
+    function reportHeight() {
+      var h = document.body.scrollHeight;
+      if (h > 50) { try { BannerHeight.postMessage(h.toString()); } catch(e){} }
     }
+    setInterval(reportHeight, 2000);
   </script>
 </body>
 </html>
@@ -1685,28 +1600,34 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
     super.initState();
     _ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF141414))
+      ..setBackgroundColor(const Color(0xFF0F0F13))
+      ..addJavaScriptChannel('BannerHeight', onMessageReceived: (msg) {
+        final h = double.tryParse(msg.message);
+        if (h != null && h > 50 && mounted) {
+          setState(() => _height = h + 20); // Ajusta o layout do Flutter ao tamanho real dos anúncios
+        }
+      })
       ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
-          if (req.isMainFrame) {
-            if (req.url == 'https://adcash.com/' || req.url.startsWith('about:') || req.url.startsWith('data:')) {
-               return NavigationDecision.navigate;
-            }
-            launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
+          final u = req.url;
+          // Deixa as iframes do Adsterra funcionarem internamente. 
+          // Bloqueia e envia pro navegador apenas os cliques reais de saída!
+          if (u.startsWith('http') && !u.contains('effectivecpmnetwork.com') && !u.contains('highperformanceformat.com') && !u.contains('about:blank')) {
+            launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
-        onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
       ))
-      ..loadHtmlString(_bannerHtml, baseUrl: 'https://adcash.com/'); 
+      ..loadHtmlString(_bannerHtml, baseUrl: 'https://effectivecpmnetwork.com/'); 
   }
 
   @override Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: const Color(0xFF0F0F13),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.white10),
       ),
@@ -1731,11 +1652,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
             child: Stack(children: [
               WebViewWidget(controller: _ctrl),
               if (!_loaded)
-                Container(
-                  color: const Color(0xFF141414),
-                  child: const Center(child: SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
-                ),
+                const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2))),
             ]),
           ),
         ],
@@ -1951,14 +1868,13 @@ class AdRemovalManager {
     final given = input.trim().toLowerCase();
     if (given.isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
 
-    final full     = _entries[idx].decoded;           
-    final prefixN  = full.length < 6 ? full.length : 6; 
-    final prefix   = full.substring(0, prefixN);      
-
-    if (given.length < prefixN || !given.startsWith(prefix)) {
-      return _AdRemResult.invalid('Código incorrecto. Copia o código que aparece na página.');
+    // Bloquear padrões de adivinhação óbvios
+    const blackList = ['1234', '0000', '1111', '12345', '123456', '000000', 'teste', 'admin', '123123', 'qwer', 'asdf'];
+    if (given.length < 4 || blackList.contains(given) || RegExp(r'^(\d)\1+$').hasMatch(given)) {
+      return _AdRemResult.invalid('Código inválido. Por favor, copia o código real da página gerada.');
     }
 
+    // Se passar os filtros acima, aceitamos como sucesso!
     final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyExpiry, exp);
@@ -2034,59 +1950,17 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   }
 
   void _abrirAnuncioInApp() {
-    final html = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
-<style>
-  body { background:#000; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; }
-  .loader { border: 4px solid #333; border-top: 4px solid #E50914; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;}
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-</style>
-</head>
-<body>
-  <div class="loader"></div>
-  <h2>A carregar parceiro...</h2>
-  <p style="color:#aaa; font-size:12px;">Obrigado por apoiar o CDCINE!</p>
-  <script>
-    window.open = function(url, windowName, windowFeatures) {
-       PopupChannel.postMessage(url);
-       return null;
-    };
-    aclib.runPop({ zoneId: '11388490' });
-    
-    function forcePop() {
-      var el = document.createElement('a');
-      document.body.appendChild(el);
-      var ev = document.createEvent('MouseEvents');
-      ev.initMouseEvent('click', true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null);
-      el.dispatchEvent(ev);
-    }
-  </script>
-</body>
-</html>
-""";
-
     final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel('PopupChannel', onMessageReceived: (msg) {
-        launchUrl(Uri.parse(msg.message), mode: LaunchMode.externalApplication);
-      })
+      ..setBackgroundColor(const Color(0xFF0B0B0F))
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          if (req.isMainFrame) {
-             if (req.url == 'https://adcash.com/' || req.url.startsWith('about:') || req.url.startsWith('data:')) {
-                return NavigationDecision.navigate;
-             }
-             launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
-             return NavigationDecision.prevent;
-          }
+          // Deixa toda a rede EffectiveCPM fluir lá dentro
           return NavigationDecision.navigate;
         },
       ))
-      ..loadHtmlString(html, baseUrl: 'https://adcash.com/');
+      // Carrega o Smart Link diretamente!
+      ..loadRequest(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'));
 
     setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
 
@@ -2094,8 +1968,9 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
       
-      if (_countdown15 == 10) {
-        _webCtrl?.runJavaScript("forcePop();");
+      // Aos 5 segundos restantes, atira o Smart Link diretamente para o Chrome/Browser
+      if (_countdown15 == 5) {
+         launchUrl(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'), mode: LaunchMode.externalApplication);
       }
 
       if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
