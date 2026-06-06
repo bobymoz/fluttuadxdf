@@ -229,7 +229,6 @@ class _CDcineAppState extends State<CDcineApp> with WidgetsBindingObserver {
     super.dispose();
   }
   @override void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Invalida o acesso sem anúncios quando o app é terminado/fechado
     if (state == AppLifecycleState.detached) {
       AdRemovalManager.instance.invalidate();
     }
@@ -851,8 +850,73 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
 
-  @override void initState() { super.initState(); _salvarHistoricoGeral(); _checkResumeData(); _loadDetails(); }
+  // Variáveis para o IN-STREAM VAST Overlay no Player
+  late final WebViewController _inStreamAdCtrl;
+  bool _showInStreamAd = false;
+  bool _inStreamAdPlayed = false;
+
+  @override void initState() { 
+    super.initState(); 
+    _initInStreamAd();
+    _salvarHistoricoGeral(); 
+    _checkResumeData(); 
+    _loadDetails(); 
+  }
   @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
+
+  // Configura a WebView escondida que vai disparar o teu VAST URL
+  void _initInStreamAd() {
+    _inStreamAdCtrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..setMediaPlaybackRequiresUserGesture(false)
+      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) => _closeInStreamAd())
+      ..loadHtmlString('''
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+        <style>
+          * { margin:0; padding:0; box-sizing:border-box; }
+          body { background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; height:100vh; }
+          .video-js { width:100% !important; height:100% !important; }
+        </style>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
+        <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.js"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
+      </head>
+      <body>
+        <video id="my-video" class="video-js vjs-default-skin vjs-big-play-centered" playsinline></video>
+        <script>
+          function playAd() {
+            var player = videojs("my-video");
+            player.ima({
+                adTagUrl: "https://youradexchange.com/video/select.php?r=11388474",
+                disableAdControls: false,
+                showControlsForJSAds: true
+            });
+            player.ima.initializeAdDisplayContainer();
+            player.ima.requestAds();
+            player.play();
+
+            player.on('ads-ad-ended', function() { AdsDone.postMessage('done'); });
+            player.on('adserror', function() { AdsDone.postMessage('done'); });
+          }
+        </script>
+      </body>
+      </html>
+      ''');
+  }
+
+  void _closeInStreamAd() {
+    if (!mounted) return;
+    setState(() { _showInStreamAd = false; });
+    _videoPlayerController?.play();
+  }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -934,7 +998,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (oldVideo != null) await oldVideo.dispose();
   }
 
-  /// Avança para o próximo episódio (chamável mesmo em fullscreen)
   void _proximoEpisodio() {
     if (episodios.isEmpty) return;
     final nextIdx = _epAtivoIndex + 1;
@@ -969,7 +1032,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       String url = p["file"] ?? p["url"] ?? p["link"] ?? "";
       String tipoRaw = p["type"]?.toString() ?? "Video";
       String idioma = p["lang"]?.toString() ?? "Opção";
-      // Prioridade do servidor para seleção automática (não descarta nenhum formato)
       bool isMp4 = tipoRaw.toUpperCase().contains("MP4") || url.toLowerCase().contains(".mp4");
       bool isDub = idioma.toLowerCase().contains("dub");
       return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isDub": isDub};
@@ -977,7 +1039,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     _serversDisponiveis = servers;
 
-    // Prioridade: dublado MP4 > dublado qualquer > MP4 > qualquer
     Map? serverEscolhido;
     serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['isDub'] == true, orElse: () => null);
     serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isDub'] == true, orElse: () => null);
@@ -999,7 +1060,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // ── Sonda a URL para descobrir o tipo real do conteúdo antes de reproduzir
   Future<_ProbeResult> _probeUrl(String url) async {
     final hdrs = {
       "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
@@ -1007,7 +1067,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       "Accept": "*/*",
     };
     try {
-      // HEAD rápido para ver Content-Type sem baixar o corpo
       http.Response? head;
       try {
         head = await http.head(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 10));
@@ -1017,21 +1076,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return _ProbeResult(url: url, isHls: true);
       }
       if (ct.contains('mp4') || ct.contains('video/mp4') || ct.contains('octet-stream')) {
-        // octet-stream pode ser MP4 — confia na extensão se existir
         if (url.toLowerCase().contains('.mp4')) return _ProbeResult(url: url, isHls: false);
       }
-      // Extensão conhecida na URL → confia nela
       final lurl = url.toLowerCase();
       if (lurl.contains('.mp4')) return _ProbeResult(url: url, isHls: false);
       if (lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts')) {
         return _ProbeResult(url: url, isHls: true);
       }
-      // Content-Type ambíguo (text/plain, text/html, etc.) → baixar primeiros bytes
       final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 15));
       final body = get.body.trimLeft();
       if (body.startsWith('#EXTM3U')) {
-        // É um manifesto M3U8 devolvido como texto puro.
-        // Gravamos num ficheiro temporário para o ExoPlayer conseguir lê-lo.
         try {
           final dir = Directory.systemTemp;
           final fname = 'cdcine_${DateTime.now().millisecondsSinceEpoch}.m3u8';
@@ -1039,14 +1093,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           await f.writeAsString(body);
           return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
         } catch (_) {
-          // Se não conseguir gravar em ficheiro, usa URL original e espera que ExoPlayer resolva
           return _ProbeResult(url: url, isHls: true);
         }
       }
-      // Desconhecido → tenta como MP4/genérico
       return _ProbeResult(url: url, isHls: false);
     } catch (_) {
-      // Erro na sonda → tenta de qualquer forma com a URL original
       final lurl = url.toLowerCase();
       return _ProbeResult(url: url, isHls: lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts'));
     }
@@ -1061,7 +1112,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final posParaSeek = savedPositionSeconds;
     try {
-      // 1️⃣ Sondar a URL ANTES de passar ao player
       final probe = await _probeUrl(url);
 
       final hdrs = probe.isLocalFile ? <String, String>{} : {
@@ -1084,7 +1134,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         await _videoPlayerController!.seekTo(Duration(seconds: posParaSeek));
       }
 
-      // HLS ao vivo = sem duração definida
       final bool isLive = probe.isHls && _videoPlayerController!.value.duration == Duration.zero;
 
       _chewieController = ChewieController(
@@ -1103,7 +1152,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: Colors.white24,
         ),
         errorBuilder: (context, errorMessage) {
-          // Debounce: espera antes de trocar para evitar erro falso durante carregamento lento
           WidgetsBinding.instance.addPostFrameCallback((_) {
             Future.delayed(const Duration(seconds: 6), () {
               if (mounted && isPlaying) _tentarProximoServidor();
@@ -1122,6 +1170,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Timer? bufferDebounce;
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
+        
+        // ── Gatilho do IN-STREAM VAST aos 10 segundos ──
+        final pos = _videoPlayerController!.value.position;
+        if (pos.inSeconds >= 10 && !_inStreamAdPlayed && !_showInStreamAd && isPlaying) {
+            _inStreamAdPlayed = true;
+            setState(() { _showInStreamAd = true; });
+            _videoPlayerController!.pause();
+            _inStreamAdCtrl.runJavaScript("playAd();");
+        }
+
         final buf = _videoPlayerController!.value.isBuffering;
         if (buf != _isBuffering) {
           if (buf) {
@@ -1171,7 +1229,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) async {
-    // Se o utilizador já removeu os anúncios (código válido e dentro das 24h), passa directamente
     final adFree = await AdRemovalManager.instance.isAdFree();
     if (adFree) { onSuccess(); return; }
 
@@ -1210,11 +1267,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Container(color: Colors.black.withOpacity(0.6)),
         ],
         if (isPlaying && !isServerLoading && _chewieController != null) Chewie(controller: _chewieController!),
+        
+        // ── IN-STREAM AD (VAST OVERLAY) ──
+        if (_showInStreamAd) Stack(
+            fit: StackFit.expand,
+            children: [
+                WebViewWidget(controller: _inStreamAdCtrl),
+                Positioned(top: 10, right: 10, child: SafeArea(child: IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: _closeInStreamAd))),
+                Positioned(top: 10, left: 10, child: SafeArea(child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)), child: const Text("Publicidade", style: TextStyle(color: Colors.white, fontSize: 10))))),
+            ]
+        ),
+
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
-        if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+        if (isPlaying && !isServerLoading && _isBuffering && !_showInStreamAd) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
-        Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () => Navigator.pop(context)))),
+        
+        if(!_showInStreamAd) Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () => Navigator.pop(context)))),
       ],
     );
   }
@@ -1222,7 +1291,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override Widget build(BuildContext context) {
     String nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
     String tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? "filmes";
-    final bool isTV = MediaQuery.of(context).size.width > 900; // TV Box / tablet landscape
+    final bool isTV = MediaQuery.of(context).size.width > 900; 
 
     // ── FULLSCREEN ───────────────────────────────────────────────────────────────
     if (_isFullscreen) {
@@ -1234,8 +1303,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             fit: StackFit.expand,
             children: [
               _buildPlayerArea(),
-              // Botão "Próximo episódio" em fullscreen (séries)
-              if (tipo != 'filmes' && isPlaying && !isServerLoading && episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1)
+              if (tipo != 'filmes' && isPlaying && !isServerLoading && episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1 && !_showInStreamAd)
                 Positioned(
                   bottom: 80,
                   right: 20,
@@ -1272,15 +1340,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Coluna esquerda: Player + info
                 Expanded(
                   flex: 3,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Player
                       AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
-                      // Título + botões
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1290,7 +1355,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12))]))),
                         ]),
                       ),
-                      // Meta
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                         child: Row(children: [
@@ -1298,7 +1362,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
                         ]),
                       ),
-                      // Sinopse
                       if (isDataLoaded) Padding(
                         padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                         child: GestureDetector(
@@ -1310,19 +1373,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Banner de anúncio
                       const _BannerAdWidget(),
                     ],
                   ),
                 ),
-                // Coluna direita: Lista de episódios
                 Container(
                   width: 300,
                   color: const Color(0xFF0B0B0B),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Seletor de temporada
                       if (temporadas.isNotEmpty) Padding(
                         padding: const EdgeInsets.all(10),
                         child: DropdownButtonFormField<String>(
@@ -1334,7 +1394,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); _epAtivoIndex = -1; }); _carregarEpisodios(val); } },
                         ),
                       ),
-                      // Botão próximo episódio
                       if (episodios.isNotEmpty && _epAtivoIndex < episodios.length - 1)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
@@ -1349,7 +1408,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         ),
                       const Divider(color: Colors.white10, height: 1),
-                      // Lista de episódios scroll vertical (navegável com D-pad)
                       Expanded(
                         child: episodios.isEmpty
                           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
@@ -1379,7 +1437,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         ),
                                         const SizedBox(width: 10),
                                         Expanded(child: Text(ep['full_nome'], style: TextStyle(color: isAtivo ? Colors.white : Colors.white70, fontSize: 13, fontWeight: isAtivo ? FontWeight.bold : FontWeight.normal), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                                        // Ícone de download para séries no layout TV
                                         IconButton(
                                           icon: Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white54, size: 18)),
                                           onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
@@ -1466,7 +1523,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 10),
                           ],
                           if (tipo != 'filmes') ...[
-                            // Botão próximo episódio (mobile)
                             if (episodios.isNotEmpty && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length - 1)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
@@ -1526,7 +1582,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             const SizedBox(height: 6),
-                            // Dica de download abaixo dos episódios
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -1546,7 +1601,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 12),
                           ],
 
-                          // ── Banner de anúncio permanente ──────────────────
+                          // ── Banner de anúncio permanente (VIDEO SLIDER) ──
                           const _BannerAdWidget(),
                           const SizedBox(height: 16),
                         ],
@@ -1562,8 +1617,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ── Banner de Anúncio — Adcash Video Slider ────────────────────────────────
-// Posicionado abaixo das recomendações (ver build acima).
-// Usa URL absoluta e SEM baseUrl para não bloquear scripts externos.
 class _BannerAdWidget extends StatefulWidget {
   const _BannerAdWidget();
   @override State<_BannerAdWidget> createState() => _BannerAdWidgetState();
@@ -1573,7 +1626,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   bool _loaded = false;
   double _height = 300;
 
-  // Video Slider Adcash — zoneId 11388478
+  // Usa protocolo HTTPS obrigatório nos scripts porque WebView sem base URL converte '//' para 'file://'
   static const String _bannerHtml = '''
 <!DOCTYPE html>
 <html>
@@ -1586,28 +1639,19 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   </style>
 </head>
 <body>
-  <script id="aclib" type="text/javascript"
-    src="https://acscdn.com/script/aclib.js"></script>
+  <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
   <script type="text/javascript">
-    function startSlider() {
-      if (typeof aclib !== "undefined") {
-        aclib.runVideoSlider({ zoneId: "11388478" });
-      } else {
-        setTimeout(startSlider, 300);
-      }
+    if(typeof aclib !== "undefined") {
+        aclib.runVideoSlider({ zoneId: '11388478' });
+    } else {
+        setTimeout(function() { aclib.runVideoSlider({ zoneId: '11388478' }); }, 1000);
     }
-    startSlider();
+    
     function reportHeight() {
       var h = Math.max(document.body.scrollHeight, document.body.offsetHeight);
       if (h > 30) { try { BannerHeight.postMessage(h.toString()); } catch(e){} }
     }
-    setTimeout(reportHeight, 1000);
-    setTimeout(reportHeight, 2500);
-    setTimeout(reportHeight, 5000);
-    setTimeout(reportHeight, 8000);
-    new MutationObserver(function(){
-      setTimeout(reportHeight, 500);
-    }).observe(document.body, { childList:true, subtree:true, attributes:true });
+    setInterval(reportHeight, 1500);
   </script>
 </body>
 </html>
@@ -1628,17 +1672,15 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           final u = req.url;
-          // Permite domínios Adcash e URLs internas
           if (u.contains('acscdn.com') || u.contains('adcash.com') ||
               u.startsWith('about:') || u.startsWith('data:') || u.startsWith('javascript:')) {
             return NavigationDecision.navigate;
           }
-          // Cliques em anúncios abrem no browser externo
           launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
           return NavigationDecision.prevent;
         },
       ))
-      ..loadHtmlString(_bannerHtml); // SEM baseUrl — scripts externos carregam livremente
+      ..loadHtmlString(_bannerHtml); 
   }
 
   @override Widget build(BuildContext context) {
@@ -1849,8 +1891,6 @@ class DmcaScreen extends StatelessWidget {
 // ==========================================
 
 // ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
-// Código único (ambas as URLs): cdcine2025
-// Validação por PREFIXO (6 chars) → tolerante a maiúsculas / espaços / sufixos
 class _AdRemovalData {
   final String url;
   final String codeB64;
@@ -1885,9 +1925,6 @@ class AdRemovalManager {
     return (_entries[idx].url, idx);
   }
 
-  /// Valida o código.
-  /// Aceita se o input começar pelos primeiros 6 caracteres corretos.
-  /// Tolerante a maiúsculas, espaços e qualquer coisa que venha depois.
   Future<_AdRemResult> validate(String input, {required int idx, required bool urlOpened, required bool isTV}) async {
     if (!isTV && !urlOpened) {
       return _AdRemResult.invalid('Tens de abrir o link primeiro para obter o código!');
@@ -1895,9 +1932,9 @@ class AdRemovalManager {
     final given = input.trim().toLowerCase();
     if (given.isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
 
-    final full     = _entries[idx].decoded;           // "cdcine2025"
-    final prefixN  = full.length < 6 ? full.length : 6; // 6
-    final prefix   = full.substring(0, prefixN);      // "cdcine"
+    final full     = _entries[idx].decoded;           
+    final prefixN  = full.length < 6 ? full.length : 6; 
+    final prefix   = full.substring(0, prefixN);      
 
     if (given.length < prefixN || !given.startsWith(prefix)) {
       return _AdRemResult.invalid('Código incorrecto. Copia o código que aparece na página.');
@@ -1933,7 +1970,6 @@ class _RewardedPopup extends StatefulWidget {
 }
 
 class _RewardedPopupState extends State<_RewardedPopup> {
-  // ── Estado geral ──────────────────────────────────────────────────────────
   int _countdown60 = 60;
   int _countdown15 = 15;
   bool _aguardando60  = false;
@@ -1943,12 +1979,11 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   Timer? _timer15;
   WebViewController? _webCtrl;
 
-  // ── Estado do ecrã de remoção de anúncios ─────────────────────────────────
   _RemStep _remStep    = _RemStep.hidden;
   String   _remUrl     = '';
-  int      _remIdx     = 0;       // índice da entrada escolhida — guardado aqui em memória
+  int      _remIdx     = 0;       
   bool     _remLoading = false;
-  bool     _remUrlOpen = false;   // utilizador clicou no link nesta sessão
+  bool     _remUrlOpen = false;   
   String   _remError   = '';
   int      _remCountdown = 0;
   Timer?   _remTimer;
@@ -1979,67 +2014,31 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     });
   }
 
-  // VAST (pre-roll no player Video.js + IMA)
-  static const String _vastTagUrl = 'https://youradexchange.com/video/select.php?r=11388474';
-  // Pop-Under landing (aberto no browser externo aos 5 s)
-  static const String _popUnderUrl = 'https://youradexchange.com/video/select.php?r=11388490';
-
   void _abrirAnuncioInApp() {
+    // Aqui usamos apenas o Pop-Under que estourará automaticamente
     final html = """
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#000; display:flex; align-items:center; justify-content:center; height:100vh; overflow:hidden; }
-  #video-container { width:100%; max-width:100vw; position: relative; }
-  .video-js { width:100% !important; height:56.25vw !important; max-height:100vh; }
-</style>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video-js.min.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.6.1/video.min.js"></script>
-<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-contrib-ads/6.9.0/videojs.ads.min.css" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/videojs-ima/1.5.2/videojs.ima.min.css" rel="stylesheet"/>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
+<style>
+  body { background:#000; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; }
+  .loader { border: 4px solid #333; border-top: 4px solid #E50914; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;}
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
 </head>
 <body>
-<div id="video-container">
-  <video id="content-video" class="video-js vjs-default-skin vjs-big-play-centered" autoplay muted playsinline controls preload="auto">
-    <source src="https://storage.googleapis.com/gvabox/media/samples/stock.mp4" type="video/mp4"/>
-  </video>
-</div>
-<script>
-  // ── A) VAST pre-roll no player ──────────────────────────────
-  var player = videojs('content-video');
-  player.ima({
-    adTagUrl: '$_vastTagUrl',
-    disableAdControls: false,
-    showControlsForJSAds: true
-  });
-  player.ima.initializeAdDisplayContainer();
-  player.ima.requestAds();
-  player.play(); // Força o inicio do Ad
-
-  player.on('ads-ad-ended', function() {
-    try { AdsDone.postMessage('done'); } catch(e) {}
-  });
-  player.on('adserror', function() {
-    try { AdsDone.postMessage('done'); } catch(e) {}
-  });
-
-  // ── B) Pop-Under Adcash invisível ─────────────────────
-  function tryPop() {
-    if (typeof aclib !== 'undefined') {
-      aclib.runPop({ zoneId: '11388490' });
-    } else { setTimeout(tryPop, 300); }
-  }
-  tryPop();
-  
-  // O trigger dos 5 segundos agora é comandado diretamente no Flutter pelo _timer15
-</script>
+  <div class="loader"></div>
+  <h2>A carregar parceiro...</h2>
+  <p style="color:#aaa; font-size:12px;">Obrigado por apoiar o CDCINE!</p>
+  <script>
+    function forcePop() {
+      if (typeof aclib !== 'undefined') {
+        aclib.runPop({ zoneId: '11388490' });
+      }
+    }
+  </script>
 </body>
 </html>
 """;
@@ -2048,22 +2047,14 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          final uri = Uri.tryParse(req.url);
-          if (uri != null && uri.scheme == 'intent') return NavigationDecision.prevent;
           final u = req.url;
-          if (!u.contains('acscdn.com') && !u.contains('adcash.com') &&
-              !u.contains('cdnjs.cloudflare.com') && !u.contains('imasdk.googleapis.com') &&
-              !u.contains('youradexchange.com') && !u.contains('storage.googleapis.com') &&
-              !u.startsWith('about:') && !u.startsWith('data:') && !u.startsWith('javascript:')) {
+          if (!u.contains('acscdn.com') && !u.startsWith('data:') && !u.startsWith('about:') && !u.startsWith('javascript:')) {
             launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
       ))
-      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) {
-        if (mounted) widget.onSuccess();
-      })
       ..loadHtmlString(html);
 
     setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
@@ -2072,16 +2063,15 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
       
-      // Quando a contagem chega a 5 (ou seja, passaram-se 10 segs), o popup dispara automaticamente no navegador
-      if (_countdown15 == 5) {
-        launchUrl(Uri.parse(_popUnderUrl), mode: LaunchMode.externalApplication);
+      // Quando faltarem 10 segundos (ou seja, passaram-se 5 segundos no pop-up) o Pop-Under dispara!
+      if (_countdown15 == 10) {
+        _webCtrl?.runJavaScript("forcePop();");
       }
 
       if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
     });
   }
 
-  // ── Métodos da remoção de anúncios ────────────────────────────────────────
   void _iniciarRemocao() {
     final (url, idx) = AdRemovalManager.instance.beginSession();
     setState(() {
@@ -2145,7 +2135,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
     });
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override Widget build(BuildContext context) {
     if (_anuncioAberto && _webCtrl != null) {
       return Dialog(
