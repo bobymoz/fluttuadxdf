@@ -869,9 +869,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _inStreamAdCtrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
-      ..setMediaPlaybackRequiresUserGesture(false)
-      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) => _closeInStreamAd())
-      ..loadHtmlString('''
+      ..addJavaScriptChannel('AdsDone', onMessageReceived: (_) => _closeInStreamAd());
+
+    // Permite Autoplay no Android sem exigir toque do utilizador, usando invocação dinâmica segura
+    try {
+      if (Platform.isAndroid) {
+        (_inStreamAdCtrl.platform as dynamic).setMediaPlaybackRequiresUserGesture(false);
+      }
+    } catch (_) {}
+
+    _inStreamAdCtrl.loadHtmlString('''
       <!DOCTYPE html>
       <html>
       <head>
@@ -2015,7 +2022,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
   }
 
   void _abrirAnuncioInApp() {
-    // Aqui usamos apenas o Pop-Under que estourará automaticamente
     final html = """
 <!DOCTYPE html>
 <html>
@@ -2063,7 +2069,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
       
-      // Quando faltarem 10 segundos (ou seja, passaram-se 5 segundos no pop-up) o Pop-Under dispara!
       if (_countdown15 == 10) {
         _webCtrl?.runJavaScript("forcePop();");
       }
