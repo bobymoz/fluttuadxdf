@@ -1007,40 +1007,95 @@ class _PlayerScreenState extends State<PlayerScreen> {
       "Referer": _smartPlayUrl,
       "Accept": "*/*",
     };
+
+    // Extrai apenas o PATH da URL (antes do ?) para detetar extensão
+    // corretamente em URLs S3/Wasabi/CloudFront com query strings longas
+    // ex: .../filme.mp4?X-Amz-Signature=... → path = .../filme.mp4
+    final pathOnly = () {
+      try { return Uri.parse(url).path.toLowerCase(); } catch (_) { return url.toLowerCase(); }
+    }();
+    final lurl = url.toLowerCase();
+
+    // Deteção por extensão no PATH (não na URL completa com query string)
+    if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u')) {
+      return _ProbeResult(url: url, isHls: true);
+    }
+    if (pathOnly.endsWith('.mpd')) {
+      // MPEG-DASH
+      return _ProbeResult(url: url, isHls: false);
+    }
+    if (pathOnly.endsWith('.mp4') || pathOnly.endsWith('.mkv') ||
+        pathOnly.endsWith('.avi') || pathOnly.endsWith('.webm') ||
+        pathOnly.endsWith('.mov') || pathOnly.endsWith('.wmv') ||
+        pathOnly.endsWith('.flv') || pathOnly.endsWith('.mp4v') ||
+        pathOnly.endsWith('.m4v') || pathOnly.endsWith('.3gp') ||
+        pathOnly.endsWith('.ts')) {
+      return _ProbeResult(url: url, isHls: pathOnly.endsWith('.ts'));
+    }
+
     try {
       http.Response? head;
       try {
         head = await http.head(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 10));
       } catch (_) {}
+
       final ct = (head?.headers['content-type'] ?? '').toLowerCase();
+
+      // HLS via Content-Type
       if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) {
         return _ProbeResult(url: url, isHls: true);
       }
-      if (ct.contains('mp4') || ct.contains('video/mp4') || ct.contains('octet-stream')) {
-        if (url.toLowerCase().contains('.mp4')) return _ProbeResult(url: url, isHls: false);
+      // DASH via Content-Type
+      if (ct.contains('dash+xml')) {
+        return _ProbeResult(url: url, isHls: false);
       }
-      final lurl = url.toLowerCase();
-      if (lurl.contains('.mp4')) return _ProbeResult(url: url, isHls: false);
-      if (lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts')) {
-        return _ProbeResult(url: url, isHls: true);
+      // Qualquer vídeo via Content-Type → MP4/direto
+      if (ct.contains('video/') || ct.contains('octet-stream')) {
+        return _ProbeResult(url: url, isHls: false);
       }
+
+      // Fallback: tenta GET e lê os primeiros bytes para detetar formato
       final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 15));
       final body = get.body.trimLeft();
       if (body.startsWith('#EXTM3U')) {
         try {
           final dir = Directory.systemTemp;
-          final fname = 'cdcine_${DateTime.now().millisecondsSinceEpoch}.m3u8';
-          final f = File('${dir.path}/$fname');
+          final fname = 'cdcine_\${DateTime.now().millisecondsSinceEpoch}.m3u8';
+          final f = File('\${dir.path}/\$fname');
           await f.writeAsString(body);
           return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
         } catch (_) {
           return _ProbeResult(url: url, isHls: true);
         }
       }
+      // Content-Type do GET
+      final ctGet = (get.headers['content-type'] ?? '').toLowerCase();
+      if (ctGet.contains('mpegurl') || ctGet.contains('x-mpegurl')) {
+        return _ProbeResult(url: url, isHls: true);
+      }
+      if (ctGet.contains('video/') || ctGet.contains('octet-stream')) {
+        return _ProbeResult(url: url, isHls: false);
+      }
+
+      // Último fallback: se a URL tem query string (ex: S3 signed URL) assume MP4
+      if (url.contains('?')) return _ProbeResult(url: url, isHls: false);
+
+      // Verifica extensão na URL completa (segurança)
+      if (lurl.contains('.mp4') || lurl.contains('.mkv') || lurl.contains('.avi') ||
+          lurl.contains('.webm') || lurl.contains('.mov') || lurl.contains('.m4v')) {
+        return _ProbeResult(url: url, isHls: false);
+      }
+      if (lurl.contains('.m3u8') || lurl.contains('.m3u')) {
+        return _ProbeResult(url: url, isHls: true);
+      }
+
       return _ProbeResult(url: url, isHls: false);
     } catch (_) {
-      final lurl = url.toLowerCase();
-      return _ProbeResult(url: url, isHls: lurl.contains('.m3u8') || lurl.contains('.m3u') || lurl.contains('.ts'));
+      // Em caso de erro de rede: deteção rápida por extensão/query string
+      if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u') || lurl.contains('.m3u8')) {
+        return _ProbeResult(url: url, isHls: true);
+      }
+      return _ProbeResult(url: url, isHls: false);
     }
   }
 
