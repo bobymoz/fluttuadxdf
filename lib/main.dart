@@ -1057,8 +1057,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
 
       // 3. URL directa numa linha (http/https)
-      final lines = body.split(RegExp(r'[
-]+')).map((l) => l.trim()).where((l) => l.isNotEmpty);
+      final lines = body.split('\n').expand((l) => l.split('\r')).map((l) => l.trim()).where((l) => l.isNotEmpty);
       for (final line in lines) {
         if (line.startsWith('http')) {
           return _probeUrl(line); // recursivo — resolve o URL real
