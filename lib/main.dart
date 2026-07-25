@@ -1001,81 +1001,77 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // URLs pré-assinadas S3/Wasabi/CloudFront apenas autorizam o header "host".
-  // Enviar Referer ou User-Agent causa 403 SignatureDoesNotMatch.
-  static bool _isSignedS3Url(String url) {
-    final lq = url.toLowerCase();
-    return lq.contains('x-amz-signature') ||
-           lq.contains('x-amz-credential') ||
-           lq.contains('awsaccesskeyid') ||    // URLs v2 antigas
-           lq.contains('x-goog-signature') ||   // Google Cloud signed
-           (lq.contains('.wasabisys.com') && lq.contains('?')) ||
-           (lq.contains('.amazonaws.com') && lq.contains('?'));
+  // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
+  // Enviar Referer, User-Agent, Range ou outros headers extras NÃO causa 403
+  // (S3 só verifica os headers listados em X-Amz-SignedHeaders), mas fazer
+  // um HEAD request antes do ExoPlayer pode criar conflitos de sessão TCP.
+  static bool _isSignedCdnUrl(String url) {
+    final q = url.toLowerCase();
+    return q.contains('x-amz-signature') ||
+           q.contains('x-amz-credential') ||
+           q.contains('awsaccesskeyid') ||
+           q.contains('x-goog-signature') ||
+           (q.contains('.wasabisys.com') && q.contains('?')) ||
+           (q.contains('.amazonaws.com') && q.contains('?')) ||
+           (q.contains('.r2.dev') && q.contains('?')) ||
+           (q.contains('.backblazeb2.com') && q.contains('?'));
   }
 
   Future<_ProbeResult> _probeUrl(String url) async {
-    final signed = _isSignedS3Url(url);
-    // URLs assinadas: sem headers extra — só o "host" implícito
-    final hdrs = signed ? <String, String>{} : {
-      "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
-      "Referer": _smartPlayUrl,
-      "Accept": "*/*",
-    };
+    // Extrai apenas o PATH (antes do ?) para detetar extensão corretamente
+    // em URLs com query strings longas (S3, Wasabi, CloudFront, etc.)
+    final String pathOnly;
+    try { pathOnly = Uri.parse(url).path.toLowerCase(); }
+    catch (_) { return _ProbeResult(url: url, isHls: false); }
 
-    // Deteção rápida pelo PATH da URL (antes do ?) — evita request de rede desnecessário
-    // Resolve URLs S3/Wasabi onde a extensão aparece antes dos parâmetros ?X-Amz-...
-    final pathOnly = () {
-      try { return Uri.parse(url).path.toLowerCase(); } catch (_) { return url.toLowerCase(); }
-    }();
-
-    if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u')) return _ProbeResult(url: url, isHls: true);
-    if (pathOnly.endsWith('.mpd'))  return _ProbeResult(url: url, isHls: false); // MPEG-DASH
+    // Deteção imediata por extensão — sem nenhum request de rede
+    if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u')) {
+      return _ProbeResult(url: url, isHls: true);
+    }
+    if (pathOnly.endsWith('.ts')) return _ProbeResult(url: url, isHls: true);
+    if (pathOnly.endsWith('.mpd'))  return _ProbeResult(url: url, isHls: false);
     if (pathOnly.endsWith('.mp4')  || pathOnly.endsWith('.mkv') ||
         pathOnly.endsWith('.avi')  || pathOnly.endsWith('.webm') ||
         pathOnly.endsWith('.mov')  || pathOnly.endsWith('.wmv') ||
         pathOnly.endsWith('.flv')  || pathOnly.endsWith('.m4v') ||
-        pathOnly.endsWith('.mp4v') || pathOnly.endsWith('.3gp')) {
+        pathOnly.endsWith('.mp4v') || pathOnly.endsWith('.3gp') ||
+        pathOnly.endsWith('.ogv')) {
       return _ProbeResult(url: url, isHls: false);
     }
-    if (pathOnly.endsWith('.ts')) return _ProbeResult(url: url, isHls: true);
+    // URLs CDN assinadas sem extensão clara → assume MP4 direto
+    if (_isSignedCdnUrl(url)) return _ProbeResult(url: url, isHls: false);
 
+    // Para URLs normais sem extensão clara → faz probe via HEAD
+    final hdrs = {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+      "Referer": _smartPlayUrl,
+      "Accept": "*/*",
+    };
     try {
       http.Response? head;
       try {
-        head = await http.head(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 10));
+        head = await http.head(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 8));
       } catch (_) {}
       final ct = (head?.headers['content-type'] ?? '').toLowerCase();
       if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) return _ProbeResult(url: url, isHls: true);
-      if (ct.contains('dash+xml'))  return _ProbeResult(url: url, isHls: false);
-      if (ct.contains('video/mp4') || ct.contains('video/webm') ||
-          ct.contains('video/ogg') || ct.contains('octet-stream') ||
-          ct.startsWith('video/')) {
-        return _ProbeResult(url: url, isHls: false);
+      if (ct.contains('dash+xml')) return _ProbeResult(url: url, isHls: false);
+      if (ct.startsWith('video/') || ct.contains('octet-stream')) return _ProbeResult(url: url, isHls: false);
+      // Último recurso: GET para ler primeiros bytes
+      final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 12));
+      final body = get.body.trimLeft();
+      if (body.startsWith('#EXTM3U')) {
+        try {
+          final dir = Directory.systemTemp;
+          final fname = 'cdcine_\${DateTime.now().millisecondsSinceEpoch}.m3u8';
+          final f = File('\${dir.path}/\$fname');
+          await f.writeAsString(body);
+          return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
+        } catch (_) { return _ProbeResult(url: url, isHls: true); }
       }
-      // Sem Content-Type útil → tenta GET (só para URLs não-assinadas)
-      if (!signed) {
-        final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 15));
-        final body = get.body.trimLeft();
-        if (body.startsWith('#EXTM3U')) {
-          try {
-            final dir = Directory.systemTemp;
-            final fname = 'cdcine_\${DateTime.now().millisecondsSinceEpoch}.m3u8';
-            final f = File('\${dir.path}/\$fname');
-            await f.writeAsString(body);
-            return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
-          } catch (_) {
-            return _ProbeResult(url: url, isHls: true);
-          }
-        }
-        final ctGet = (get.headers['content-type'] ?? '').toLowerCase();
-        if (ctGet.contains('mpegurl')) return _ProbeResult(url: url, isHls: true);
-        if (ctGet.startsWith('video/') || ctGet.contains('octet-stream')) return _ProbeResult(url: url, isHls: false);
-      }
-      // Fallback final: URL com query string (S3 signed) → assume MP4 direto
-      if (url.contains('?')) return _ProbeResult(url: url, isHls: false);
+      final ctGet = (get.headers['content-type'] ?? '').toLowerCase();
+      if (ctGet.contains('mpegurl')) return _ProbeResult(url: url, isHls: true);
       return _ProbeResult(url: url, isHls: false);
     } catch (_) {
-      if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u')) return _ProbeResult(url: url, isHls: true);
       return _ProbeResult(url: url, isHls: false);
     }
   }
@@ -1091,19 +1087,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final probe = await _probeUrl(url);
 
-      // URLs S3/Wasabi assinadas: apenas "host" é permitido — sem headers extra
-      final hdrs = (probe.isLocalFile || _isSignedS3Url(url)) ? <String, String>{} : {
-        "Referer": _smartPlayUrl,
-        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
-        "Accept": "*/*",
-      };
+      // URLs CDN assinadas: não enviar headers extra — ExoPlayer usa os seus próprios.
+      // Para URLs normais: Referer + User-Agent ajudam em servidores com proteção.
+      final hdrs = (probe.isLocalFile || _isSignedCdnUrl(url))
+          ? <String, String>{}
+          : {
+              "Referer": _smartPlayUrl,
+              "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+              "Accept": "*/*",
+            };
 
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(probe.url),
         httpHeaders: hdrs,
       );
 
-      final timeout = probe.isHls ? const Duration(seconds: 90) : const Duration(seconds: 60);
+      // MP4 grandes (ex: 400MB+ em S3/Wasabi) podem precisar de 2 range
+      // requests para encontrar o moov atom — dá mais tempo para inicializar
+      final timeout = probe.isHls ? const Duration(seconds: 90) : const Duration(seconds: 120);
       await _videoPlayerController!.initialize().timeout(timeout);
 
       if (posParaSeek > 0 &&
@@ -1135,11 +1136,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
               if (mounted && isPlaying) _tentarProximoServidor();
             });
           });
-          return const Center(
+          // Mostra o ERRO REAL do ExoPlayer — essencial para diagnóstico
+          // (copia e envia este texto quando o vídeo falhar)
+          final erro = errorMessage.isNotEmpty ? errorMessage : 'Erro desconhecido';
+          return Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              SizedBox(width: 32, height: 32, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)),
-              SizedBox(height: 12),
-              Text("A carregar...", style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const Icon(Icons.error_outline, color: Color(0xFFE50914), size: 36),
+              const SizedBox(height: 10),
+              const Text("Erro no servidor — a tentar outro...",
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SelectableText(
+                  erro,
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ]),
           );
         },
@@ -1176,7 +1190,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
     } catch (e) {
-      await Future.delayed(const Duration(seconds: 3));
+      // Mostra o erro real em debug — copia e envia se o vídeo falhar aqui
+      debugPrint('[CDCINE PLAYER ERROR] $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: SelectableText(
+              'Erro: \${e.toString().length > 120 ? e.toString().substring(0, 120) : e.toString()}',
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+            backgroundColor: const Color(0xFF880000),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+      await Future.delayed(const Duration(seconds: 2));
       if (mounted) _tentarProximoServidor();
     } finally {
       _playerInitializing = false;
