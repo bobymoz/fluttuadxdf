@@ -1017,6 +1017,65 @@ class _PlayerScreenState extends State<PlayerScreen> {
            (q.contains('.backblazeb2.com') && q.contains('?'));
   }
 
+  // Resolve ficheiros "envelope" (.txt/.json) que contêm o URL real dentro.
+  // Exemplos: typezero.top/pl/... devolve .txt com M3U8 ou URL directa.
+  Future<_ProbeResult> _resolveEnvelopeUrl(String envelopeUrl) async {
+    final hdrs = {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+      "Referer": _smartPlayUrl,
+      "Accept": "*/*",
+    };
+    try {
+      final res = await http.get(Uri.parse(envelopeUrl), headers: hdrs)
+          .timeout(const Duration(seconds: 15));
+      final body = res.body.trim();
+
+      // 1. M3U8 directo dentro do .txt
+      if (body.startsWith('#EXTM3U')) {
+        try {
+          final dir = Directory.systemTemp;
+          final fname = 'cdcine_' + DateTime.now().millisecondsSinceEpoch.toString() + '.m3u8';
+          final f = File(dir.path + '/' + fname);
+          await f.writeAsString(body);
+          return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
+        } catch (_) {
+          return _ProbeResult(url: envelopeUrl, isHls: true);
+        }
+      }
+
+      // 2. JSON com campo url / link / file / src
+      if (body.startsWith('{') || body.startsWith('[')) {
+        try {
+          final decoded = json.decode(body);
+          final map = decoded is List ? decoded.first : decoded;
+          final inner = (map['url'] ?? map['link'] ?? map['file'] ??
+                         map['src']  ?? map['stream'] ?? '').toString().trim();
+          if (inner.isNotEmpty && inner.startsWith('http')) {
+            return _probeUrl(inner); // recursivo — resolve o URL real
+          }
+        } catch (_) {}
+      }
+
+      // 3. URL directa numa linha (http/https)
+      final lines = body.split(RegExp(r'[
+]+')).map((l) => l.trim()).where((l) => l.isNotEmpty);
+      for (final line in lines) {
+        if (line.startsWith('http')) {
+          return _probeUrl(line); // recursivo — resolve o URL real
+        }
+      }
+
+      // 4. Fallback: usa o próprio envelope (pode ser HLS camuflado)
+      final ct = (res.headers['content-type'] ?? '').toLowerCase();
+      if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) {
+        return _ProbeResult(url: envelopeUrl, isHls: true);
+      }
+      return _ProbeResult(url: envelopeUrl, isHls: false);
+    } catch (_) {
+      return _ProbeResult(url: envelopeUrl, isHls: false);
+    }
+  }
+
   Future<_ProbeResult> _probeUrl(String url) async {
     // Extrai apenas o PATH (antes do ?) para detetar extensão corretamente
     // em URLs com query strings longas (S3, Wasabi, CloudFront, etc.)
@@ -1037,6 +1096,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         pathOnly.endsWith('.mp4v') || pathOnly.endsWith('.3gp') ||
         pathOnly.endsWith('.ogv')) {
       return _ProbeResult(url: url, isHls: false);
+    }
+    // .txt = ficheiro envelope — faz GET e resolve o URL/tipo real dentro
+    // Ex: typezero.top devolve .txt com M3U8 ou URL directa dentro
+    if (pathOnly.endsWith('.txt') || pathOnly.endsWith('.json')) {
+      return _resolveEnvelopeUrl(url);
     }
     // URLs CDN assinadas sem extensão clara → assume MP4 direto
     if (_isSignedCdnUrl(url)) return _ProbeResult(url: url, isHls: false);
@@ -1062,8 +1126,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (body.startsWith('#EXTM3U')) {
         try {
           final dir = Directory.systemTemp;
-          final fname = 'cdcine_\${DateTime.now().millisecondsSinceEpoch}.m3u8';
-          final f = File('\${dir.path}/\$fname');
+          final fname = 'cdcine_' + DateTime.now().millisecondsSinceEpoch.toString() + '.m3u8';
+          final f = File(dir.path + '/' + fname);
           await f.writeAsString(body);
           return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
         } catch (_) { return _ProbeResult(url: url, isHls: true); }
@@ -1196,7 +1260,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: SelectableText(
-              'Erro: \${e.toString().length > 120 ? e.toString().substring(0, 120) : e.toString()}',
+              'Erro: ' + (e.toString().length > 120 ? e.toString().substring(0, 120) : e.toString()),
               style: const TextStyle(color: Colors.white, fontSize: 11),
             ),
             backgroundColor: const Color(0xFF880000),
