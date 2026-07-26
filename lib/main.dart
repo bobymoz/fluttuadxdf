@@ -849,6 +849,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
+  // WebView Player: fallback para URLs envelope não reproduzíveis (ex: typezero.top .txt)
+  bool _webViewPlayerShowing = false;
+  WebViewController? _webViewPlayerCtrl;
 
   @override void initState() { 
     super.initState(); 
@@ -857,7 +860,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _loadDetails(); 
   }
   
-  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _exitFullscreen(); super.dispose(); }
+  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _webViewPlayerCtrl = null; _exitFullscreen(); super.dispose(); }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -975,7 +978,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       String idioma = p["lang"]?.toString() ?? "Opção";
       bool isMp4 = tipoRaw.toUpperCase().contains("MP4") || url.toLowerCase().contains(".mp4");
       bool isDub = idioma.toLowerCase().contains("dub");
-      return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isDub": isDub};
+      // URL do player embed (nexoratype.info, etc.) para fallback WebView
+      String embedUrl = (p["iframe"] ?? p["embed"] ?? p["player"] ?? p["frame"] ??
+                         p["player_url"] ?? p["embed_url"] ?? "").toString();
+      return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isDub": isDub, "embedUrl": embedUrl};
     }).where((s) => (s['url'] as String).isNotEmpty).toList();
 
     _serversDisponiveis = servers;
@@ -997,7 +1003,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     } else {
       _playerInitializing = false; 
-      _iniciarExoPlayer(serverEscolhido['url'], nomeVideo);
+      _iniciarExoPlayer(serverEscolhido['url'], nomeVideo, embedUrl: serverEscolhido['embedUrl'] ?? '');
     }
   }
 
@@ -1043,15 +1049,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       }
 
-      // 2. JSON com campo url / link / file / src
+      // 2. JSON — múltiplos formatos
       if (body.startsWith('{') || body.startsWith('[')) {
         try {
           final decoded = json.decode(body);
-          final map = decoded is List ? decoded.first : decoded;
+          final map = decoded is List ? decoded.first as Map : decoded as Map;
+
+          // 2a. Campo directo url/link/file/src → URL real do vídeo
           final inner = (map['url'] ?? map['link'] ?? map['file'] ??
-                         map['src']  ?? map['stream'] ?? '').toString().trim();
+                         map['src'] ?? map['stream'] ?? '').toString().trim();
           if (inner.isNotEmpty && inner.startsWith('http')) {
-            return _probeUrl(inner); // recursivo — resolve o URL real
+            return _probeUrl(inner);
+          }
+
+          // 2b. Formato typezero.top — JSON com lista de fragmentos CDN
+          // Estrutura: { "results": [ { "href": "https://cdn.../FRAG0.html", "score": 16.6, "freq": ... }, ... ] }
+          // Os hrefs apontam para segmentos de vídeo (tipo HLS mas proprietário).
+          // Solução: construir M3U8 sintético ordenado por índice de fragmento,
+          //          preferindo o servidor com score mais alto para cada fragmento.
+          final rawList = map['results'] ?? map['resultados'] ??
+                          map['items']   ?? map['data'];
+          if (rawList is List && rawList.isNotEmpty) {
+            final entries = rawList.whereType<Map>().toList();
+            final firstHref = entries.first['href']?.toString() ?? '';
+
+            // Detecta fragmentos .html (ex: CAMDUB0.html, 1368337-CAMDUB0.html)
+            final fragRx = RegExp(r'(\d+)\.html');
+            if (fragRx.hasMatch(firstHref)) {
+              // Agrupa por índice de fragmento; escolhe melhor servidor (score mais alto)
+              final Map<int, Map> best = {};
+              for (final e in entries) {
+                final href = e['href']?.toString() ?? '';
+                final m = fragRx.firstMatch(href);
+                if (m == null) continue;
+                final idx = int.tryParse(m.group(1)!) ?? -1;
+                if (idx < 0) continue;
+                final score = ((e['score'] ?? e['pontuação'] ?? e['score'] ?? 0) as num).toDouble();
+                if (!best.containsKey(idx) || score > (best[idx]!['_s'] as double)) {
+                  best[idx] = Map.from(e)..['_s'] = score;
+                }
+              }
+
+              if (best.isNotEmpty) {
+                final sorted = best.keys.toList()..sort();
+                final buf = StringBuffer()
+                  ..writeln('#EXTM3U')
+                  ..writeln('#EXT-X-VERSION:3')
+                  ..writeln('#EXT-X-TARGETDURATION:10')
+                  ..writeln('#EXT-X-ALLOW-CACHE:YES');
+                for (final i in sorted) {
+                  buf.writeln('#EXTINF:10.0,');
+                  buf.writeln(best[i]!['href']);
+                }
+                buf.writeln('#EXT-X-ENDLIST');
+
+                try {
+                  final dir = Directory.systemTemp;
+                  final fname = 'cdcine_' + DateTime.now().millisecondsSinceEpoch.toString() + '.m3u8';
+                  final f = File(dir.path + '/' + fname);
+                  await f.writeAsString(buf.toString());
+                  return _ProbeResult(url: f.uri.toString(), isHls: true, isLocalFile: true);
+                } catch (_) {}
+              }
+            }
+
+            // Lista genérica com campo url/link dentro de cada item
+            for (final e in entries) {
+              final u = (e['url'] ?? e['link'] ?? e['file'] ?? e['src'] ?? '').toString().trim();
+              if (u.isNotEmpty && u.startsWith('http')) return _probeUrl(u);
+            }
           }
         } catch (_) {}
       }
@@ -1059,12 +1125,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // 3. URL directa numa linha (http/https)
       final lines = body.split('\n').expand((l) => l.split('\r')).map((l) => l.trim()).where((l) => l.isNotEmpty);
       for (final line in lines) {
-        if (line.startsWith('http')) {
-          return _probeUrl(line); // recursivo — resolve o URL real
-        }
+        if (line.startsWith('http')) return _probeUrl(line);
       }
 
-      // 4. Fallback: usa o próprio envelope (pode ser HLS camuflado)
+      // 4. Fallback
       final ct = (res.headers['content-type'] ?? '').toLowerCase();
       if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) {
         return _ProbeResult(url: envelopeUrl, isHls: true);
@@ -1139,7 +1203,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _iniciarExoPlayer(String url, String tituloEpisodio) async {
+  void _iniciarExoPlayer(String url, String tituloEpisodio, {String embedUrl = ''}) async {
     if (_playerInitializing) return;
     _playerInitializing = true;
 
@@ -1147,6 +1211,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
 
     final posParaSeek = savedPositionSeconds;
+
+    // Se o URL for um envelope não reproduzível (.txt, etc.) e existir
+    // embedUrl do player original → usa WebView player directamente,
+    // que é o mesmo que "clicar em download e deixar o player da página tocar"
+    final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
+    if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
+      _playerInitializing = false;
+      _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
+      return;
+    }
+
     try {
       final probe = await _probeUrl(url);
 
@@ -1279,13 +1354,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
       var nextServer = _serversDisponiveis[currentIndex + 1];
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a tentar servidor alternativo!"), duration: Duration(seconds: 2)));
-      _iniciarExoPlayer(nextServer['url'], epAtivoNome);
+      _iniciarExoPlayer(nextServer['url'], epAtivoNome, embedUrl: nextServer['embedUrl'] ?? '');
     } else {
       if (mounted) {
         setState(() { isServerLoading = false; isPlaying = false; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam."), backgroundColor: Colors.red));
       }
     }
+  }
+
+
+  // ── WebView Player ─────────────────────────────────────────────────────
+  // Usado quando o URL do servidor é um envelope (.txt) não reproduzível
+  // directamente. Carrega o player embed (ex: nexoratype.info) em WebView
+  // full-screen. O JavaScript do player resolve os fragmentos CDN e toca.
+  // Se o WebView navegar para um URL de vídeo directo, intercepta e toca
+  // com ExoPlayer nativo (melhor performance).
+  void _iniciarWebViewPlayer(String embedUrl, String titulo) {
+    if (!mounted) return;
+    final ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (req) {
+          final u = req.url;
+          final p = (){try{return Uri.parse(u).path.toLowerCase();}catch(_){return u.toLowerCase();};}();
+          // Se navegar para URL de vídeo directo → fecha WebView e usa ExoPlayer
+          if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
+               p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(u)) &&
+              !u.contains('nexoratype') && !u.contains('typezero')) {
+            setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
+            _playerInitializing = false;
+            _iniciarExoPlayer(u, titulo);
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadRequest(Uri.parse(embedUrl), headers: {
+        "Referer": _smartPlayUrl,
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+      });
+
+    setState(() {
+      _webViewPlayerShowing = true;
+      _webViewPlayerCtrl    = ctrl;
+      isPlaying             = true;
+      isServerLoading       = false;
+    });
   }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) async {
@@ -1333,7 +1449,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
-        Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () => Navigator.pop(context)))),
+        // WebView Player overlay (fallback para URLs envelope .txt)
+        if (_webViewPlayerShowing && _webViewPlayerCtrl != null)
+          WebViewWidget(controller: _webViewPlayerCtrl!),
+        Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () { setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; }); Navigator.pop(context); }))),
       ],
     );
   }
