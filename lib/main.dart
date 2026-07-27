@@ -19,6 +19,13 @@ import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 // ==========================================
+// CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
+// ==========================================
+class GlobalAppConfig {
+  static String avisoGeral = "";
+}
+
+// ==========================================
 // SISTEMA DE DECOY (TROLAGEM PARA SNIFFERS)
 // ==========================================
 class SecurityDecoyManager {
@@ -137,7 +144,7 @@ class CoreMediaVault {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// HUNTER API — Atualizada para a nova fonte de conteúdo via redeflixapi.store
+// HUNTER API — Nova fonte de conteúdo via redeflixapi.store
 // Responsável pela lista de servidores e extração do MP4 real.
 // A API atual (CoreMediaVault) continua responsável por capas e metadados.
 // ══════════════════════════════════════════════════════════════════════════
@@ -382,6 +389,10 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
           final data = json.decode(body.substring(start, end + 1));
           _latestVersion = (data['latest_version'] ?? _appVersion).toString().trim();
           _downloadUrl = data['download_url'] ?? ""; _changelog = data['changelog'] ?? "";
+          
+          // Captura a mensagem universal na API (suportando a chave "mesage" ou "message")
+          GlobalAppConfig.avisoGeral = (data['mesage'] ?? data['message'] ?? "").toString().trim();
+
           if (_latestVersion != _appVersion.trim() && mounted) setState(() => _needsUpdate = true);
           return;
         }
@@ -686,6 +697,35 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                   }).toList()
                 ),
               ],
+            ),
+
+          // Renderização dinâmica do banner caso 'mesage' contenha texto na API.
+          if (GlobalAppConfig.avisoGeral.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [const Color(0xFFE50914).withOpacity(0.8), const Color(0xFF8B0000)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white24),
+                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.campaign, color: Colors.white, size: 32),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      GlobalAppConfig.avisoGeral,
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
             ),
 
           if (loadingSections)
@@ -1083,14 +1123,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _servidorAtivoIdx = idx; 
       _hlsUrlAtiva = servidor['url']!; // URL direta para download imediato 
     });
-    _mostrarRewardedPopup(
-      mensagemDownload: "Para continuar a assistir,",
-      onSuccess: () {
-        if (!mounted) return;
-        // Utiliza o ExoPlayer diretamente pois temos o URL limpo (MP4)
-        _iniciarExoPlayer(servidor['url']!, epAtivoNome ?? '');
-      },
-    );
+    
+    // Inicia imediatamente a reprodução sem travar o vídeo
+    _iniciarExoPlayer(servidor['url']!, epAtivoNome ?? '');
   }
 
   // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
@@ -1284,9 +1319,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final probe = await _probeUrl(url);
 
+      // SPOOFING: A requisição fingirá estar vindo de redeflixapi.store
       final hdrs = (probe.isLocalFile || _isSignedCdnUrl(url))
           ? <String, String>{}
           : {
+              "Origin": "https://redeflixapi.store",
               "Referer": "https://redeflixapi.store/",
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
               "Accept": "*/*",
@@ -1373,10 +1410,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() { isServerLoading = false; });
       _iniciarSalvamentoContinuo();
 
+      // Dispara o anúncio após 30 SEGUNDOS em vez de imediatamente
       _adTimer?.cancel();
-      _adTimer = Timer(const Duration(seconds: 60), () {
+      _adTimer = Timer(const Duration(seconds: 30), () {
         if (mounted && isPlaying) {
-          _mostrarRewardedPopup(onSuccess: () { if (mounted) _videoPlayerController?.play(); });
+          _videoPlayerController?.pause();
+          _mostrarRewardedPopup(onSuccess: () { 
+            if (mounted) {
+              _videoPlayerController?.play();
+              setState(() {});
+            } 
+          });
         }
       });
 
@@ -1503,7 +1547,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final adFree = await AdRemovalManager.instance.isAdFree();
     if (adFree) { onSuccess(); return; }
 
-    if (_isFullscreen) _exitFullscreen(); _videoPlayerController?.pause();
+    if (_isFullscreen) _exitFullscreen(); 
+    _videoPlayerController?.pause();
+    
     if (!mounted) return;
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
@@ -1513,7 +1559,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
           tituloAdicional: mensagemDownload,
           onSuccess: () { 
             Navigator.of(ctxPopup, rootNavigator: true).pop();
-            onSuccess(); 
+            // Atraso de 300ms para evitar travamento da tela/Surface do vídeo 
+            // no retorno do Webview.
+            Future.delayed(const Duration(milliseconds: 300), () {
+              onSuccess();
+            }); 
           }
         )
       ),
@@ -1556,7 +1606,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 onTap: () => _selecionarServidor(s, i, tipo),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF2A2A2A),
                     borderRadius: BorderRadius.circular(8),
@@ -1564,21 +1614,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       color: isAtivo ? const Color(0xFFE50914) : Colors.white12,
                     ),
                   ),
-                  child: Column(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
+                      const SizedBox(width: 6),
                       Text(
-                        s['name'] ?? 'Servidor',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        s['audio'] ?? '',
+                        s['audio'] ?? 'Servidor', // Ocultado o texto RedeFlix
                         style: TextStyle(
-                          color: isAtivo
-                              ? Colors.white
-                              : (isDub ? Colors.greenAccent : Colors.lightBlueAccent),
-                          fontSize: 11, fontWeight: FontWeight.w600,
+                          color: isAtivo ? Colors.white : Colors.white70,
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 14,
                         ),
                       ),
                     ],
