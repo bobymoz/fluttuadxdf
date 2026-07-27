@@ -1542,33 +1542,89 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // com ExoPlayer nativo (melhor performance).
   void _iniciarWebViewPlayer(String embedUrl, String titulo) {
     if (!mounted) return;
+    // Bloqueador de anuncios/popups injectado apos cada pagina carregar
+    const String adBlockJs = '''
+(function() {
+  var orig = window.open;
+  window.open = function(u,t,f) {
+    if(u&&(u.indexOf('embed')!==-1||u.indexOf('player')!==-1||u.indexOf('watch')!==-1))
+      return orig.call(window,u,t,f);
+    return null;
+  };
+  window.alert=function(){};
+  window.confirm=function(){return false;};
+  window.prompt=function(){return null;};
+  var s=document.createElement('style');
+  s.textContent='[id*=ad],[class*=ads-],[class*=-ads],[class*=advert],[class*=popup],'
+    +'[id*=popup],[class*=overlay-ad],[class*=vast-],[id*=vast],'
+    +'iframe[src*=doubleclick],iframe[src*=googlesyndication],iframe[src*=adnxs]'
+    +'{display:none!important;visibility:hidden!important;pointer-events:none!important}';
+  (document.head||document.documentElement).appendChild(s);
+  new MutationObserver(function(ms){
+    ms.forEach(function(m){
+      m.addedNodes.forEach(function(n){
+        if(n.nodeType!==1)return;
+        var id=(n.id||'').toLowerCase(),cl=(n.className||'').toLowerCase();
+        if(id.indexOf('ad')!==-1||cl.indexOf('popup')!==-1||cl.indexOf('overlay')!==-1)n.remove();
+      });
+    });
+  }).observe(document.documentElement,{childList:true,subtree:true});
+})();
+''';
+    const List<String> adDomains = [
+      'doubleclick.net',
+      'googlesyndication.com',
+      'adnxs.com',
+      'pubmatic.com',
+      'rubiconproject.com',
+      'openx.net',
+      'adsafeprotected.com',
+      'moatads.com',
+      'casalemedia.com',
+      'smartadserver.com',
+      'outbrain.com',
+      'taboola.com',
+      'criteo.com',
+      'adsrvr.org',
+      'advertising.com',
+      'adform.net',
+      'aniview.com',
+      'vidazoo.com',
+      'spotxchange.com',
+      'springserve.com',
+    ];
+
     final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
+      ..addJavaScriptChannel('CDCineLog', onMessageReceived: (_) {})
       ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) async {
+          try { await ctrl.runJavaScript(adBlockJs); } catch (_) {}
+        },
         onNavigationRequest: (req) {
-          final u = req.url;
-          final p = (){try{return Uri.parse(u).path.toLowerCase();}catch(_){return u.toLowerCase();};}();
-          // Se o player do embed navegar para URL de vídeo directo →
-          // guarda para download E tenta reproduzir com ExoPlayer nativo
-          if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
-               p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(u)) &&
-              !u.contains('nexoratype') && !u.contains('typezero') &&
-              !u.contains('playerflix') && !u.contains('embedplayer')) {
-            // Guarda URL para download
-            if (mounted) setState(() { _hlsUrlAtiva = u; });
-            // Tenta ExoPlayer nativo (melhor performance/controlo)
-            setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
-            _playerInitializing = false;
-            _iniciarExoPlayer(u, titulo);
-            return NavigationDecision.prevent;
+          final u = req.url.toLowerCase();
+          for (final d in adDomains) {
+            if (u.contains(d)) return NavigationDecision.prevent;
+          }
+          if (req.isForMainFrame) {
+            final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
+            if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
+                 p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(req.url)) &&
+                !req.url.contains('playerflix') && !req.url.contains('embedplayer')) {
+              if (mounted) setState(() { _hlsUrlAtiva = req.url; });
+              setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
+              _playerInitializing = false;
+              _iniciarExoPlayer(req.url, titulo);
+              return NavigationDecision.prevent;
+            }
           }
           return NavigationDecision.navigate;
         },
       ))
       ..loadRequest(Uri.parse(embedUrl), headers: {
-        "Referer": "https://primeflix.mom/",
-        "Origin":  "https://primeflix.mom",
+        "Referer":    "https://primeflix.mom/",
+        "Origin":     "https://primeflix.mom",
         "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
       });
 
