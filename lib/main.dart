@@ -136,6 +136,126 @@ class CoreMediaVault {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// HUNTER API — Nova fonte de conteúdo via playerflix.ink
+// Responsável pela lista de servidores e extracção do HLS real.
+// A API actual (CoreMediaVault) continua responsável por capas e metadados.
+// ══════════════════════════════════════════════════════════════════════════
+class HunterApi {
+  static const String _tmdbKey = "52a18783ed514602a5facb15a0177e61";
+  static const Map<String, String> _spoof = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer":    "https://primeflix.mom/",
+    "Origin":     "https://primeflix.mom",
+  };
+
+  static Future<String?> getImdbId(String tmdbId) async {
+    try {
+      final res = await http.get(
+        Uri.parse("https://api.themoviedb.org/3/movie/$tmdbId/external_ids?api_key=$_tmdbKey"),
+      ).timeout(const Duration(seconds: 10));
+      final data = json.decode(res.body);
+      return data['imdb_id']?.toString();
+    } catch (_) { return null; }
+  }
+
+  static Future<List<Map<String, String>>> getServers({
+    required String tmdbId,
+    required bool isFilme,
+    String season  = '',
+    String episode = '',
+  }) async {
+    try {
+      String finalId = tmdbId;
+      if (isFilme) {
+        final imdb = await getImdbId(tmdbId);
+        if (imdb != null && imdb.isNotEmpty) finalId = imdb;
+      }
+      final mediaType = isFilme ? 'movie' : 'tv';
+      var url = "https://playerflix.ink/pages/ajax.php?id=$finalId&type=$mediaType";
+      if (!isFilme && season.isNotEmpty && episode.isNotEmpty) {
+        url += "&season=$season&episode=$episode";
+      }
+      final res = await http.get(Uri.parse(url), headers: _spoof)
+          .timeout(const Duration(seconds: 15));
+      final html = res.body;
+      final servers = <Map<String, String>>[];
+      for (final m in RegExp(r'player-option').allMatches(html)) {
+        final pos   = m.start;
+        final chunk = html.substring(pos, (pos + 1000) > html.length ? html.length : pos + 1000);
+        final embedM = RegExp(r'data-embed=["\x27]([^"\x27]+)["\x27]').firstMatch(chunk);
+        final audioM = RegExp(r'data-audio=["\x27]([^"\x27]*)["\x27]').firstMatch(chunk);
+        final nameM  = RegExp(r'player-name[^>]*>(.*?)<\/div>', dotAll: true).firstMatch(chunk);
+        if (embedM == null) continue;
+        final embedB64 = embedM.group(1)!;
+        final audioRaw = (audioM?.group(1) ?? '').toLowerCase();
+        final name     = nameM?.group(1)?.trim().replaceAll(RegExp(r'<[^>]+>'), '') ?? 'Servidor';
+        String embedUrl = '';
+        try { embedUrl = utf8.decode(base64Decode(embedB64)); } catch (_) { embedUrl = embedB64; }
+        if (embedUrl.isEmpty || !embedUrl.startsWith('http')) continue;
+        servers.add({'name': name, 'audio': audioRaw.contains('pt') ? 'Dublado' : 'Legendado', 'url': embedUrl});
+      }
+      return servers;
+    } catch (_) { return []; }
+  }
+
+  static Future<String?> extractHls(String embedUrl) async {
+    try {
+      final res = await http.get(Uri.parse(embedUrl), headers: _spoof)
+          .timeout(const Duration(seconds: 20));
+      final html = res.body;
+      final packedM = RegExp(
+        r"eval\(function\(p,a,c,k,e,d\).*?split\('\|'\).*?\)\)",
+        dotAll: true,
+      ).firstMatch(html);
+      if (packedM != null) {
+        final unpacked = _unpackJs(packedM.group(0)!);
+        if (unpacked != null) {
+          var fm = RegExp(r'file["\x27]?\s*:\s*["\x27](https?://[^"\x27]+)["\x27]').firstMatch(unpacked);
+          fm ??= RegExp(r'(https?://[^\x22\x27\s<>]+/hls/[^\x22\x27\s<>]+)').firstMatch(unpacked);
+          if (fm != null) return fm.group(1)!.replaceAll(r'\/', '/');
+        }
+      }
+      final playM = RegExp(r'"play_url":"([^"]+)"').firstMatch(html);
+      if (playM != null) return playM.group(1)!.replaceAll(r'\/', '/').replaceAll(r'\u0026', '&');
+      final hlsM = RegExp(r'(https?://[^\x22\x27\s<>]+\.m3u8[^\x22\x27\s<>]*)').firstMatch(html);
+      if (hlsM != null) return hlsM.group(1);
+      return null;
+    } catch (_) { return null; }
+  }
+
+  static String? _unpackJs(String packed) {
+    final m = RegExp(
+      r"}\s*\x27([\s\S]*?)\x27\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*\x27([\s\S]*?)\x27\.split\(\x27\|\x27\)",
+      dotAll: true,
+    ).firstMatch(packed);
+    final m2 = m ?? RegExp(
+      r'}\s*"([\s\S]*?)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*"([\s\S]*?)"\.split\("\|"\)',
+      dotAll: true,
+    ).firstMatch(packed);
+    if (m2 == null) return null;
+    String p = m2.group(1)!;
+    final int a = int.parse(m2.group(2)!);
+    final int c = int.parse(m2.group(3)!);
+    final List<String> k = m2.group(4)!.split('|');
+    String eFunc(int cv) {
+      String res = '';
+      if (cv >= a) res = eFunc(cv ~/ a);
+      cv = cv % a;
+      if (cv > 35) res += String.fromCharCode(cv + 29);
+      else res += '0123456789abcdefghijklmnopqrstuvwxyz'[cv];
+      return res;
+    }
+    final dict = <String, String>{};
+    for (int i = 0; i < c; i++) {
+      final key = eFunc(i);
+      dict[key] = (i < k.length && k[i].isNotEmpty) ? k[i] : key;
+    }
+    return p.replaceAllMapped(RegExp(r'\b\w+\b'), (mx) => dict[mx.group(0)] ?? mx.group(0)!);
+  }
+}
+
+
 String cleanTitle(String input) {
   try { return Uri.decodeFull(input).replaceAll('&amp;', '&').replaceAll('&#039;', "'").replaceAll('&quot;', '"').trim(); } catch (e) { return input; }
 }
@@ -849,6 +969,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
+  // HunterApi — servidores e URL HLS extraída
+  List<Map<String, String>> _servidoresNovos = [];
+  int    _servidorAtivoIdx  = -1;
+  bool   _extracandoHls     = false;
+  String _hlsUrlAtiva       = '';   // HLS URL real (disponível após extracção)
   // WebView Player: fallback para URLs envelope não reproduzíveis (ex: typezero.top .txt)
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
@@ -956,55 +1081,104 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
-    if (savedEpId != null && savedEpId != idVideo) savedPositionSeconds = 0;
-
-    if (!isParaDownload) {
-      await _cleanPlayer();
-      setState(() { isPlaying = true; isServerLoading = true; epAtivoNome = nomeVideo; savedEpId = idVideo; _serversDisponiveis = []; _urlAtiva = ''; });
+    if (savedEpId != null && savedEpId != idVideo) {
+      savedPositionSeconds = 0;
+      // Reseta HLS ao mudar de episódio
+      setState(() { _hlsUrlAtiva = ''; _servidoresNovos = []; _servidorAtivoIdx = -1; });
     }
 
-    final tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
-    final playersApi = await CoreMediaVault.getPlayers(idVideo, tipo);
-
-    if (playersApi.isEmpty) {
-      if (!isParaDownload) setState(() { isServerLoading = false; isPlaying = false; });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Servidores indisponíveis.")));
+    if (isParaDownload) {
+      // Download: só funciona se já foi extraída uma URL HLS nesta sessão
+      if (_hlsUrlAtiva.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Inicia o vídeo primeiro para poder fazer o download."),
+            backgroundColor: Color(0xFF880000),
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+      _mostrarRewardedPopup(
+        mensagemDownload: "Para iniciar a transferência,",
+        onSuccess: () => DownloadManager.startDownload(_hlsUrlAtiva, nomeVideo, true),
+      );
       return;
     }
 
-    List<Map> servers = playersApi.map((p) {
-      String url = p["file"] ?? p["url"] ?? p["link"] ?? "";
-      String tipoRaw = p["type"]?.toString() ?? "Video";
-      String idioma = p["lang"]?.toString() ?? "Opção";
-      bool isMp4 = tipoRaw.toUpperCase().contains("MP4") || url.toLowerCase().contains(".mp4");
-      bool isDub = idioma.toLowerCase().contains("dub");
-      // URL do player embed (nexoratype.info, etc.) para fallback WebView
-      String embedUrl = (p["iframe"] ?? p["embed"] ?? p["player"] ?? p["frame"] ??
-                         p["player_url"] ?? p["embed_url"] ?? "").toString();
-      return {"url": url, "tipo": tipoRaw, "idioma": idioma, "isMp4": isMp4, "isDub": isDub, "embedUrl": embedUrl};
-    }).where((s) => (s['url'] as String).isNotEmpty).toList();
+    // ── Carrega lista de servidores da HunterApi ─────────────────────────
+    await _cleanPlayer();
+    setState(() {
+      isPlaying = true; isServerLoading = true;
+      epAtivoNome = nomeVideo; savedEpId = idVideo;
+      _serversDisponiveis = []; _urlAtiva = '';
+      _servidoresNovos = []; _servidorAtivoIdx = -1; _hlsUrlAtiva = '';
+    });
 
-    _serversDisponiveis = servers;
+    final tipo    = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
+    final isFilme = tipo == 'filmes';
+    final tmdbId  = (details?['tmdb_id'] ?? widget.item['tmdb_id'] ?? widget.item['id']).toString();
 
-    Map? serverEscolhido;
-    serverEscolhido = servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true && s['isDub'] == true, orElse: () => null);
-    serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isDub'] == true, orElse: () => null);
-    serverEscolhido ??= servers.cast<Map?>().firstWhere((s) => s!['isMp4'] == true, orElse: () => null);
-    serverEscolhido ??= servers.isNotEmpty ? servers.first : null;
-
-    if (serverEscolhido == null) return;
-
-    if (isParaDownload) {
-      _mostrarRewardedPopup(
-        mensagemDownload: "Para iniciar a transferência,",
-        onSuccess: () {
-          DownloadManager.startDownload(serverEscolhido!['url'], nomeVideo, serverEscolhido['isMp4']);
-        }
-      );
-    } else {
-      _playerInitializing = false; 
-      _iniciarExoPlayer(serverEscolhido['url'], nomeVideo, embedUrl: serverEscolhido['embedUrl'] ?? '');
+    // Determina temporada/episódio para séries
+    String season  = '';
+    String episode = '';
+    if (!isFilme) {
+      // Tenta extrair número da temporada do item activo
+      final tempNum = temporadas.cast<Map?>()
+          .firstWhere((t) => t!['id'].toString() == tempSelecionada, orElse: () => null)?['number'];
+      season  = (tempNum ?? '1').toString();
+      // Número do episódio activo
+      if (_epAtivoIndex >= 0 && _epAtivoIndex < episodios.length) {
+        episode = episodios[_epAtivoIndex]['num'] ?? '1';
+      }
     }
+
+    final novosServers = await HunterApi.getServers(
+      tmdbId: tmdbId, isFilme: isFilme, season: season, episode: episode,
+    );
+
+    if (!mounted) return;
+    if (novosServers.isEmpty) {
+      setState(() { isServerLoading = false; isPlaying = false; });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nenhum servidor disponível para este conteúdo.")),
+      );
+      return;
+    }
+
+    setState(() { _servidoresNovos = novosServers; isServerLoading = false; });
+
+    // Auto-selecciona o primeiro servidor Dublado, ou o primeiro disponível
+    final autoIdx = novosServers.indexWhere((s) => s['audio'] == 'Dublado');
+    _selecionarServidor(novosServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
+  }
+
+  // Selecciona um servidor, extrai HLS e inicia a reprodução ───────────────
+  Future<void> _selecionarServidor(Map<String, String> servidor, int idx, String tipo) async {
+    if (_extracandoHls) return;
+    setState(() { _extracandoHls = true; _servidorAtivoIdx = idx; });
+
+    _mostrarRewardedPopup(
+      mensagemDownload: "Para continuar a assistir,",
+      onSuccess: () async {
+        final hlsUrl = await HunterApi.extractHls(servidor['url']!);
+        if (!mounted) return;
+        if (hlsUrl == null || hlsUrl.isEmpty) {
+          setState(() { _extracandoHls = false; });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Não foi possível extrair o vídeo deste servidor. Tenta outro."),
+              backgroundColor: Color(0xFF880000),
+            ),
+          );
+          return;
+        }
+        setState(() { _hlsUrlAtiva = hlsUrl; _extracandoHls = false; });
+        _playerInitializing = false;
+        _iniciarExoPlayer(hlsUrl, epAtivoNome ?? '', embedUrl: servidor['url'] ?? '');
+      },
+    );
+    if (mounted && !_extracandoHls) setState(() { _extracandoHls = false; });
   }
 
   // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
@@ -1350,15 +1524,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _tentarProximoServidor() {
-    int currentIndex = _serversDisponiveis.indexWhere((s) => s['url'] == _urlAtiva);
-    if (currentIndex != -1 && currentIndex < _serversDisponiveis.length - 1) {
-      var nextServer = _serversDisponiveis[currentIndex + 1];
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A falhar... a tentar servidor alternativo!"), duration: Duration(seconds: 2)));
-      _iniciarExoPlayer(nextServer['url'], epAtivoNome, embedUrl: nextServer['embedUrl'] ?? '');
-    } else {
-      if (mounted) {
-        setState(() { isServerLoading = false; isPlaying = false; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Todos os servidores falharam."), backgroundColor: Colors.red));
+    // Com HunterApi o utilizador escolhe o servidor manualmente.
+    // Em caso de erro, sugere trocar de servidor.
+    if (mounted) {
+      final tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
+      setState(() { isServerLoading = false; _extracandoHls = false; });
+      // Se há servidores disponíveis, não apaga — o utilizador pode trocar
+      if (_servidoresNovos.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Erro neste servidor. Por favor troque de servidor abaixo."),
+          backgroundColor: Color(0xFF880000),
+          duration: Duration(seconds: 5),
+        ));
+      } else {
+        setState(() { isPlaying = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erro ao reproduzir. Tenta novamente."), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -1431,6 +1613,88 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel ou falta código nativo.", style: TextStyle(fontSize: 12))));
     }
+  }
+
+
+  // ── Selector de servidores ────────────────────────────────────────────────
+  // Mostra todos os servidores disponíveis (Dublado/Legendado) sem emoji.
+  Widget _buildServerSelector(String tipo) {
+    if (_servidoresNovos.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 16, bottom: 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("SERVIDORES", style: TextStyle(
+            color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5,
+          )),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(_servidoresNovos.length, (i) {
+              final s       = _servidoresNovos[i];
+              final isAtivo = i == _servidorAtivoIdx;
+              final isDub   = s['audio'] == 'Dublado';
+              return GestureDetector(
+                onTap: _extracandoHls ? null : () => _selecionarServidor(s, i, tipo),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isAtivo ? const Color(0xFFE50914) : const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isAtivo ? const Color(0xFFE50914) : Colors.white12,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        s['name'] ?? 'Servidor',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        s['audio'] ?? '',
+                        style: TextStyle(
+                          color: isAtivo
+                              ? Colors.white
+                              : (isDub ? Colors.greenAccent : Colors.lightBlueAccent),
+                          fontSize: 11, fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+          if (_extracandoHls) ...[
+            const SizedBox(height: 12),
+            const Row(children: [
+              SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2)),
+              SizedBox(width: 10),
+              Text("A carregar servidor...", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ]),
+          ],
+          const SizedBox(height: 12),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 8),
+          const Text(
+            "Se tiver problemas de reproducao, por favor troque de servidor.",
+            style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPlayerArea() {
@@ -1608,7 +1872,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         Expanded(child: Text(ep['full_nome'], style: TextStyle(color: isAtivo ? Colors.white : Colors.white70, fontSize: 13, fontWeight: isAtivo ? FontWeight.bold : FontWeight.normal), maxLines: 2, overflow: TextOverflow.ellipsis)),
                                         IconButton(
                                           icon: Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white54, size: 18)),
-                                          onPressed: () => _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true),
+                                          onPressed: () {
+                                          if (_hlsUrlAtiva.isEmpty) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                              content: Text("Inicia o episodio primeiro para poder fazer o download."),
+                                              backgroundColor: Color(0xFF880000),
+                                              duration: Duration(seconds: 4),
+                                            ));
+                                            return;
+                                          }
+                                          _mostrarRewardedPopup(
+                                            mensagemDownload: "Para iniciar a transferencia,",
+                                            onSuccess: () => DownloadManager.startDownload(_hlsUrlAtiva, "$nomeTitulo - ${ep['full_nome']}", true),
+                                          );
+                                        },
                                           tooltip: "Baixar com 1DM",
                                           iconSize: 18,
                                         ),
@@ -1651,7 +1928,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                             Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                            if (tipo == 'filmes' || (tipo != 'filmes' && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length)) Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () { if (tipo == 'filmes') { _abrirServidores(widget.item['id'].toString(), nomeTitulo, true); } else { final ep = episodios[_epAtivoIndex]; _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", true); } }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), Text(tipo == 'filmes' ? "BAIXAR" : "BAIXAR EP.", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            if (tipo == 'filmes' || (tipo != 'filmes' && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length)) Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () {
+                                  if (_hlsUrlAtiva.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                      content: Text("Inicia o vídeo primeiro para poder fazer o download."),
+                                      backgroundColor: Color(0xFF880000),
+                                      duration: Duration(seconds: 4),
+                                    ));
+                                    return;
+                                  }
+                                  final titulo = tipo == 'filmes' ? nomeTitulo : (_epAtivoIndex >= 0 ? "$nomeTitulo - ${episodios[_epAtivoIndex]['full_nome']}" : nomeTitulo);
+                                  _mostrarRewardedPopup(
+                                    mensagemDownload: "Para iniciar a transferencia,",
+                                    onSuccess: () => DownloadManager.startDownload(_hlsUrlAtiva, titulo, true),
+                                  );
+                                }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), Text(tipo == 'filmes' ? "BAIXAR" : "BAIXAR EP.", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
                           ]),
                           const SizedBox(height: 10),
                           Row(children: [
@@ -1661,8 +1952,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ]),
                           const SizedBox(height: 15),
                           GestureDetector(onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)), if (sinopse.length > 150) Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))])),
-                          const SizedBox(height: 20),
-                          
+                          const SizedBox(height: 16),
+                          _buildServerSelector(tipo),
+                          const SizedBox(height: 8),
+
                           if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
                             SizedBox(
                               width: double.infinity,
