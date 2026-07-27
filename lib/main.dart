@@ -137,27 +137,16 @@ class CoreMediaVault {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// HUNTER API — Nova fonte de conteúdo via playerflix.ink
-// Responsável pela lista de servidores e extracção do HLS real.
-// A API actual (CoreMediaVault) continua responsável por capas e metadados.
+// HUNTER API — Atualizada para a nova fonte de conteúdo via redeflixapi.store
+// Responsável pela lista de servidores e extração do MP4 real.
+// A API atual (CoreMediaVault) continua responsável por capas e metadados.
 // ══════════════════════════════════════════════════════════════════════════
 class HunterApi {
-  static const String _tmdbKey = "52a18783ed514602a5facb15a0177e61";
   static const Map<String, String> _spoof = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Referer":    "https://primeflix.mom/",
-    "Origin":     "https://primeflix.mom",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer":    "https://redeflixapi.store/",
+    "Origin":     "https://redeflixapi.store",
   };
-
-  static Future<String?> getImdbId(String tmdbId) async {
-    try {
-      final res = await http.get(
-        Uri.parse("https://api.themoviedb.org/3/movie/$tmdbId/external_ids?api_key=$_tmdbKey"),
-      ).timeout(const Duration(seconds: 10));
-      final data = json.decode(res.body);
-      return data['imdb_id']?.toString();
-    } catch (_) { return null; }
-  }
 
   static Future<List<Map<String, String>>> getServers({
     required String tmdbId,
@@ -166,95 +155,28 @@ class HunterApi {
     String episode = '',
   }) async {
     try {
-      String finalId = tmdbId;
-      if (isFilme) {
-        final imdb = await getImdbId(tmdbId);
-        if (imdb != null && imdb.isNotEmpty) finalId = imdb;
-      }
-      final mediaType = isFilme ? 'movie' : 'tv';
-      var url = "https://playerflix.ink/pages/ajax.php?id=$finalId&type=$mediaType";
-      if (!isFilme && season.isNotEmpty && episode.isNotEmpty) {
-        url += "&season=$season&episode=$episode";
-      }
+      String url = isFilme
+          ? "https://redeflixapi.store/filme/$tmdbId"
+          : "https://redeflixapi.store/serie/$tmdbId/$season/$episode";
+
       final res = await http.get(Uri.parse(url), headers: _spoof)
           .timeout(const Duration(seconds: 15));
       final html = res.body;
       final servers = <Map<String, String>>[];
-      for (final m in RegExp(r'player-option').allMatches(html)) {
-        final pos   = m.start;
-        final chunk = html.substring(pos, (pos + 1000) > html.length ? html.length : pos + 1000);
-        final embedM = RegExp(r'data-embed=["\x27]([^"\x27]+)["\x27]').firstMatch(chunk);
-        final audioM = RegExp(r'data-audio=["\x27]([^"\x27]*)["\x27]').firstMatch(chunk);
-        final nameM  = RegExp(r'player-name[^>]*>(.*?)<\/div>', dotAll: true).firstMatch(chunk);
-        if (embedM == null) continue;
-        final embedB64 = embedM.group(1)!;
-        final audioRaw = (audioM?.group(1) ?? '').toLowerCase();
-        final name     = nameM?.group(1)?.trim().replaceAll(RegExp(r'<[^>]+>'), '') ?? 'Servidor';
-        String embedUrl = '';
-        try { embedUrl = utf8.decode(base64Decode(embedB64)); } catch (_) { embedUrl = embedB64; }
-        if (embedUrl.isEmpty || !embedUrl.startsWith('http')) continue;
-        servers.add({'name': name, 'audio': audioRaw.contains('pt') ? 'Dublado' : 'Legendado', 'url': embedUrl});
+
+      final defMatch = RegExp(r'const\s+defaultUrl\s*=\s*["\x27](http[^"\x27]+)["\x27]').firstMatch(html);
+      final legMatch = RegExp(r'const\s+legendadoUrl\s*=\s*["\x27](http[^"\x27]+)["\x27]').firstMatch(html);
+
+      if (defMatch != null && defMatch.group(1)!.trim().isNotEmpty) {
+        servers.add({'name': 'RedeFlix', 'audio': 'Dublado', 'url': defMatch.group(1)!.replaceAll('&amp;', '&')});
+      }
+      if (legMatch != null && legMatch.group(1)!.trim().isNotEmpty) {
+        servers.add({'name': 'RedeFlix', 'audio': 'Legendado', 'url': legMatch.group(1)!.replaceAll('&amp;', '&')});
       }
       return servers;
     } catch (_) { return []; }
   }
-
-  static Future<String?> extractHls(String embedUrl) async {
-    try {
-      final res = await http.get(Uri.parse(embedUrl), headers: _spoof)
-          .timeout(const Duration(seconds: 20));
-      final html = res.body;
-      final packedM = RegExp(
-        r"eval\(function\(p,a,c,k,e,d\).*?split\('\|'\).*?\)\)",
-        dotAll: true,
-      ).firstMatch(html);
-      if (packedM != null) {
-        final unpacked = _unpackJs(packedM.group(0)!);
-        if (unpacked != null) {
-          var fm = RegExp(r'file["\x27]?\s*:\s*["\x27](https?://[^"\x27]+)["\x27]').firstMatch(unpacked);
-          fm ??= RegExp(r'(https?://[^\x22\x27\s<>]+/hls/[^\x22\x27\s<>]+)').firstMatch(unpacked);
-          if (fm != null) return fm.group(1)!.replaceAll(r'\/', '/');
-        }
-      }
-      final playM = RegExp(r'"play_url":"([^"]+)"').firstMatch(html);
-      if (playM != null) return playM.group(1)!.replaceAll(r'\/', '/').replaceAll(r'\u0026', '&');
-      final hlsM = RegExp(r'(https?://[^\x22\x27\s<>]+\.m3u8[^\x22\x27\s<>]*)').firstMatch(html);
-      if (hlsM != null) return hlsM.group(1);
-      return null;
-    } catch (_) { return null; }
-  }
-
-  static String? _unpackJs(String packed) {
-    final m = RegExp(
-      r"}\s*\x27([\s\S]*?)\x27\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*\x27([\s\S]*?)\x27\.split\(\x27\|\x27\)",
-      dotAll: true,
-    ).firstMatch(packed);
-    final m2 = m ?? RegExp(
-      r'}\s*"([\s\S]*?)"\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*"([\s\S]*?)"\.split\("\|"\)',
-      dotAll: true,
-    ).firstMatch(packed);
-    if (m2 == null) return null;
-    String p = m2.group(1)!;
-    final int a = int.parse(m2.group(2)!);
-    final int c = int.parse(m2.group(3)!);
-    final List<String> k = m2.group(4)!.split('|');
-    String eFunc(int cv) {
-      String res = '';
-      if (cv >= a) res = eFunc(cv ~/ a);
-      cv = cv % a;
-      if (cv > 35) res += String.fromCharCode(cv + 29);
-      else res += '0123456789abcdefghijklmnopqrstuvwxyz'[cv];
-      return res;
-    }
-    final dict = <String, String>{};
-    for (int i = 0; i < c; i++) {
-      final key = eFunc(i);
-      dict[key] = (i < k.length && k[i].isNotEmpty) ? k[i] : key;
-    }
-    return p.replaceAllMapped(RegExp(r'\b\w+\b'), (mx) => dict[mx.group(0)] ?? mx.group(0)!);
-  }
 }
-
 
 String cleanTitle(String input) {
   try { return Uri.decodeFull(input).replaceAll('&amp;', '&').replaceAll('&#039;', "'").replaceAll('&quot;', '"').trim(); } catch (e) { return input; }
@@ -969,12 +891,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
-  // HunterApi — servidores e URL HLS extraída
+  
+  // HunterApi — servidores e URL real 
   List<Map<String, String>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
   bool   _extracandoHls     = false;
-  String _hlsUrlAtiva       = '';   // HLS URL real (disponível após extracção)
-  // WebView Player: fallback para URLs envelope não reproduzíveis (ex: typezero.top .txt)
+  String _hlsUrlAtiva       = '';   // Link MP4 disponível após carregar o servidor
+  
+  // WebView Player: fallback
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
 
@@ -1153,26 +1077,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _selecionarServidor(novosServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
   }
 
-  // Selecciona um servidor e carrega o embed directamente na WebView.
-  // O embed já É o player — não extraímos nada, encaixamos o player
-  // no lugar do nosso player (mesmo espaço, full-screen).
-  // Se o player do embed navegar para um URL de vídeo directo
-  // (m3u8, mp4, CDN assinado) capturamo-lo em _hlsUrlAtiva para download.
+  // ── Selecionar Servidor Nativo (RedeFlix entrega MP4 limpo) ─────────────────────────
   void _selecionarServidor(Map<String, String> servidor, int idx, String tipo) {
-    setState(() { _servidorAtivoIdx = idx; });
+    setState(() { 
+      _servidorAtivoIdx = idx; 
+      _hlsUrlAtiva = servidor['url']!; // URL direta para download imediato 
+    });
     _mostrarRewardedPopup(
       mensagemDownload: "Para continuar a assistir,",
       onSuccess: () {
         if (!mounted) return;
-        _iniciarWebViewPlayer(servidor['url']!, epAtivoNome ?? '');
+        // Utiliza o ExoPlayer diretamente pois temos o URL limpo (MP4)
+        _iniciarExoPlayer(servidor['url']!, epAtivoNome ?? '');
       },
     );
   }
 
   // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
-  // Enviar Referer, User-Agent, Range ou outros headers extras NÃO causa 403
-  // (S3 só verifica os headers listados em X-Amz-SignedHeaders), mas fazer
-  // um HEAD request antes do ExoPlayer pode criar conflitos de sessão TCP.
   static bool _isSignedCdnUrl(String url) {
     final q = url.toLowerCase();
     return q.contains('x-amz-signature') ||
@@ -1185,8 +1106,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
            (q.contains('.backblazeb2.com') && q.contains('?'));
   }
 
-  // Resolve ficheiros "envelope" (.txt/.json) que contêm o URL real dentro.
-  // Exemplos: typezero.top/pl/... devolve .txt com M3U8 ou URL directa.
   Future<_ProbeResult> _resolveEnvelopeUrl(String envelopeUrl) async {
     final hdrs = {
       "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
@@ -1198,7 +1117,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           .timeout(const Duration(seconds: 15));
       final body = res.body.trim();
 
-      // 1. M3U8 directo dentro do .txt
       if (body.startsWith('#EXTM3U')) {
         try {
           final dir = Directory.systemTemp;
@@ -1211,34 +1129,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
       }
 
-      // 2. JSON — múltiplos formatos
       if (body.startsWith('{') || body.startsWith('[')) {
         try {
           final decoded = json.decode(body);
           final map = decoded is List ? decoded.first as Map : decoded as Map;
 
-          // 2a. Campo directo url/link/file/src → URL real do vídeo
           final inner = (map['url'] ?? map['link'] ?? map['file'] ??
                          map['src'] ?? map['stream'] ?? '').toString().trim();
           if (inner.isNotEmpty && inner.startsWith('http')) {
             return _probeUrl(inner);
           }
 
-          // 2b. Formato typezero.top — JSON com lista de fragmentos CDN
-          // Estrutura: { "results": [ { "href": "https://cdn.../FRAG0.html", "score": 16.6, "freq": ... }, ... ] }
-          // Os hrefs apontam para segmentos de vídeo (tipo HLS mas proprietário).
-          // Solução: construir M3U8 sintético ordenado por índice de fragmento,
-          //          preferindo o servidor com score mais alto para cada fragmento.
           final rawList = map['results'] ?? map['resultados'] ??
                           map['items']   ?? map['data'];
           if (rawList is List && rawList.isNotEmpty) {
             final entries = rawList.whereType<Map>().toList();
             final firstHref = entries.first['href']?.toString() ?? '';
 
-            // Detecta fragmentos .html (ex: CAMDUB0.html, 1368337-CAMDUB0.html)
             final fragRx = RegExp(r'(\d+)\.html');
             if (fragRx.hasMatch(firstHref)) {
-              // Agrupa por índice de fragmento; escolhe melhor servidor (score mais alto)
               final Map<int, Map> best = {};
               for (final e in entries) {
                 final href = e['href']?.toString() ?? '';
@@ -1275,7 +1184,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               }
             }
 
-            // Lista genérica com campo url/link dentro de cada item
             for (final e in entries) {
               final u = (e['url'] ?? e['link'] ?? e['file'] ?? e['src'] ?? '').toString().trim();
               if (u.isNotEmpty && u.startsWith('http')) return _probeUrl(u);
@@ -1284,13 +1192,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         } catch (_) {}
       }
 
-      // 3. URL directa numa linha (http/https)
       final lines = body.split('\n').expand((l) => l.split('\r')).map((l) => l.trim()).where((l) => l.isNotEmpty);
       for (final line in lines) {
         if (line.startsWith('http')) return _probeUrl(line);
       }
 
-      // 4. Fallback
       final ct = (res.headers['content-type'] ?? '').toLowerCase();
       if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) {
         return _ProbeResult(url: envelopeUrl, isHls: true);
@@ -1302,13 +1208,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<_ProbeResult> _probeUrl(String url) async {
-    // Extrai apenas o PATH (antes do ?) para detetar extensão corretamente
-    // em URLs com query strings longas (S3, Wasabi, CloudFront, etc.)
     final String pathOnly;
     try { pathOnly = Uri.parse(url).path.toLowerCase(); }
     catch (_) { return _ProbeResult(url: url, isHls: false); }
 
-    // Deteção imediata por extensão — sem nenhum request de rede
     if (pathOnly.endsWith('.m3u8') || pathOnly.endsWith('.m3u')) {
       return _ProbeResult(url: url, isHls: true);
     }
@@ -1322,15 +1225,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         pathOnly.endsWith('.ogv')) {
       return _ProbeResult(url: url, isHls: false);
     }
-    // .txt = ficheiro envelope — faz GET e resolve o URL/tipo real dentro
-    // Ex: typezero.top devolve .txt com M3U8 ou URL directa dentro
+    
     if (pathOnly.endsWith('.txt') || pathOnly.endsWith('.json')) {
       return _resolveEnvelopeUrl(url);
     }
-    // URLs CDN assinadas sem extensão clara → assume MP4 direto
     if (_isSignedCdnUrl(url)) return _ProbeResult(url: url, isHls: false);
 
-    // Para URLs normais sem extensão clara → faz probe via HEAD
     final hdrs = {
       "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
       "Referer": _smartPlayUrl,
@@ -1345,7 +1245,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (ct.contains('mpegurl') || ct.contains('x-mpegurl')) return _ProbeResult(url: url, isHls: true);
       if (ct.contains('dash+xml')) return _ProbeResult(url: url, isHls: false);
       if (ct.startsWith('video/') || ct.contains('octet-stream')) return _ProbeResult(url: url, isHls: false);
-      // Último recurso: GET para ler primeiros bytes
+      
       final get = await http.get(Uri.parse(url), headers: hdrs).timeout(const Duration(seconds: 12));
       final body = get.body.trimLeft();
       if (body.startsWith('#EXTM3U')) {
@@ -1374,9 +1274,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     final posParaSeek = savedPositionSeconds;
 
-    // Se o URL for um envelope não reproduzível (.txt, etc.) e existir
-    // embedUrl do player original → usa WebView player directamente,
-    // que é o mesmo que "clicar em download e deixar o player da página tocar"
     final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
@@ -1387,13 +1284,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final probe = await _probeUrl(url);
 
-      // URLs CDN assinadas: não enviar headers extra — ExoPlayer usa os seus próprios.
-      // Para URLs normais: Referer + User-Agent ajudam em servidores com proteção.
       final hdrs = (probe.isLocalFile || _isSignedCdnUrl(url))
           ? <String, String>{}
           : {
-              "Referer": _smartPlayUrl,
-              "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+              "Referer": "https://redeflixapi.store/",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
               "Accept": "*/*",
             };
 
@@ -1402,8 +1297,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         httpHeaders: hdrs,
       );
 
-      // MP4 grandes (ex: 400MB+ em S3/Wasabi) podem precisar de 2 range
-      // requests para encontrar o moov atom — dá mais tempo para inicializar
       final timeout = probe.isHls ? const Duration(seconds: 90) : const Duration(seconds: 120);
       await _videoPlayerController!.initialize().timeout(timeout);
 
@@ -1436,8 +1329,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               if (mounted && isPlaying) _tentarProximoServidor();
             });
           });
-          // Mostra o ERRO REAL do ExoPlayer — essencial para diagnóstico
-          // (copia e envia este texto quando o vídeo falhar)
           final erro = errorMessage.isNotEmpty ? errorMessage : 'Erro desconhecido';
           return Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1490,7 +1381,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
     } catch (e) {
-      // Mostra o erro real em debug — copia e envia se o vídeo falhar aqui
       debugPrint('[CDCINE PLAYER ERROR] $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1512,12 +1402,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _tentarProximoServidor() {
-    // Com HunterApi o utilizador escolhe o servidor manualmente.
-    // Em caso de erro, sugere trocar de servidor.
     if (mounted) {
       final tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
       setState(() { isServerLoading = false; _extracandoHls = false; });
-      // Se há servidores disponíveis, não apaga — o utilizador pode trocar
       if (_servidoresNovos.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text("Erro neste servidor. Por favor troque de servidor abaixo."),
@@ -1533,13 +1420,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-
-  // ── WebView Player ─────────────────────────────────────────────────────
-  // Usado quando o URL do servidor é um envelope (.txt) não reproduzível
-  // directamente. Carrega o player embed (ex: nexoratype.info) em WebView
-  // full-screen. O JavaScript do player resolve os fragmentos CDN e toca.
-  // Se o WebView navegar para um URL de vídeo directo, intercepta e toca
-  // com ExoPlayer nativo (melhor performance).
   void _iniciarWebViewPlayer(String embedUrl, String titulo) {
     if (!mounted) return;
     const String adBlockJs = '''
@@ -1577,7 +1457,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       'criteo.com', 'adsrvr.org', 'advertising.com', 'adform.net',
       'aniview.com', 'vidazoo.com', 'spotxchange.com', 'springserve.com',
     ];
-    // late permite referencia dentro do closure onPageFinished
+    
     late final WebViewController ctrl;
     ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -1595,7 +1475,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
           if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
                p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(req.url)) &&
-              !req.url.contains('playerflix') && !req.url.contains('embedplayer')) {
+              !req.url.contains('redeflix') && !req.url.contains('embedplayer')) {
             if (mounted) setState(() { _hlsUrlAtiva = req.url; });
             setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
             _playerInitializing = false;
@@ -1606,8 +1486,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         },
       ))
       ..loadRequest(Uri.parse(embedUrl), headers: {
-        "Referer":    "https://primeflix.mom/",
-        "Origin":     "https://primeflix.mom",
+        "Referer":    "https://redeflixapi.store/",
+        "Origin":     "https://redeflixapi.store",
         "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
       });
 
@@ -1648,9 +1528,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-
-  // ── Selector de servidores ────────────────────────────────────────────────
-  // Mostra todos os servidores disponíveis (Dublado/Legendado) sem emoji.
   Widget _buildServerSelector(String tipo) {
     if (_servidoresNovos.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -1710,7 +1587,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }),
           ),
-
           const SizedBox(height: 12),
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 8),
@@ -1739,7 +1615,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
-        // WebView Player overlay (fallback para URLs envelope .txt)
         if (_webViewPlayerShowing && _webViewPlayerCtrl != null)
           WebViewWidget(controller: _webViewPlayerCtrl!),
         Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () { setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; }); Navigator.pop(context); }))),
@@ -1752,7 +1627,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     String tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? "filmes";
     final bool isTV = MediaQuery.of(context).size.width > 900; 
 
-    // ── FULLSCREEN ───────────────────────────────────────────────────────────────
     if (_isFullscreen) {
       return WillPopScope(
         onWillPop: () async { _exitFullscreen(); return false; },
@@ -1789,7 +1663,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    // ── LAYOUT TV (widescreen side-by-side) ──────────────────────────────────────
     if (isTV && tipo != 'filmes') {
       return WillPopScope(
         onWillPop: () async { return true; },
@@ -1932,7 +1805,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    // ── LAYOUT NORMAL (mobile / portrait) ────────────────────────────────────────
     return WillPopScope(
       onWillPop: () async { if (_isFullscreen) { _exitFullscreen(); return false; } return true; },
       child: Scaffold(
@@ -2434,13 +2306,11 @@ class AdRemovalManager {
     final given = input.trim().toLowerCase();
     if (given.isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
 
-    // Bloquear padrões de adivinhação óbvios
     const blackList = ['1234', '0000', '1111', '12345', '123456', '000000', 'teste', 'admin', '123123', 'qwer', 'asdf'];
     if (given.length < 4 || blackList.contains(given) || RegExp(r'^(\d)\1+$').hasMatch(given)) {
       return _AdRemResult.invalid('Código inválido. Por favor, copia o código real da página gerada.');
     }
 
-    // Se passar os filtros acima, aceitamos como sucesso!
     final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyExpiry, exp);
@@ -2521,11 +2391,9 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       ..setBackgroundColor(const Color(0xFF0B0B0F))
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
-          // Deixa toda a rede EffectiveCPM fluir lá dentro
           return NavigationDecision.navigate;
         },
       ))
-      // Carrega o Smart Link diretamente!
       ..loadRequest(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'));
 
     setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
@@ -2534,7 +2402,6 @@ class _RewardedPopupState extends State<_RewardedPopup> {
       if (!mounted) { t.cancel(); return; }
       setState(() => _countdown15--);
       
-      // Aos 5 segundos restantes, atira o Smart Link diretamente para o Chrome/Browser
       if (_countdown15 == 5) {
          launchUrl(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'), mode: LaunchMode.externalApplication);
       }
