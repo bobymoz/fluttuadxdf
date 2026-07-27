@@ -1153,32 +1153,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _selecionarServidor(novosServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
   }
 
-  // Selecciona um servidor, extrai HLS e inicia a reprodução ───────────────
-  Future<void> _selecionarServidor(Map<String, String> servidor, int idx, String tipo) async {
-    if (_extracandoHls) return;
-    setState(() { _extracandoHls = true; _servidorAtivoIdx = idx; });
-
+  // Selecciona um servidor e carrega o embed directamente na WebView.
+  // O embed já É o player — não extraímos nada, encaixamos o player
+  // no lugar do nosso player (mesmo espaço, full-screen).
+  // Se o player do embed navegar para um URL de vídeo directo
+  // (m3u8, mp4, CDN assinado) capturamo-lo em _hlsUrlAtiva para download.
+  void _selecionarServidor(Map<String, String> servidor, int idx, String tipo) {
+    setState(() { _servidorAtivoIdx = idx; });
     _mostrarRewardedPopup(
       mensagemDownload: "Para continuar a assistir,",
-      onSuccess: () async {
-        final hlsUrl = await HunterApi.extractHls(servidor['url']!);
+      onSuccess: () {
         if (!mounted) return;
-        if (hlsUrl == null || hlsUrl.isEmpty) {
-          setState(() { _extracandoHls = false; });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Não foi possível extrair o vídeo deste servidor. Tenta outro."),
-              backgroundColor: Color(0xFF880000),
-            ),
-          );
-          return;
-        }
-        setState(() { _hlsUrlAtiva = hlsUrl; _extracandoHls = false; });
-        _playerInitializing = false;
-        _iniciarExoPlayer(hlsUrl, epAtivoNome ?? '', embedUrl: servidor['url'] ?? '');
+        _iniciarWebViewPlayer(servidor['url']!, epAtivoNome ?? '');
       },
     );
-    if (mounted && !_extracandoHls) setState(() { _extracandoHls = false; });
   }
 
   // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
@@ -1561,10 +1549,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         onNavigationRequest: (req) {
           final u = req.url;
           final p = (){try{return Uri.parse(u).path.toLowerCase();}catch(_){return u.toLowerCase();};}();
-          // Se navegar para URL de vídeo directo → fecha WebView e usa ExoPlayer
+          // Se o player do embed navegar para URL de vídeo directo →
+          // guarda para download E tenta reproduzir com ExoPlayer nativo
           if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
                p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(u)) &&
-              !u.contains('nexoratype') && !u.contains('typezero')) {
+              !u.contains('nexoratype') && !u.contains('typezero') &&
+              !u.contains('playerflix') && !u.contains('embedplayer')) {
+            // Guarda URL para download
+            if (mounted) setState(() { _hlsUrlAtiva = u; });
+            // Tenta ExoPlayer nativo (melhor performance/controlo)
             setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
             _playerInitializing = false;
             _iniciarExoPlayer(u, titulo);
@@ -1574,7 +1567,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         },
       ))
       ..loadRequest(Uri.parse(embedUrl), headers: {
-        "Referer": _smartPlayUrl,
+        "Referer": "https://primeflix.mom/",
+        "Origin":  "https://primeflix.mom",
         "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
       });
 
@@ -1643,7 +1637,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               final isAtivo = i == _servidorAtivoIdx;
               final isDub   = s['audio'] == 'Dublado';
               return GestureDetector(
-                onTap: _extracandoHls ? null : () => _selecionarServidor(s, i, tipo),
+                onTap: () => _selecionarServidor(s, i, tipo),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1677,14 +1671,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               );
             }),
           ),
-          if (_extracandoHls) ...[
-            const SizedBox(height: 12),
-            const Row(children: [
-              SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2)),
-              SizedBox(width: 10),
-              Text("A carregar servidor...", style: TextStyle(color: Colors.white54, fontSize: 12)),
-            ]),
-          ],
+
           const SizedBox(height: 12),
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 8),
