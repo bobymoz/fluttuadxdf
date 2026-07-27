@@ -1618,20 +1618,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       isServerLoading       = false;
     });
   }
-      ))
-      ..loadRequest(Uri.parse(embedUrl), headers: {
-        "Referer":    "https://primeflix.mom/",
-        "Origin":     "https://primeflix.mom",
-        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
-      });
-
-    setState(() {
-      _webViewPlayerShowing = true;
-      _webViewPlayerCtrl    = ctrl;
-      isPlaying             = true;
-      isServerLoading       = false;
-    });
-  }
 
   void _mostrarRewardedPopup({required VoidCallback onSuccess, String mensagemDownload = "Para continuar a assistir"}) async {
     final adFree = await AdRemovalManager.instance.isAdFree();
