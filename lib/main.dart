@@ -1542,7 +1542,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // com ExoPlayer nativo (melhor performance).
   void _iniciarWebViewPlayer(String embedUrl, String titulo) {
     if (!mounted) return;
-    // Bloqueador de anuncios/popups injectado apos cada pagina carregar
     const String adBlockJs = '''
 (function() {
   var orig = window.open;
@@ -1572,29 +1571,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 })();
 ''';
     const List<String> adDomains = [
-      'doubleclick.net',
-      'googlesyndication.com',
-      'adnxs.com',
-      'pubmatic.com',
-      'rubiconproject.com',
-      'openx.net',
-      'adsafeprotected.com',
-      'moatads.com',
-      'casalemedia.com',
-      'smartadserver.com',
-      'outbrain.com',
-      'taboola.com',
-      'criteo.com',
-      'adsrvr.org',
-      'advertising.com',
-      'adform.net',
-      'aniview.com',
-      'vidazoo.com',
-      'spotxchange.com',
-      'springserve.com',
+      'doubleclick.net', 'googlesyndication.com', 'adnxs.com', 'pubmatic.com',
+      'rubiconproject.com', 'openx.net', 'adsafeprotected.com', 'moatads.com',
+      'casalemedia.com', 'smartadserver.com', 'outbrain.com', 'taboola.com',
+      'criteo.com', 'adsrvr.org', 'advertising.com', 'adform.net',
+      'aniview.com', 'vidazoo.com', 'spotxchange.com', 'springserve.com',
     ];
-
-    final ctrl = WebViewController()
+    // late permite referencia dentro do closure onPageFinished
+    late final WebViewController ctrl;
+    ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
       ..addJavaScriptChannel('CDCineLog', onMessageReceived: (_) {})
@@ -1607,20 +1592,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
           for (final d in adDomains) {
             if (u.contains(d)) return NavigationDecision.prevent;
           }
-          if (req.isForMainFrame) {
-            final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
-            if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
-                 p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(req.url)) &&
-                !req.url.contains('playerflix') && !req.url.contains('embedplayer')) {
-              if (mounted) setState(() { _hlsUrlAtiva = req.url; });
-              setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
-              _playerInitializing = false;
-              _iniciarExoPlayer(req.url, titulo);
-              return NavigationDecision.prevent;
-            }
+          final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
+          if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
+               p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(req.url)) &&
+              !req.url.contains('playerflix') && !req.url.contains('embedplayer')) {
+            if (mounted) setState(() { _hlsUrlAtiva = req.url; });
+            setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
+            _playerInitializing = false;
+            _iniciarExoPlayer(req.url, titulo);
+            return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
+      ))
+      ..loadRequest(Uri.parse(embedUrl), headers: {
+        "Referer":    "https://primeflix.mom/",
+        "Origin":     "https://primeflix.mom",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
+      });
+
+    setState(() {
+      _webViewPlayerShowing = true;
+      _webViewPlayerCtrl    = ctrl;
+      isPlaying             = true;
+      isServerLoading       = false;
+    });
+  }
       ))
       ..loadRequest(Uri.parse(embedUrl), headers: {
         "Referer":    "https://primeflix.mom/",
