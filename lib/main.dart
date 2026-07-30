@@ -61,11 +61,12 @@ class _AntiDecompileBomb {
   }
 }
 
-
+// ==========================================
+// DADOS OFUSCADOS (ANTI-MT MANAGER E SNIFFERS)
+// ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
 String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 99, 115, 99, 100, 110, 46, 99, 111, 109, 47, 115, 99, 114, 105, 112, 116, 47, 97, 99, 108, 105, 98, 46, 106, 115]);
-
 
 String get _supaUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 108, 108, 107, 109, 120, 115, 113, 120, 97, 100, 107, 117, 120, 111, 109, 118, 117, 98, 121, 106, 46, 115, 117, 112, 97, 98, 97, 115, 101, 46, 99, 111]);
 String get _supaToken => String.fromCharCodes([99, 104, 117, 112, 97]); 
@@ -93,7 +94,7 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  
+  // Inicialização do Supabase fornecida
   await Supabase.initialize(
     url: _supaUrl,
     anonKey: _obfuscatedAnonKey(),
@@ -616,13 +617,16 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
             builder: (c, snapshot) {
               if (!snapshot.hasData) return _buildGridSkeleton();
               
-              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez
+              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez usando chave tripla
               final uniqueItems = [];
-              final seenIds = <String>{};
+              final seenKeys = <String>{};
               for (var item in snapshot.data!) {
-                final id = item['id'].toString();
-                if (!seenIds.contains(id)) {
-                  seenIds.add(id);
+                final id = (item['id'] ?? '').toString();
+                final title = (item['name'] ?? item['titulo'] ?? '').toString().trim().toLowerCase();
+                final type = (item['type']?['slug'] ?? item['tipo'] ?? '').toString().trim().toLowerCase();
+                final key = '$id-$title-$type'; // Chave tripla ultra rígida
+                if (!seenKeys.contains(key)) {
+                  seenKeys.add(key);
                   uniqueItems.add(item);
                 }
               }
@@ -1149,11 +1153,14 @@ class SearchResults extends StatelessWidget {
         
         // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez na pesquisa
         final uniqueItems = [];
-        final seenIds = <String>{};
+        final seenKeys = <String>{};
         for (var item in snapshot.data!) {
-          final id = item['id'].toString();
-          if (!seenIds.contains(id)) {
-            seenIds.add(id);
+          final id = (item['id'] ?? '').toString();
+          final title = (item['name'] ?? item['titulo'] ?? '').toString().trim().toLowerCase();
+          final type = (item['type']?['slug'] ?? item['tipo'] ?? '').toString().trim().toLowerCase();
+          final key = '$id-$title-$type'; // Chave tripla ultra rígida
+          if (!seenKeys.contains(key)) {
+            seenKeys.add(key);
             uniqueItems.add(item);
           }
         }
@@ -1691,19 +1698,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final posParaSeek = savedPositionSeconds;
-
     final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
+
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
-      _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
+      _iniciarWebViewPlayer(embedUrl, tituloEpisodio, forceWebMode: false);
       return;
     }
 
-    // Suporte a embeds web gerais da comunidade
-    bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u');
+    // Identifica se a URL atual já é reconhecida claramente como arquivo nativo do Android
+    bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u') || url.toLowerCase().contains('.mp4?') || url.toLowerCase().contains('.m3u8?');
+    
+    // Se a URL é claramente uma página web de embed ou não é arquivo limpo suportado -> Fallback primário pro WebView
     if (!isKnownVideoExtension && !_isSignedCdnUrl(url) && !pathLower.endsWith('.txt') && !pathLower.endsWith('.json') && url.startsWith('http') && !url.contains('127.0.0.1')) {
        _playerInitializing = false;
-       _iniciarWebViewPlayer(url, tituloEpisodio);
+       _iniciarWebViewPlayer(url, tituloEpisodio, forceWebMode: false);
        return;
     }
 
@@ -1751,29 +1760,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: Colors.white24,
         ),
         errorBuilder: (context, errorMessage) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            Future.delayed(const Duration(seconds: 6), () {
-              if (mounted && isPlaying) _tentarProximoServidor();
-            });
-          });
-          final erro = errorMessage.isNotEmpty ? errorMessage : 'Erro desconhecido';
-          return Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.error_outline, color: Color(0xFFE50914), size: 36),
-              const SizedBox(height: 10),
-              const Text("Erro no servidor — a tentar outro...",
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SelectableText(
-                  erro,
-                  style: const TextStyle(color: Colors.white38, fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ]),
-          );
+          // O Android rejeita essa URL por não ser MP4/MKV. Deixa ir para o catch block acionar o WebView Fallback.
+          throw Exception("Codec/Format Error");
         },
       );
 
@@ -1781,7 +1769,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
 
-        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar de fato
+        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar fisicamente
         if (_playerResuming && _videoPlayerController!.value.isPlaying) {
           setState(() => _playerResuming = false);
         }
@@ -1819,21 +1807,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
     } catch (e) {
-      debugPrint('[CDCINE PLAYER ERROR] $e');
+      debugPrint('[CDCINE PLAYER ERROR] Fallback forçado: $e');
       if (mounted) {
+        // Fallback Secundário: Ocorreu erro de MediaCodec ou HTTP proibido, tenta forçar no WebView Video.js Mode.
+        _playerInitializing = false;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: SelectableText(
-              'Erro: ' + (e.toString().length > 120 ? e.toString().substring(0, 120) : e.toString()),
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-            backgroundColor: const Color(0xFF880000),
-            duration: const Duration(seconds: 6),
+          const SnackBar(
+            content: Text('Otimizando formato do player...'),
+            backgroundColor: Color(0xFF01875F),
+            duration: Duration(seconds: 2),
           ),
         );
+        _iniciarWebViewPlayer(url, tituloEpisodio, forceWebMode: true);
       }
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) _tentarProximoServidor();
     } finally {
       _playerInitializing = false;
     }
@@ -1858,7 +1844,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _iniciarWebViewPlayer(String embedUrl, String titulo) {
+  void _iniciarWebViewPlayer(String embedUrl, String titulo, {bool forceWebMode = false}) {
     if (!mounted) return;
     const String adBlockJs = '''
 (function() {
@@ -1898,9 +1884,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (u.contains(d)) return NavigationDecision.prevent;
           }
           final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
-          if ((p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') ||
-               p.endsWith('.webm') || p.endsWith('.m3u') || _isSignedCdnUrl(req.url)) &&
-              !req.url.contains('redeflix') && !req.url.contains('embedplayer')) {
+          bool isVideoExt = p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') || p.endsWith('.webm') || p.endsWith('.m3u') || u.contains('.mp4?') || u.contains('.m3u8?');
+          
+          if (!forceWebMode && (isVideoExt || _isSignedCdnUrl(req.url)) && !req.url.contains('redeflix') && !req.url.contains('embedplayer')) {
             if (mounted) setState(() { _hlsUrlAtiva = req.url; });
             setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
             _playerInitializing = false;
@@ -1911,19 +1897,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           final uri = Uri.parse(embedUrl);
           final embedHost = uri.host;
           
-          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost)) {
+          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost) && !u.contains('vjs.zencdn')) {
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
       ));
 
-    // Determina se o link é um arquivo cru de mídia
     final p = (){try{return Uri.parse(embedUrl).path.toLowerCase();}catch(_){return embedUrl.toLowerCase();}}();
-    bool isDirectVideo = p.endsWith('.mp4') || p.endsWith('.mkv') || p.endsWith('.avi') || p.endsWith('.webm') || p.endsWith('.m3u8') || p.endsWith('.ts');
+    bool isDirectVideo = p.endsWith('.mp4') || p.endsWith('.mkv') || p.endsWith('.avi') || p.endsWith('.webm') || p.endsWith('.m3u8') || p.endsWith('.ts') || embedUrl.contains('.mp4?') || embedUrl.contains('.m3u8?');
 
-    if (isDirectVideo) {
-      // Injeta o Player HTML5 (Video.js) idêntico ao ExoPlayer para arquivos brutos
+    // Se é link de vídeo bruto que falhou no nativo (ou forceWebMode), nós injetamos 
+    // um Player Video.JS HTML5 idêntico ao ExoPlayer para rodar direto sem loop
+    if (isDirectVideo || forceWebMode) {
       String videoJsHtml = '''
       <!DOCTYPE html>
       <html>
@@ -1940,8 +1926,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         </style>
       </head>
       <body>
-        <video id="cdc-video" class="video-js vjs-default-skin vjs-big-play-centered" controls autoplay preload="auto" width="100%" height="100%" data-setup="{}">
-          <source src="${embedUrl}" type="${p.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'}" />
+        <video id="cdc-video" class="video-js vjs-default-skin vjs-big-play-centered" controls autoplay preload="auto" width="100%" height="100%" data-setup='{"fluid": true}'>
+          <source src="${embedUrl}" type="${(embedUrl.contains('.m3u8') || embedUrl.contains('.m3u')) ? 'application/x-mpegURL' : 'video/mp4'}" />
         </video>
         <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
       </body>
@@ -1949,7 +1935,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ''';
       ctrl.loadHtmlString(videoJsHtml);
     } else {
-      // Carrega a página Web normalmente
+      // Carrega a página Web normalmente se for Embed
       ctrl.loadRequest(Uri.parse(embedUrl), headers: {
         "Referer":    "https://redeflixapi.store/",
         "Origin":     "https://redeflixapi.store",
@@ -1985,7 +1971,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Navigator.of(ctxPopup, rootNavigator: true).pop();
             Future.delayed(const Duration(milliseconds: 300), () {
               onSuccess();
-              // Fallback caso a internet esteja ruim e o vídeo não volte a tocar
+              // Fallback de segurança de 5 segundos se a rede falhar e o listener não disparar
               Future.delayed(const Duration(seconds: 5), () {
                 if (mounted && _playerResuming) setState(() => _playerResuming = false);
               });
@@ -2129,7 +2115,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'], // Emojis Removidos
+                        s['audio'],
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
@@ -2172,7 +2158,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
         if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
         
-        // Tela preta "A retomar" ajustada para remover gaps visuais
         if (isPlaying && !isServerLoading && _playerResuming)
           Container(
             color: Colors.black,
