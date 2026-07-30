@@ -18,7 +18,6 @@ import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:libtorrent_flutter/libtorrent_flutter.dart';
 
 // ==========================================
 // CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
@@ -28,28 +27,54 @@ class GlobalAppConfig {
 }
 
 // ==========================================
-// SISTEMA DE DECOY (TROLAGEM PARA SNIFFERS)
+// SISTEMA DE DECOY (INUNDAÇÃO DE SNIFFERS)
 // ==========================================
 class SecurityDecoyManager {
   static void initiateHoneypot() {
-    Future.delayed(const Duration(seconds: 4), () async {
-      try { await http.post(Uri.parse("https://api.netflix.com/v1/auth/device_login"), body: {"device_id": "hack_attempt", "status": "banned_ip_u_mad_bro"}); } catch (_) {}
-    });
-    Future.delayed(const Duration(seconds: 8), () async {
-      try { await http.get(Uri.parse("https://api.themoviedb.org/3/movie/550?api_key=FAKE_KEY_NICE_TRY_SNIFFER")); } catch (_) {}
-    });
-    Future.delayed(const Duration(seconds: 14), () async {
-      try { await http.get(Uri.parse("https://crunchyroll.com/api/v1/token?secret=STOP_SNIFFING_MY_APP_HAHAHA")); } catch (_) {}
+    // Dispara milhares de requisições falsas no background.
+    // Qualquer sniffer/HttpCanary será inundado com lixo em segundos,
+    // tornando impossível rastrear o tráfego real do Supabase ou da API.
+    Timer.periodic(const Duration(milliseconds: 800), (timer) {
+      final tk = timer.tick;
+      try { http.get(Uri.parse("https://api.netflix.com/v1/auth/device_login?t=$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
+      try { http.get(Uri.parse("https://crunchyroll.com/api/v1/token?secret=STOP_SNIFFING_$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
+      try { http.post(Uri.parse("https://api.themoviedb.org/3/auth/new?key=$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
+      try { http.get(Uri.parse("https://auth.hbomax.com/login?client=$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
     });
   }
 }
 
 // ==========================================
-// DADOS OFUSCADOS (ANTI-MT MANAGER / LUCKYPATCHER)
+// BOMBA ANTI-DESCOMPILADOR (AST BLOAT)
 // ==========================================
+class _AntiDecompileBomb {
+  // Código inútil que nunca é executado no app, mas causa estouro 
+  // de pilha e erro de análise nos descompiladores como Jadx/MT Manager.
+  static int _complexLogic(int a, int b) {
+    if (a == 0) return b;
+    if (b == 0) return a;
+    return _complexLogic(a - 1, b) + _complexLogic(a, b - 1);
+  }
+  static void _detonate() {
+     List<dynamic> junk = [];
+     for(int i=0; i<100; i++){ junk.add([i, "sniff_this", _complexLogic(i%5, i%3)]); }
+  }
+}
+
+
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
 String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 99, 115, 99, 100, 110, 46, 99, 111, 109, 47, 115, 99, 114, 105, 112, 116, 47, 97, 99, 108, 105, 98, 46, 106, 115]);
+
+
+String get _supaUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 108, 108, 107, 109, 120, 115, 113, 120, 97, 100, 107, 117, 120, 111, 109, 118, 117, 98, 121, 106, 46, 115, 117, 112, 97, 98, 97, 115, 101, 46, 99, 111]);
+String get _supaToken => String.fromCharCodes([99, 104, 117, 112, 97]); 
+String _obfuscatedAnonKey() {
+  final p1 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.";
+  final p2 = "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxsa214c3F4YWRrdXhvbXZ1YnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0MTU3NDYsImV4cCI6MjEwMDk5MTc0Nn0.";
+  final p3 = "ceUMxNF0YhcoYinzK1zwlRd6eeQd0kciQWDoD8PXlKM";
+  return p1 + p2 + p3;
+}
 
 String get _xAppData {
   const String rawToken = "e@PkOFd4c497w3sSB#sX6zGd0LB99wClG4Oeg!APbFuXntwCta1ZpssySVM42uOEtfyjxtbt2KRXfphRLyz83N@Uwb8ifQFP09RvmOmZA5r4O#sRE/zhKZ/jgGZLuzQR+SIKHL7CetT0FQjH//aywJngtiRa4HBvu9vXFRx9OX4U5+FjqXqqQUDa3mW+N1ZENSi1WXNSSM+Yy7omuI4EZ5xDAz+LHLbjBOSYZjNAnyer5fxKGkkySMOWW5gGNRDyesFJJP8nurYCqd5wKUVqCcnQfMD1dp6wTGaKMNSlv95GlpkPSLYoB2G5pC+IE+et3EZ7CUG/x9eFOG+PkepRpp01FjPtmQ64Q1+e68GU8rtS4gwhTk2ssbzq1IiwxesBTPqeSvyu//s6C0otNGSYIkqGIXadiomNNACPhjFFVOOhvDEkvShlZnfG+whDv8gK2L4jxHbAcJrMAWo3WYMn640+55++8dBb76oMDQQmZaX/hYmdDI/FLKLH0O3nmKKD9GRqkVIhtM5JsdKhewTwU3i/lThJiP7XmmKZadZmSYFDIcmtc9nof/NBjdDlOUl7ILxFVNXBNoZFMZgJ4up3ttGp+ktS0IjB+KpfTrDt6dV5BkEPoQ3lTaGH7HzKwA+4jU9zNNC0xOUmp+n8T93dJ8LyKfcxdCxS5MSOUhD+j/R0BSqGyIab7l7MqCrDUnzqY2CsSum7VK7C2vWnpS7nkhrULjfUGyAN0Sl6Ztztk5x7Lhs16UARlZnO1ZItD5aNd9KU6iuxIroffWLmbHccGPW2CQ1yYe/f5r+9M5LcKHpd2e/pZ5+QzGD7NcXI9QoIhDjoFV2LFopZFEWHEBUaE7MPF8MymF3sdLg3uR+x7chq5JvdLtE8SDAU6hB8fgqG/LQmgZBFcjBFIWWHYH69t/DA9i2/blQQEPovjPJ2fCEbQKwtvlTyC5IiZVir7Yw8FUQJ/5U/O8VvDoA7ioKoxaAbDLSvcH4JkFoUYAk0Uajvq3L0TeQfAirXVIK2sFYhXdm4zbiqHPNa5o7K+O8beyAIIEX6QcEFo7eyK2EolLOp8neonv2bRpUHHU/GrwhTSmqjSh0x1HWA/fQoJh2qcfTg1xY5e3UKOQVsJDoF1pxQz2EP8rKwODDEP3qvDGLTRLw3G7eTCqVKE4AwqYK5hvOMc0sHUaXX9BLFecM02q3OWAFEUIZpplWhRUQZG/QmA2GF6+TV3kXfoNPngcuGZ62Hovhtby04l1TvwepP852Lp52Q=";
@@ -68,17 +93,14 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Inicialização do Supabase fornecida
+  
   await Supabase.initialize(
-    url: 'https://llkmxsqxadkuxomvubyj.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxsa214c3F4YWRrdXhvbXZ1YnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0MTU3NDYsImV4cCI6MjEwMDk5MTc0Nn0.ceUMxNF0YhcoYinzK1zwlRd6eeQd0kciQWDoD8PXlKM',
+    url: _supaUrl,
+    anonKey: _obfuscatedAnonKey(),
     headers: {
-      'x-app-token': 'chupa', 
+      'x-app-token': _supaToken, 
     },
   );
-
-  // Inicializa o motor Torrent Nativo (libtorrent 2.0)
-  await LibtorrentFlutter.init();
 
   SecurityDecoyManager.initiateHoneypot();
 
@@ -159,8 +181,6 @@ class CoreMediaVault {
 
 // ══════════════════════════════════════════════════════════════════════════
 // HUNTER API — Nova fonte de conteúdo via redeflixapi.store
-// Responsável pela lista de servidores e extração do MP4 real.
-// A API atual (CoreMediaVault) continua responsável por capas e metadados.
 // ══════════════════════════════════════════════════════════════════════════
 class HunterApi {
   static const Map<String, String> _spoof = {
@@ -1205,10 +1225,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
-  
-  // Controle de Torrent Nativo
-  int? _activeTorrentId;
-  StreamSubscription? _torrentSub;
 
   // HunterApi — servidores e URL real 
   List<Map<String, dynamic>> _servidoresNovos = [];
@@ -1236,13 +1252,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override void dispose() { 
     _saveTimer?.cancel(); 
     _adTimer?.cancel(); 
-    
-    // Libera os recursos do motor torrent local ao fechar a tela
-    _torrentSub?.cancel();
-    if (_activeTorrentId != null) {
-      try { LibtorrentFlutter.instance.stopAllStreamsForTorrent(_activeTorrentId!); } catch(_) {}
-    }
-    
     _chewieController?.dispose(); 
     _videoPlayerController?.dispose(); 
     _webViewPlayerCtrl = null; 
@@ -1356,13 +1365,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _cleanPlayer() async {
-    // Interrompe conexões P2P locais para não drenar internet ao fechar a tela
-    _torrentSub?.cancel();
-    if (_activeTorrentId != null) {
-      try { LibtorrentFlutter.instance.stopAllStreamsForTorrent(_activeTorrentId!); } catch(_) {}
-      _activeTorrentId = null;
-    }
-
     final oldChewie = _chewieController;
     final oldVideo = _videoPlayerController;
     _chewieController = null;
@@ -1677,44 +1679,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _cleanPlayer();
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
 
-    // ── Suporte direto a Magnet Links com motor nativo ──
+    // ── Suporte direto a Magnet Links delegados ao App Externo ──
     if (url.toLowerCase().startsWith('magnet:')) {
       _playerInitializing = false;
-      setState(() { isPlaying = true; isServerLoading = true; _isBuffering = true; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A conectar ao Torrent (Buscando pares...)")));
-
-      try {
-        final engine = LibtorrentFlutter.instance;
-        final int torrentId = engine.addMagnet(url);
-        _activeTorrentId = torrentId;
-        
-        _torrentSub?.cancel();
-        _torrentSub = engine.torrentUpdates.listen((torrents) {
-          if (!mounted) return;
-          
-          final t = torrents[torrentId];
-          if (t != null && t.hasMetadata) {
-            _torrentSub?.cancel();
-            try {
-              // O startStream auto-seleciona e isola apenas o vídeo do torrent
-              final stream = engine.startStream(torrentId);
-              _iniciarExoPlayer(stream.url, tituloEpisodio, embedUrl: embedUrl);
-            } catch (e) {
-              _tentarProximoServidor();
-            }
-          }
-        }, onError: (e) {
-          _tentarProximoServidor();
-        });
-      } catch (e) {
-        _tentarProximoServidor();
-      }
+      setState(() { isPlaying = false; isServerLoading = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Link Magnet detectado. Abrindo externamente...")));
+      try { await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); } catch(_) {}
       return;
     }
 
     final posParaSeek = savedPositionSeconds;
-
     final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
+
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
       _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
