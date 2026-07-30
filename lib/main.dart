@@ -559,6 +559,7 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
 
 // ==========================================
 // ADICIONAR SERVIDOR (SISTEMA COMUNITÁRIO)
+// Usando apenas a tabela 'links_salvos' do Supabase
 // ==========================================
 class SearchMediaForServerScreen extends StatefulWidget { const SearchMediaForServerScreen({super.key}); @override State<SearchMediaForServerScreen> createState() => _SearchMediaForServerScreenState(); }
 class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen> {
@@ -607,7 +608,7 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
                         if (slugType == 'filmes') {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerFormScreen(item: item, type: 'filmes')));
                         } else {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => SelectSeasonEpisodeScreen(item: item)));
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => SelectSeasonEpisodeScreen(item: item, type: slugType)));
                         }
                       },
                       child: Column(
@@ -628,12 +629,12 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
   }
 }
 
-class SelectSeasonEpisodeScreen extends StatefulWidget { final Map item; const SelectSeasonEpisodeScreen({super.key, required this.item}); @override State<SelectSeasonEpisodeScreen> createState() => _SelectSeasonEpisodeScreenState(); }
+class SelectSeasonEpisodeScreen extends StatefulWidget { final Map item; final String type; const SelectSeasonEpisodeScreen({super.key, required this.item, required this.type}); @override State<SelectSeasonEpisodeScreen> createState() => _SelectSeasonEpisodeScreenState(); }
 class _SelectSeasonEpisodeScreenState extends State<SelectSeasonEpisodeScreen> {
   List temporadas = []; List episodios = []; String? tempSelecionada; bool loading = true;
   @override void initState() { super.initState(); _fetchSeasons(); }
   void _fetchSeasons() async {
-    final data = await CoreMediaVault.getDetails(widget.item['id'].toString(), 'series');
+    final data = await CoreMediaVault.getDetails(widget.item['id'].toString(), widget.type);
     if (mounted) {
       if (data['seasons'] != null && data['seasons'].isNotEmpty) {
         setState(() { temporadas = data['seasons']; tempSelecionada = temporadas[0]['id'].toString(); });
@@ -680,7 +681,7 @@ class _SelectSeasonEpisodeScreenState extends State<SelectSeasonEpisodeScreen> {
                           leading: CircleAvatar(backgroundColor: const Color(0xFFE50914), child: Text(ep['num'], style: const TextStyle(color: Colors.white, fontSize: 12))),
                           title: Text(ep['full_nome'], style: const TextStyle(color: Colors.white, fontSize: 14)),
                           trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerFormScreen(item: widget.item, type: 'series', season: numSeason, episode: ep['num']))),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerFormScreen(item: widget.item, type: widget.type, season: numSeason, episode: ep['num']))),
                         );
                       }
                     ),
@@ -708,18 +709,19 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
     setState(() => _saving = true);
     try {
       final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
-      await Supabase.instance.client.from('servidores_comunitarios').insert({
-        'media_id': tmdbId,
-        'tipo': widget.type,
-        'temporada': widget.season ?? '',
-        'episodio': widget.episode ?? '',
-        'nome': _nomeCtrl.text.trim(),
+      String prefix = widget.type != 'filmes' ? 'T${widget.season} E${widget.episode} - ' : '';
+      
+      // O ID do TMDB vai na coluna "comentario" para conseguirmos buscar depois!
+      await Supabase.instance.client.from('links_salvos').insert({
+        'nome': '$prefix${_nomeCtrl.text.trim()}',
         'url': _urlCtrl.text.trim(),
+        'comentario': tmdbId, 
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Servidor salvo com sucesso!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
         Navigator.pop(context);
-        if (widget.type == 'series') Navigator.pop(context);
+        if (widget.type != 'filmes') Navigator.pop(context);
         Navigator.pop(context);
       }
     } catch (e) {
@@ -730,7 +732,7 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
   }
 
   @override Widget build(BuildContext context) {
-    String subInfo = widget.type == 'series' ? "Temporada ${widget.season} - Ep ${widget.episode}" : "Filme";
+    String subInfo = widget.type != 'filmes' ? "Temporada ${widget.season} - Ep ${widget.episode}" : "Filme";
     return Scaffold(
       appBar: AppBar(title: const Text("Adicionar Link", style: TextStyle(color: Colors.white, fontSize: 16))),
       body: SingleChildScrollView(
@@ -1155,7 +1157,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
-  List<Map> _serversDisponiveis = [];
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1172,13 +1173,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
   bool   _extracandoHls     = false;
-  String _hlsUrlAtiva       = '';   // Link MP4 disponível após carregar o servidor
+  String _hlsUrlAtiva       = '';   
   
   // WebView Player: fallback
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
 
-  // Comentários
+  // Comentários da Tabela 'links_salvos'
   List<dynamic> _comentariosList = [];
   bool _carregandoComentarios = true;
   final TextEditingController _comentarioCtrl = TextEditingController();
@@ -1220,14 +1221,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
     hist.removeWhere((e) => json.decode(e)['id'] == widget.item['id']); hist.insert(0, json.encode(it)); await prefs.setStringList('history', hist);
   }
 
+  // ── COMUNIDADE: CARREGAR E ENVIAR COMENTÁRIOS USANDO 'links_salvos' ──
   Future<void> _carregarComentarios() async {
     setState(() => _carregandoComentarios = true);
     try {
-      final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      final tmdbId = (details?['tmdb_id'] ?? widget.item['tmdb_id'] ?? widget.item['id']).toString();
       final res = await Supabase.instance.client
-          .from('comentarios')
+          .from('links_salvos')
           .select()
-          .eq('media_id', tmdbId)
+          .eq('url', tmdbId) // Usamos 'url' para guardar o TMDB ID do comentário
+          .eq('nome', 'COMENTARIO')
           .order('created_at', ascending: false);
       if (mounted) setState(() { _comentariosList = res; _carregandoComentarios = false; });
     } catch (e) {
@@ -1238,10 +1241,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _enviarComentario() async {
     if (_comentarioCtrl.text.trim().isEmpty) return;
     try {
-      final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
-      await Supabase.instance.client.from('comentarios').insert({
-        'media_id': tmdbId,
-        'texto': _comentarioCtrl.text.trim(),
+      final tmdbId = (details?['tmdb_id'] ?? widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      await Supabase.instance.client.from('links_salvos').insert({
+        'nome': 'COMENTARIO',
+        'url': tmdbId, 
+        'comentario': _comentarioCtrl.text.trim(), // Salvando o texto digitado aqui
       });
       _comentarioCtrl.clear();
       FocusScope.of(context).unfocus();
@@ -1271,6 +1275,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       } else if (tipo == 'filmes' && savedPositionSeconds > 0) {
         _abrirServidores(id, details?['name'] ?? widget.item['titulo'], false);
       }
+      _carregarComentarios(); // Carrega com o ID exato após os detalhes
     }
   }
 
@@ -1286,7 +1291,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
       if (!_autoPlayDisparado && savedEpId != null) {
         _autoPlayDisparado = true;
-        // Determinar índice do episódio guardado
         final idx = episodios.indexWhere((e) => e['id'] == savedEpId);
         if (idx != -1) setState(() => _epAtivoIndex = idx);
         _abrirServidores(savedEpId!, savedEpNome ?? "Episódio", false);
@@ -1320,7 +1324,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
     if (savedEpId != null && savedEpId != idVideo) {
       savedPositionSeconds = 0;
-      // Reseta HLS ao mudar de episódio
       setState(() { _hlsUrlAtiva = ''; _servidoresNovos = []; _servidorAtivoIdx = -1; });
     }
 
@@ -1342,7 +1345,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    // ── Carrega lista de servidores da HunterApi e Comunidade ─────────────────────────
     await _cleanPlayer();
     setState(() {
       isPlaying = true; isServerLoading = true;
@@ -1370,25 +1372,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
       tmdbId: tmdbId, isFilme: isFilme, season: season, episode: episode,
     );
 
-    // Buscar Servidores Comunitários
+    // ── Buscar Servidores Comunitários da tabela 'links_salvos' ──
     List<Map<String, dynamic>> communityServers = [];
     try {
       final resComunidade = await Supabase.instance.client
-          .from('servidores_comunitarios')
+          .from('links_salvos')
           .select()
-          .eq('media_id', tmdbId)
-          .eq('tipo', isFilme ? 'filmes' : 'series');
+          .eq('comentario', tmdbId); 
       
       for (var row in resComunidade) {
-        if (!isFilme && (row['temporada'].toString() != season || row['episodio'].toString() != episode)) {
-          continue;
+        if (row['nome'] == 'COMENTARIO') continue; 
+        
+        String dbNome = row['nome'].toString();
+        
+        if (isFilme) {
+          if (!dbNome.startsWith('T') && !dbNome.contains(' - ')) {
+            communityServers.add({
+              'name': '[COMUNIDADE]',
+              'audio': dbNome,
+              'url': row['url'],
+              'id_banco': row['id'].toString(),
+            });
+          }
+        } else {
+          String prefix = 'T$season E$episode - ';
+          if (dbNome.startsWith(prefix)) {
+            communityServers.add({
+              'name': '[COMUNIDADE]',
+              'audio': dbNome.replaceAll(prefix, ''),
+              'url': row['url'],
+              'id_banco': row['id'].toString(),
+            });
+          }
         }
-        communityServers.add({
-          'name': '[COMUNIDADE]',
-          'audio': row['nome'],
-          'url': row['url'],
-          'id_banco': row['id'].toString(),
-        });
       }
     } catch (_) {}
 
@@ -1406,7 +1422,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     setState(() { _servidoresNovos = combinedServers; isServerLoading = false; });
 
-    final autoIdx = combinedServers.indexWhere((s) => s['audio'] == 'Dublado');
+    final autoIdx = combinedServers.indexWhere((s) => s['audio'].toString().toLowerCase().contains('dublado'));
     _selecionarServidor(combinedServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
   }
 
@@ -1419,7 +1435,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _iniciarExoPlayer(servidor['url']!, epAtivoNome ?? '');
   }
 
-  // Detecta URLs pré-assinadas AWS/Wasabi/GCS onde só o header "host" é assinado.
   static bool _isSignedCdnUrl(String url) {
     final q = url.toLowerCase();
     return q.contains('x-amz-signature') ||
@@ -1855,7 +1870,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _mostrarDialogoEdicao(Map<String, dynamic> s) {
+  void _mostrarDialogoEdicao(Map<String, dynamic> s, String tipo) {
     final _editNomeCtrl = TextEditingController(text: s['audio']);
     final _editUrlCtrl = TextEditingController(text: s['url']);
     bool _atualizando = false;
@@ -1893,10 +1908,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         if (_editNomeCtrl.text.isEmpty || _editUrlCtrl.text.isEmpty) return;
                         setDialogState(() => _atualizando = true);
                         try {
-                          await Supabase.instance.client.from('servidores_comunitarios').update({
-                            'nome': _editNomeCtrl.text.trim(),
+                          String curSeason = '';
+                          String curEpisode = '';
+                          if (tipo != 'filmes') {
+                             final tempNum = temporadas.cast<Map?>().firstWhere((t) => t!['id'].toString() == tempSelecionada, orElse: () => null)?['number'];
+                             curSeason = (tempNum ?? '1').toString();
+                             if (_epAtivoIndex >= 0 && _epAtivoIndex < episodios.length) {
+                               curEpisode = episodios[_epAtivoIndex]['num'] ?? '1';
+                             }
+                          }
+                          String prefix = tipo != 'filmes' ? 'T$curSeason E$curEpisode - ' : '';
+
+                          await Supabase.instance.client.from('links_salvos').update({
+                            'nome': prefix + _editNomeCtrl.text.trim(),
                             'url': _editUrlCtrl.text.trim(),
                           }).eq('id', int.parse(s['id_banco']));
+
                           if (mounted) {
                             Navigator.pop(ctx);
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Atualizado com sucesso!"), backgroundColor: Colors.green));
@@ -1949,7 +1976,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 onTap: () => _selecionarServidor(s, i, tipo),
                 onLongPress: () {
                   if (isComunidade && s.containsKey('id_banco')) {
-                    _mostrarDialogoEdicao(s);
+                    _mostrarDialogoEdicao(s, tipo);
                   }
                 },
                 child: AnimatedContainer(
@@ -2072,7 +2099,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
-                                child: Text(com['texto'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                                child: Text(com['comentario'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
                               ),
                             )
                           ],
@@ -2455,7 +2482,7 @@ class _BannerAdWidget extends StatefulWidget {
 class _BannerAdWidgetState extends State<_BannerAdWidget> {
   late final WebViewController _ctrl;
   bool _loaded = false;
-  double _height = 400; // Começa maior para dar espaço de carregamento fluído
+  double _height = 400; 
 
   static const String _bannerHtml = '''
 <!DOCTYPE html>
