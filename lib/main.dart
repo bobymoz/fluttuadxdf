@@ -185,7 +185,7 @@ class CoreMediaVault {
 // ══════════════════════════════════════════════════════════════════════════
 class HunterApi {
   static const Map<String, String> _spoof = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Referer":    "https://redeflixapi.store/",
     "Origin":     "https://redeflixapi.store",
   };
@@ -617,14 +617,13 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
             builder: (c, snapshot) {
               if (!snapshot.hasData) return _buildGridSkeleton();
               
-              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez usando chave tripla
+              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez usando chave ultra-rígida
               final uniqueItems = [];
               final seenKeys = <String>{};
               for (var item in snapshot.data!) {
-                final id = (item['id'] ?? '').toString();
                 final title = (item['name'] ?? item['titulo'] ?? '').toString().trim().toLowerCase();
                 final type = (item['type']?['slug'] ?? item['tipo'] ?? '').toString().trim().toLowerCase();
-                final key = '$id-$title-$type'; // Chave tripla ultra rígida
+                final key = '$title-$type'; 
                 if (!seenKeys.contains(key)) {
                   seenKeys.add(key);
                   uniqueItems.add(item);
@@ -1155,10 +1154,9 @@ class SearchResults extends StatelessWidget {
         final uniqueItems = [];
         final seenKeys = <String>{};
         for (var item in snapshot.data!) {
-          final id = (item['id'] ?? '').toString();
           final title = (item['name'] ?? item['titulo'] ?? '').toString().trim().toLowerCase();
           final type = (item['type']?['slug'] ?? item['tipo'] ?? '').toString().trim().toLowerCase();
-          final key = '$id-$title-$type'; // Chave tripla ultra rígida
+          final key = '$title-$type'; // Chave tripla ultra rígida
           if (!seenKeys.contains(key)) {
             seenKeys.add(key);
             uniqueItems.add(item);
@@ -1220,7 +1218,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
-  List<Map> _serversDisponiveis = []; // Variável adicionada de volta para corrigir o erro de compilação
+  List<Map> _serversDisponiveis = []; 
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1706,10 +1704,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    // Identifica se a URL atual já é reconhecida claramente como arquivo nativo do Android
-    bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u') || url.toLowerCase().contains('.mp4?') || url.toLowerCase().contains('.m3u8?');
-    
-    // Se a URL é claramente uma página web de embed ou não é arquivo limpo suportado -> Fallback primário pro WebView
+    // Suporte a embeds web gerais da comunidade
+    bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u');
     if (!isKnownVideoExtension && !_isSignedCdnUrl(url) && !pathLower.endsWith('.txt') && !pathLower.endsWith('.json') && url.startsWith('http') && !url.contains('127.0.0.1')) {
        _playerInitializing = false;
        _iniciarWebViewPlayer(url, tituloEpisodio, forceWebMode: false);
@@ -1760,8 +1756,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: Colors.white24,
         ),
         errorBuilder: (context, errorMessage) {
-          // O Android rejeita essa URL por não ser MP4/MKV. Deixa ir para o catch block acionar o WebView Fallback.
-          throw Exception("Codec/Format Error");
+          // O Android rejeita essa URL por não ser MP4/MKV puro.
+          // Dispara exceção para forçar o código ir pro Catch e acionar o WebPlayer
+          throw Exception("Codec/Format Error ou HLS Não Suportado");
         },
       );
 
@@ -1769,9 +1766,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
 
-        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar fisicamente
-        if (_playerResuming && _videoPlayerController!.value.isPlaying) {
-          setState(() => _playerResuming = false);
+        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar fisicamente sem buffer
+        if (_playerResuming && _videoPlayerController!.value.isPlaying && !_videoPlayerController!.value.isBuffering) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted && _playerResuming) setState(() => _playerResuming = false);
+          });
         }
 
         final buf = _videoPlayerController!.value.isBuffering;
@@ -1807,17 +1806,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       });
 
     } catch (e) {
-      debugPrint('[CDCINE PLAYER ERROR] Fallback forçado: $e');
+      debugPrint('[CDCINE PLAYER ERROR] Codec Error. Acionando Fallback: $e');
       if (mounted) {
-        // Fallback Secundário: Ocorreu erro de MediaCodec ou HTTP proibido, tenta forçar no WebView Video.js Mode.
         _playerInitializing = false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Otimizando formato do player...'),
+            content: Text('Ajustando formato de reprodução...'),
             backgroundColor: Color(0xFF01875F),
             duration: Duration(seconds: 2),
           ),
         );
+        // Oculta loading para dar lugar ao WebPlayer
+        setState(() { isServerLoading = false; _playerResuming = false; });
         _iniciarWebViewPlayer(url, tituloEpisodio, forceWebMode: true);
       }
     } finally {
@@ -1897,7 +1897,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           final uri = Uri.parse(embedUrl);
           final embedHost = uri.host;
           
-          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost) && !u.contains('vjs.zencdn')) {
+          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost) && !u.contains('plyr.io')) {
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
@@ -1907,35 +1907,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final p = (){try{return Uri.parse(embedUrl).path.toLowerCase();}catch(_){return embedUrl.toLowerCase();}}();
     bool isDirectVideo = p.endsWith('.mp4') || p.endsWith('.mkv') || p.endsWith('.avi') || p.endsWith('.webm') || p.endsWith('.m3u8') || p.endsWith('.ts') || embedUrl.contains('.mp4?') || embedUrl.contains('.m3u8?');
 
-    // Se é link de vídeo bruto que falhou no nativo (ou forceWebMode), nós injetamos 
-    // um Player Video.JS HTML5 idêntico ao ExoPlayer para rodar direto sem loop
+    // Se é link de vídeo que falhou no nativo (ou forceWebMode ativado), nós injetamos 
+    // o Plyr HTML5 idêntico ao ExoPlayer para rodar direto sem loop ou erro de "Aborted"
     if (isDirectVideo || forceWebMode) {
-      String videoJsHtml = '''
+      String plyrHtml = '''
       <!DOCTYPE html>
-      <html>
+      <html lang="pt-BR">
       <head>
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+        <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
         <style>
-          body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
-          .video-js { width: 100vw; height: 100vh; }
-          .video-js .vjs-control-bar { background-color: rgba(0,0,0,0.8); }
-          .video-js .vjs-play-progress, .video-js .vjs-volume-level { background-color: #E50914; }
-          .video-js .vjs-slider-bar { background-color: rgba(255,255,255,0.3); }
-          .video-js .vjs-big-play-button { background-color: rgba(229, 9, 20, 0.8); border: none; border-radius: 50%; width: 2.5em; height: 2.5em; line-height: 2.5em; margin-top: -1.25em; margin-left: -1.25em; }
+          body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100vh; display: flex; align-items: center; justify-content: center; }
+          video { width: 100%; height: 100%; object-fit: contain; }
+          :root { --plyr-color-main: #E50914; }
+          .plyr { width: 100%; height: 100%; }
         </style>
       </head>
       <body>
-        <video id="cdc-video" class="video-js vjs-default-skin vjs-big-play-centered" controls autoplay preload="auto" width="100%" height="100%" data-setup='{"fluid": true}'>
-          <source src="${embedUrl}" type="${(embedUrl.contains('.m3u8') || embedUrl.contains('.m3u')) ? 'application/x-mpegURL' : 'video/mp4'}" />
+        <video id="player" playsinline controls autoplay preload="auto">
+          <source src="${embedUrl}" />
         </video>
-        <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+        <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+        <script>
+          const source = "${embedUrl}";
+          const video = document.getElementById('player');
+          
+          if (source.includes('.m3u8') || source.includes('.m3u')) {
+            if (Hls.isSupported()) {
+              const hls = new Hls({ maxMaxBufferLength: 30 });
+              hls.loadSource(source);
+              hls.attachMedia(video);
+              window.player = new Plyr(video, { autoplay: true });
+              hls.on(Hls.Events.MANIFEST_PARSED, function() { video.play().catch(()=>{}); });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+              window.player = new Plyr(video, { autoplay: true });
+              video.play().catch(()=>{});
+            }
+          } else {
+            window.player = new Plyr(video, { autoplay: true });
+            video.play().catch(()=>{});
+          }
+        </script>
       </body>
       </html>
       ''';
-      ctrl.loadHtmlString(videoJsHtml);
+      // Base URL essencial para dar bypass em proteções CORS e Referer do Treemio e afins!
+      ctrl.loadHtmlString(plyrHtml, baseUrl: 'https://redeflixapi.store/');
     } else {
-      // Carrega a página Web normalmente se for Embed
+      // Carrega a página Web de Embed normalmente
       ctrl.loadRequest(Uri.parse(embedUrl), headers: {
         "Referer":    "https://redeflixapi.store/",
         "Origin":     "https://redeflixapi.store",
@@ -2115,7 +2136,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'],
+                        s['audio'], // Emojis Removidos
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
@@ -2158,6 +2179,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
         if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
         
+        // Tela preta "A retomar" ajustada para remover gaps visuais
         if (isPlaying && !isServerLoading && _playerResuming)
           Container(
             color: Colors.black,
