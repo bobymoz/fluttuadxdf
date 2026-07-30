@@ -28,6 +28,7 @@ dependencies:
   unity_ads_plugin: 0.3.29
   open_filex: ^4.5.2
   supabase_flutter: ^2.5.4
+  flutter_torrent_streamer: ^1.0.3
 
  # ==========================================
 # CORREÇÃO DO ERRO DE BUILD NO CODEMAGIC
