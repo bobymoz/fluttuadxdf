@@ -17,6 +17,7 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ==========================================
 // CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
@@ -65,6 +66,15 @@ void main() async {
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
   ]);
+
+  // Inicialização do Supabase fornecida
+  await Supabase.initialize(
+    url: 'https://llkmxsqxadkuxomvubyj.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxsa214c3F4YWRrdXhvbXZ1YnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0MTU3NDYsImV4cCI6MjEwMDk5MTc0Nn0.ceUMxNF0YhcoYinzK1zwlRd6eeQd0kciQWDoD8PXlKM',
+    headers: {
+      'x-app-token': 'chupa', 
+    },
+  );
 
   SecurityDecoyManager.initiateHoneypot();
 
@@ -374,7 +384,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-const String _appVersion = "2.2.1";
+const String _appVersion = "2.1.1";
 const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 class VersionGateScreen extends StatefulWidget { const VersionGateScreen({super.key}); @override State<VersionGateScreen> createState() => _VersionGateScreenState(); }
 class _VersionGateScreenState extends State<VersionGateScreen> {
@@ -390,7 +400,6 @@ class _VersionGateScreenState extends State<VersionGateScreen> {
           _latestVersion = (data['latest_version'] ?? _appVersion).toString().trim();
           _downloadUrl = data['download_url'] ?? ""; _changelog = data['changelog'] ?? "";
           
-          // Captura a mensagem universal na API (suportando a chave "mesage" ou "message")
           GlobalAppConfig.avisoGeral = (data['mesage'] ?? data['message'] ?? "").toString().trim();
 
           if (_latestVersion != _appVersion.trim() && mounted) setState(() => _needsUpdate = true);
@@ -549,6 +558,232 @@ class _DraggableDownloadOverlayState extends State<DraggableDownloadOverlay> {
 }
 
 // ==========================================
+// ADICIONAR SERVIDOR (SISTEMA COMUNITÁRIO)
+// ==========================================
+class SearchMediaForServerScreen extends StatefulWidget { const SearchMediaForServerScreen({super.key}); @override State<SearchMediaForServerScreen> createState() => _SearchMediaForServerScreenState(); }
+class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen> {
+  String searchQuery = "";
+  final TextEditingController _searchCtrl = TextEditingController();
+  
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Adicionar Servidor", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: SizedBox(
+              height: 42,
+              child: TextField(
+                controller: _searchCtrl, style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(hintText: "Pesquisar filme ou série...", hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: Colors.grey[900], prefixIcon: const Icon(Icons.search, color: Colors.grey, size: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none), contentPadding: EdgeInsets.zero),
+                onSubmitted: (val) => setState(() => searchQuery = val),
+              ),
+            ),
+          ),
+        ),
+      ),
+      body: searchQuery.isEmpty 
+        ? const Center(child: Text("Pesquise um título para adicionar um servidor.", style: TextStyle(color: Colors.white54)))
+        : FutureBuilder<List>(
+            future: CoreMediaVault.getPosts(query: searchQuery),
+            builder: (c, snapshot) {
+              if (!snapshot.hasData) return _buildGridSkeleton();
+              if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+              return GridView.builder(
+                padding: const EdgeInsets.all(10),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10),
+                itemCount: snapshot.data!.length,
+                itemBuilder: (c, i) {
+                  final item = snapshot.data![i];
+                  String slugType = item['type']?['slug'] ?? item['tipo'] ?? 'filmes';
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      focusColor: Colors.white24,
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () {
+                        if (slugType == 'filmes') {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerFormScreen(item: item, type: 'filmes')));
+                        } else {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => SelectSeasonEpisodeScreen(item: item)));
+                        }
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(6), child: CachedNetworkImage(imageUrl: item['poster'] ?? item['imagem'] ?? "", fit: BoxFit.cover, width: double.infinity, placeholder: (c, u) => Shimmer.fromColors(baseColor: Colors.grey[850]!, highlightColor: Colors.grey[800]!, child: Container(color: Colors.black)), errorWidget: (c, u, e) => Container(color: Colors.grey[900], child: const Icon(Icons.error))))),
+                          const SizedBox(height: 4), Text(item['name'] ?? item['titulo'] ?? "", maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 2), Text(slugType.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+    );
+  }
+}
+
+class SelectSeasonEpisodeScreen extends StatefulWidget { final Map item; const SelectSeasonEpisodeScreen({super.key, required this.item}); @override State<SelectSeasonEpisodeScreen> createState() => _SelectSeasonEpisodeScreenState(); }
+class _SelectSeasonEpisodeScreenState extends State<SelectSeasonEpisodeScreen> {
+  List temporadas = []; List episodios = []; String? tempSelecionada; bool loading = true;
+  @override void initState() { super.initState(); _fetchSeasons(); }
+  void _fetchSeasons() async {
+    final data = await CoreMediaVault.getDetails(widget.item['id'].toString(), 'series');
+    if (mounted) {
+      if (data['seasons'] != null && data['seasons'].isNotEmpty) {
+        setState(() { temporadas = data['seasons']; tempSelecionada = temporadas[0]['id'].toString(); });
+        _fetchEpisodes(tempSelecionada!);
+      } else { setState(() => loading = false); }
+    }
+  }
+  void _fetchEpisodes(String sId) async {
+    setState(() => loading = true);
+    final eps = await CoreMediaVault.getEpisodes(sId);
+    if (mounted) {
+      setState(() {
+        episodios = eps.asMap().entries.map((e) => {"id": e.value['id'].toString(), "full_nome": e.value['name'] ?? e.value['subtitle'] ?? "Episódio ${e.value['number'] ?? e.key + 1}", "num": (e.value['number'] ?? e.key + 1).toString()}).toList();
+        loading = false;
+      });
+    }
+  }
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Selecione o Episódio", style: TextStyle(color: Colors.white, fontSize: 16))),
+      body: temporadas.isEmpty && !loading 
+        ? const Center(child: Text("Nenhuma temporada encontrada.", style: TextStyle(color: Colors.white54)))
+        : Column(
+            children: [
+              if (temporadas.isNotEmpty) Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownButtonFormField<String>(
+                  decoration: InputDecoration(filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+                  dropdownColor: Colors.grey[900], value: tempSelecionada,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  items: temporadas.map((t) => DropdownMenuItem<String>(value: t['id'].toString(), child: Text(t['name'] ?? "Temporada ${t['number']}"))).toList(),
+                  onChanged: (val) { if (val != null) { setState(() { tempSelecionada = val; episodios.clear(); }); _fetchEpisodes(val); } },
+                ),
+              ),
+              Expanded(
+                child: loading 
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                  : ListView.builder(
+                      itemCount: episodios.length,
+                      itemBuilder: (c, i) {
+                        final ep = episodios[i];
+                        final numSeason = temporadas.firstWhere((t) => t['id'].toString() == tempSelecionada)['number'].toString();
+                        return ListTile(
+                          leading: CircleAvatar(backgroundColor: const Color(0xFFE50914), child: Text(ep['num'], style: const TextStyle(color: Colors.white, fontSize: 12))),
+                          title: Text(ep['full_nome'], style: const TextStyle(color: Colors.white, fontSize: 14)),
+                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 14),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddServerFormScreen(item: widget.item, type: 'series', season: numSeason, episode: ep['num']))),
+                        );
+                      }
+                    ),
+              )
+            ],
+          ),
+    );
+  }
+}
+
+class AddServerFormScreen extends StatefulWidget { 
+  final Map item; final String type; final String? season; final String? episode;
+  const AddServerFormScreen({super.key, required this.item, required this.type, this.season, this.episode});
+  @override State<AddServerFormScreen> createState() => _AddServerFormScreenState(); 
+}
+class _AddServerFormScreenState extends State<AddServerFormScreen> {
+  final _urlCtrl = TextEditingController();
+  final _nomeCtrl = TextEditingController();
+  bool _saving = false;
+
+  void _salvarServidor() async {
+    if (_urlCtrl.text.isEmpty || _nomeCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos."))); return;
+    }
+    setState(() => _saving = true);
+    try {
+      final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      await Supabase.instance.client.from('servidores_comunitarios').insert({
+        'media_id': tmdbId,
+        'tipo': widget.type,
+        'temporada': widget.season ?? '',
+        'episodio': widget.episode ?? '',
+        'nome': _nomeCtrl.text.trim(),
+        'url': _urlCtrl.text.trim(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Servidor salvo com sucesso!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+        Navigator.pop(context);
+        if (widget.type == 'series') Navigator.pop(context);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override Widget build(BuildContext context) {
+    String subInfo = widget.type == 'series' ? "Temporada ${widget.season} - Ep ${widget.episode}" : "Filme";
+    return Scaffold(
+      appBar: AppBar(title: const Text("Adicionar Link", style: TextStyle(color: Colors.white, fontSize: 16))),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: widget.item['poster'] ?? widget.item['imagem'] ?? '', width: 60, height: 90, fit: BoxFit.cover, errorWidget: (_,__,___)=>Container(width: 60, height: 90, color: Colors.grey[900]))),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.item['name'] ?? widget.item['titulo'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(subInfo, style: const TextStyle(color: Colors.greenAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                ])),
+              ],
+            ),
+            const SizedBox(height: 30),
+            const Text("Nome do Servidor (ex: Dublado, Legendado, Mega)", style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _nomeCtrl, style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(hintText: "Nome do botão", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+            ),
+            const SizedBox(height: 20),
+            const Text("URL do Vídeo (Link direto .mp4, .m3u8 ou iframe)", style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _urlCtrl, style: const TextStyle(color: Colors.white), maxLines: 2,
+              decoration: InputDecoration(hintText: "https://...", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                onPressed: _saving ? null : _salvarServidor,
+                icon: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
+                label: Text(_saving ? "Salvando..." : "Salvar Servidor", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text("Ao salvar, este link ficará disponível para todos os usuários do app. O link precisa ser válido.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// ==========================================
 // TELA PRINCIPAL E NAVEGAÇÃO
 // ==========================================
 class MainScreen extends StatefulWidget { const MainScreen({super.key}); @override State<MainScreen> createState() => _MainScreenState(); }
@@ -590,6 +825,7 @@ class _MainScreenState extends State<MainScreen> {
           leading: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())), IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen())))]),
           title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)), centerTitle: true,
           actions: [
+            IconButton(icon: const Icon(Icons.add_to_queue, color: Colors.greenAccent), tooltip: "Adicionar Servidor", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchMediaForServerScreen()))),
             ValueListenableBuilder<int>(
               valueListenable: DownloadManager.activeDownloadsCount,
               builder: (context, count, child) {
@@ -933,7 +1169,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
   
   // HunterApi — servidores e URL real 
-  List<Map<String, String>> _servidoresNovos = [];
+  List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
   bool   _extracandoHls     = false;
   String _hlsUrlAtiva       = '';   // Link MP4 disponível após carregar o servidor
@@ -942,14 +1178,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
 
+  // Comentários
+  List<dynamic> _comentariosList = [];
+  bool _carregandoComentarios = true;
+  final TextEditingController _comentarioCtrl = TextEditingController();
+
   @override void initState() { 
     super.initState(); 
     _salvarHistoricoGeral(); 
     _checkResumeData(); 
     _loadDetails(); 
+    _carregarComentarios();
   }
   
-  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _webViewPlayerCtrl = null; _exitFullscreen(); super.dispose(); }
+  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _webViewPlayerCtrl = null; _comentarioCtrl.dispose(); _exitFullscreen(); super.dispose(); }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -976,6 +1218,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final prefs = await SharedPreferences.getInstance(); List<String> hist = prefs.getStringList('history') ?? [];
     Map<String, dynamic> it = {'id': widget.item['id'], 'title': widget.item['name'] ?? widget.item['titulo'], 'type': widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes', 'poster_path': widget.item['poster'] ?? widget.item['imagem']};
     hist.removeWhere((e) => json.decode(e)['id'] == widget.item['id']); hist.insert(0, json.encode(it)); await prefs.setStringList('history', hist);
+  }
+
+  Future<void> _carregarComentarios() async {
+    setState(() => _carregandoComentarios = true);
+    try {
+      final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      final res = await Supabase.instance.client
+          .from('comentarios')
+          .select()
+          .eq('media_id', tmdbId)
+          .order('created_at', ascending: false);
+      if (mounted) setState(() { _comentariosList = res; _carregandoComentarios = false; });
+    } catch (e) {
+      if (mounted) setState(() => _carregandoComentarios = false);
+    }
+  }
+
+  Future<void> _enviarComentario() async {
+    if (_comentarioCtrl.text.trim().isEmpty) return;
+    try {
+      final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      await Supabase.instance.client.from('comentarios').insert({
+        'media_id': tmdbId,
+        'texto': _comentarioCtrl.text.trim(),
+      });
+      _comentarioCtrl.clear();
+      FocusScope.of(context).unfocus();
+      _carregarComentarios();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao enviar: $e"), backgroundColor: Colors.red));
+    }
   }
 
   void _loadDetails() async {
@@ -1052,7 +1325,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     if (isParaDownload) {
-      // Download: só funciona se já foi extraída uma URL HLS nesta sessão
       if (_hlsUrlAtiva.isEmpty) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1070,7 +1342,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    // ── Carrega lista de servidores da HunterApi ─────────────────────────
+    // ── Carrega lista de servidores da HunterApi e Comunidade ─────────────────────────
     await _cleanPlayer();
     setState(() {
       isPlaying = true; isServerLoading = true;
@@ -1083,15 +1355,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final isFilme = tipo == 'filmes';
     final tmdbId  = (details?['tmdb_id'] ?? widget.item['tmdb_id'] ?? widget.item['id']).toString();
 
-    // Determina temporada/episódio para séries
     String season  = '';
     String episode = '';
     if (!isFilme) {
-      // Tenta extrair número da temporada do item activo
       final tempNum = temporadas.cast<Map?>()
           .firstWhere((t) => t!['id'].toString() == tempSelecionada, orElse: () => null)?['number'];
       season  = (tempNum ?? '1').toString();
-      // Número do episódio activo
       if (_epAtivoIndex >= 0 && _epAtivoIndex < episodios.length) {
         episode = episodios[_epAtivoIndex]['num'] ?? '1';
       }
@@ -1101,8 +1370,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
       tmdbId: tmdbId, isFilme: isFilme, season: season, episode: episode,
     );
 
+    // Buscar Servidores Comunitários
+    List<Map<String, dynamic>> communityServers = [];
+    try {
+      final resComunidade = await Supabase.instance.client
+          .from('servidores_comunitarios')
+          .select()
+          .eq('media_id', tmdbId)
+          .eq('tipo', isFilme ? 'filmes' : 'series');
+      
+      for (var row in resComunidade) {
+        if (!isFilme && (row['temporada'].toString() != season || row['episodio'].toString() != episode)) {
+          continue;
+        }
+        communityServers.add({
+          'name': '[COMUNIDADE]',
+          'audio': row['nome'],
+          'url': row['url'],
+          'id_banco': row['id'].toString(),
+        });
+      }
+    } catch (_) {}
+
     if (!mounted) return;
-    if (novosServers.isEmpty) {
+
+    final combinedServers = [...novosServers, ...communityServers];
+
+    if (combinedServers.isEmpty) {
       setState(() { isServerLoading = false; isPlaying = false; });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Nenhum servidor disponível para este conteúdo.")),
@@ -1110,21 +1404,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
-    setState(() { _servidoresNovos = novosServers; isServerLoading = false; });
+    setState(() { _servidoresNovos = combinedServers; isServerLoading = false; });
 
-    // Auto-selecciona o primeiro servidor Dublado, ou o primeiro disponível
-    final autoIdx = novosServers.indexWhere((s) => s['audio'] == 'Dublado');
-    _selecionarServidor(novosServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
+    final autoIdx = combinedServers.indexWhere((s) => s['audio'] == 'Dublado');
+    _selecionarServidor(combinedServers[autoIdx != -1 ? autoIdx : 0], autoIdx != -1 ? autoIdx : 0, tipo);
   }
 
-  // ── Selecionar Servidor Nativo (RedeFlix entrega MP4 limpo) ─────────────────────────
-  void _selecionarServidor(Map<String, String> servidor, int idx, String tipo) {
+  void _selecionarServidor(Map<String, dynamic> servidor, int idx, String tipo) {
     setState(() { 
       _servidorAtivoIdx = idx; 
-      _hlsUrlAtiva = servidor['url']!; // URL direta para download imediato 
+      _hlsUrlAtiva = servidor['url']!; 
     });
     
-    // Inicia imediatamente a reprodução sem travar o vídeo
     _iniciarExoPlayer(servidor['url']!, epAtivoNome ?? '');
   }
 
@@ -1319,7 +1610,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final probe = await _probeUrl(url);
 
-      // SPOOFING: A requisição fingirá estar vindo de redeflixapi.store
       final hdrs = (probe.isLocalFile || _isSignedCdnUrl(url))
           ? <String, String>{}
           : {
@@ -1410,7 +1700,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() { isServerLoading = false; });
       _iniciarSalvamentoContinuo();
 
-      // Dispara o anúncio após 30 SEGUNDOS em vez de imediatamente
       _adTimer?.cancel();
       _adTimer = Timer(const Duration(seconds: 30), () {
         if (mounted && isPlaying) {
@@ -1468,30 +1757,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!mounted) return;
     const String adBlockJs = '''
 (function() {
-  var orig = window.open;
-  window.open = function(u,t,f) {
-    if(u&&(u.indexOf('embed')!==-1||u.indexOf('player')!==-1||u.indexOf('watch')!==-1))
-      return orig.call(window,u,t,f);
-    return null;
-  };
-  window.alert=function(){};
-  window.confirm=function(){return false;};
-  window.prompt=function(){return null;};
+  window.open = function() { return null; };
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (a && a.target === '_blank') { a.removeAttribute('target'); }
+  }, true);
   var s=document.createElement('style');
   s.textContent='[id*=ad],[class*=ads-],[class*=-ads],[class*=advert],[class*=popup],'
     +'[id*=popup],[class*=overlay-ad],[class*=vast-],[id*=vast],'
     +'iframe[src*=doubleclick],iframe[src*=googlesyndication],iframe[src*=adnxs]'
     +'{display:none!important;visibility:hidden!important;pointer-events:none!important}';
   (document.head||document.documentElement).appendChild(s);
-  new MutationObserver(function(ms){
-    ms.forEach(function(m){
-      m.addedNodes.forEach(function(n){
-        if(n.nodeType!==1)return;
-        var id=(n.id||'').toLowerCase(),cl=(n.className||'').toLowerCase();
-        if(id.indexOf('ad')!==-1||cl.indexOf('popup')!==-1||cl.indexOf('overlay')!==-1)n.remove();
-      });
-    });
-  }).observe(document.documentElement,{childList:true,subtree:true});
 })();
 ''';
     const List<String> adDomains = [
@@ -1524,6 +1800,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
             _playerInitializing = false;
             _iniciarExoPlayer(req.url, titulo);
+            return NavigationDecision.prevent;
+          }
+          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer')) {
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
@@ -1559,8 +1838,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           tituloAdicional: mensagemDownload,
           onSuccess: () { 
             Navigator.of(ctxPopup, rootNavigator: true).pop();
-            // Atraso de 300ms para evitar travamento da tela/Surface do vídeo 
-            // no retorno do Webview.
             Future.delayed(const Duration(milliseconds: 300), () {
               onSuccess();
             }); 
@@ -1576,6 +1853,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("O modo Janela Flutuante (PiP) não é suportado pelo teu telemóvel ou falta código nativo.", style: TextStyle(fontSize: 12))));
     }
+  }
+
+  void _mostrarDialogoEdicao(Map<String, dynamic> s) {
+    final _editNomeCtrl = TextEditingController(text: s['audio']);
+    final _editUrlCtrl = TextEditingController(text: s['url']);
+    bool _atualizando = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Editar Servidor Comunitário", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _editNomeCtrl, style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(hintText: "Nome", filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _editUrlCtrl, style: const TextStyle(color: Colors.white), maxLines: 2,
+                  decoration: InputDecoration(hintText: "URL do Vídeo", filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar", style: TextStyle(color: Colors.white54))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
+                      onPressed: _atualizando ? null : () async {
+                        if (_editNomeCtrl.text.isEmpty || _editUrlCtrl.text.isEmpty) return;
+                        setDialogState(() => _atualizando = true);
+                        try {
+                          await Supabase.instance.client.from('servidores_comunitarios').update({
+                            'nome': _editNomeCtrl.text.trim(),
+                            'url': _editUrlCtrl.text.trim(),
+                          }).eq('id', int.parse(s['id_banco']));
+                          if (mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Atualizado com sucesso!"), backgroundColor: Colors.green));
+                            _abrirServidores(savedEpId ?? widget.item['id'].toString(), epAtivoNome, false);
+                          }
+                        } catch (e) {
+                          setDialogState(() => _atualizando = false);
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
+                        }
+                      },
+                      child: _atualizando ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text("Salvar", style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildServerSelector(String tipo) {
@@ -1601,9 +1942,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
             children: List.generate(_servidoresNovos.length, (i) {
               final s       = _servidoresNovos[i];
               final isAtivo = i == _servidorAtivoIdx;
-              final isDub   = s['audio'] == 'Dublado';
+              final isDub   = s['audio'].toString().toLowerCase().contains('dublado');
+              final isComunidade = s['name'] == '[COMUNIDADE]';
+
               return GestureDetector(
                 onTap: () => _selecionarServidor(s, i, tipo),
+                onLongPress: () {
+                  if (isComunidade && s.containsKey('id_banco')) {
+                    _mostrarDialogoEdicao(s);
+                  }
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1620,13 +1968,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'] ?? 'Servidor', // Ocultado o texto RedeFlix
+                        isComunidade ? "${s['audio']} 👥" : s['audio'],
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
                           fontSize: 14,
                         ),
                       ),
+                      if (isComunidade && isAtivo) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.edit, color: Colors.white54, size: 12),
+                      ]
                     ],
                   ),
                 ),
@@ -1637,7 +1989,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 8),
           const Text(
-            "Se tiver problemas de reproducao, por favor troque de servidor.",
+            "Se tiver problemas de reproducao, por favor troque de servidor. Pressione e segure servidores com o ícone 👥 para editar.",
             style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
           ),
         ],
@@ -1664,6 +2016,70 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (_webViewPlayerShowing && _webViewPlayerCtrl != null)
           WebViewWidget(controller: _webViewPlayerCtrl!),
         Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () { setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; }); Navigator.pop(context); }))),
+      ],
+    );
+  }
+
+  Widget _buildCommentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Comentários", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _comentarioCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: "Adicionar comentário público...",
+                  hintStyle: const TextStyle(color: Colors.white24),
+                  filled: true,
+                  fillColor: const Color(0xFF1C1C1C),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                ),
+                onSubmitted: (_) => _enviarComentario(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle),
+              child: IconButton(icon: const Icon(Icons.send, color: Colors.white, size: 18), onPressed: _enviarComentario),
+            )
+          ],
+        ),
+        const SizedBox(height: 16),
+        _carregandoComentarios
+            ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2)))
+            : _comentariosList.isEmpty
+                ? const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: Text("Nenhum comentário ainda. Seja o primeiro!", style: TextStyle(color: Colors.white38, fontSize: 12))))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _comentariosList.length,
+                    itemBuilder: (c, i) {
+                      final com = _comentariosList[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(radius: 16, backgroundColor: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white54, size: 18)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(12)),
+                                child: Text(com['texto'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                              ),
+                            )
+                          ],
+                        ),
+                      );
+                    },
+                  ),
       ],
     );
   }
@@ -1720,39 +2136,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
               children: [
                 Expanded(
                   flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))),
-                          InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12))]))),
-                          const SizedBox(width: 8),
-                          InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12))]))),
-                        ]),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                        child: Row(children: [
-                          Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
-                          if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
-                        ]),
-                      ),
-                      if (isDataLoaded) Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                        child: GestureDetector(
-                          onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
-                            if (sinopse.length > 100) Padding(padding: const EdgeInsets.only(top: 4), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12))),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white))),
+                            InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12))]))),
+                            const SizedBox(width: 8),
+                            InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12))]))),
                           ]),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      const _BannerAdWidget(),
-                    ],
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          child: Row(children: [
+                            Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                            if (details?['year'] != null) ...[const SizedBox(width: 10), Text("•  ${details!['year']}", style: const TextStyle(color: Colors.white54, fontSize: 11))],
+                          ]),
+                        ),
+                        if (isDataLoaded) Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                          child: GestureDetector(
+                            onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+                              if (sinopse.length > 100) Padding(padding: const EdgeInsets.only(top: 4), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12))),
+                            ]),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _buildCommentsSection()),
+                        const SizedBox(height: 20),
+                        const _BannerAdWidget(),
+                      ],
+                    ),
                   ),
                 ),
                 Container(
@@ -2007,6 +2427,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             const SizedBox(height: 12),
                           ],
 
+                          // ── Sessão de Comentários Comunitários ──
+                          const SizedBox(height: 20),
+                          _buildCommentsSection(),
+                          const SizedBox(height: 20),
+
                           // ── Banners Adsterra (Native + Display) em Combo ──
                           const _BannerAdWidget(),
                           const SizedBox(height: 16),
@@ -2070,6 +2495,13 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   <script type="text/javascript" src="//www.highperformanceformat.com/3a941b7c5cd244f3fe9ffadda07677fd/invoke.js"></script>
 
   <script>
+    // BLOQUEIO REFORÇADO DE POP-UPS
+    window.open = function() { return null; };
+    document.addEventListener('click', function(e) {
+      var a = e.target.closest('a');
+      if (a && a.target === '_blank') { a.removeAttribute('target'); }
+    }, true);
+    
     function reportHeight() {
       var h = document.body.scrollHeight;
       if (h > 50) { try { BannerHeight.postMessage(h.toString()); } catch(e){} }
@@ -2088,15 +2520,14 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
       ..addJavaScriptChannel('BannerHeight', onMessageReceived: (msg) {
         final h = double.tryParse(msg.message);
         if (h != null && h > 50 && mounted) {
-          setState(() => _height = h + 20); // Ajusta o layout do Flutter ao tamanho real dos anúncios
+          setState(() => _height = h + 20);
         }
       })
       ..setNavigationDelegate(NavigationDelegate(
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           final u = req.url;
-          // Deixa as iframes do Adsterra funcionarem internamente. 
-          // Bloqueia e envia pro navegador apenas os cliques reais de saída!
+          // Impede explicitamente navegações de popups não relacionados ao adsterra
           if (u.startsWith('http') && !u.contains('effectivecpmnetwork.com') && !u.contains('highperformanceformat.com') && !u.contains('about:blank')) {
             launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
