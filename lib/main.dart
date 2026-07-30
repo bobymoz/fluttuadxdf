@@ -1207,7 +1207,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
   
   // Controle de Torrent Nativo
-  String? _activeTorrentId;
+  int? _activeTorrentId;
   StreamSubscription? _torrentSub;
 
   // HunterApi — servidores e URL real 
@@ -1685,7 +1685,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
       try {
         final engine = LibtorrentFlutter.instance;
-        final String torrentId = engine.addMagnet(url);
+        final int torrentId = engine.addMagnet(url);
         _activeTorrentId = torrentId;
         
         _torrentSub?.cancel();
@@ -2106,7 +2106,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'], // Emojis Removidos
+                        s['audio'],
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
