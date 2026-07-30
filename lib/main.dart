@@ -61,11 +61,12 @@ class _AntiDecompileBomb {
   }
 }
 
-
+// ==========================================
+// DADOS OFUSCADOS (ANTI-MT MANAGER E SNIFFERS)
+// ==========================================
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
 String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 99, 115, 99, 100, 110, 46, 99, 111, 109, 47, 115, 99, 114, 105, 112, 116, 47, 97, 99, 108, 105, 98, 46, 106, 115]);
-
 
 String get _supaUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 108, 108, 107, 109, 120, 115, 113, 120, 97, 100, 107, 117, 120, 111, 109, 118, 117, 98, 121, 106, 46, 115, 117, 112, 97, 98, 97, 115, 101, 46, 99, 111]);
 String get _supaToken => String.fromCharCodes([99, 104, 117, 112, 97]); 
@@ -1213,7 +1214,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
-  List<Map> _serversDisponiveis = []; // Variável recolocada para evitar erro de build
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1225,7 +1225,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
-
+  
   // HunterApi — servidores e URL real 
   List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
@@ -1681,7 +1681,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _cleanPlayer();
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; _playerResuming = false; });
 
-    // ── Suporte direto a Magnet Links delegados ao App Externo ──
+    // ── Suporte a Magnet Links delegados ao App Externo ──
     if (url.toLowerCase().startsWith('magnet:')) {
       _playerInitializing = false;
       setState(() { isPlaying = false; isServerLoading = false; });
@@ -1715,7 +1715,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           : {
               "Origin": "https://redeflixapi.store",
               "Referer": "https://redeflixapi.store/",
-              "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
               "Accept": "*/*",
             };
 
@@ -1781,6 +1781,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
 
+        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar de fato
+        if (_playerResuming && _videoPlayerController!.value.isPlaying) {
+          setState(() => _playerResuming = false);
+        }
+
         final buf = _videoPlayerController!.value.isBuffering;
         if (buf != _isBuffering) {
           if (buf) {
@@ -1815,26 +1820,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     } catch (e) {
       debugPrint('[CDCINE PLAYER ERROR] $e');
-      final errStr = e.toString().toLowerCase();
-
-      // Codec/format error → fallback automático para WebView
-      // (suporta MKV, H.265 e outros formatos que o ExoPlayer não consegue decodificar)
-      final isCodecError = errStr.contains('mediacodec') ||
-          errStr.contains('format(') ||
-          errStr.contains('decoder') ||
-          errStr.contains('videoerror') ||
-          errStr.contains('renderer error') ||
-          (errStr.contains('platformexception') && errStr.contains('video'));
-
-      if (isCodecError && mounted) {
-        debugPrint('[CDCINE] Codec error → WebView fallback');
-        _playerInitializing = false;
-        setState(() { isServerLoading = false; _playerResuming = false; });
-        // Tenta reproduzir no WebView que usa decoder do browser (suporta mais formatos)
-        _iniciarWebViewPlayer(url, tituloEpisodio);
-        return;
-      }
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1931,12 +1916,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
           }
           return NavigationDecision.navigate;
         },
-      ))
-      ..loadRequest(Uri.parse(embedUrl), headers: {
+      ));
+
+    // Determina se o link é um arquivo cru de mídia
+    final p = (){try{return Uri.parse(embedUrl).path.toLowerCase();}catch(_){return embedUrl.toLowerCase();}}();
+    bool isDirectVideo = p.endsWith('.mp4') || p.endsWith('.mkv') || p.endsWith('.avi') || p.endsWith('.webm') || p.endsWith('.m3u8') || p.endsWith('.ts');
+
+    if (isDirectVideo) {
+      // Injeta o Player HTML5 (Video.js) idêntico ao ExoPlayer para arquivos brutos
+      String videoJsHtml = '''
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+        <style>
+          body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
+          .video-js { width: 100vw; height: 100vh; }
+          .video-js .vjs-control-bar { background-color: rgba(0,0,0,0.8); }
+          .video-js .vjs-play-progress, .video-js .vjs-volume-level { background-color: #E50914; }
+          .video-js .vjs-slider-bar { background-color: rgba(255,255,255,0.3); }
+          .video-js .vjs-big-play-button { background-color: rgba(229, 9, 20, 0.8); border: none; border-radius: 50%; width: 2.5em; height: 2.5em; line-height: 2.5em; margin-top: -1.25em; margin-left: -1.25em; }
+        </style>
+      </head>
+      <body>
+        <video id="cdc-video" class="video-js vjs-default-skin vjs-big-play-centered" controls autoplay preload="auto" width="100%" height="100%" data-setup="{}">
+          <source src="${embedUrl}" type="${p.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'}" />
+        </video>
+        <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+      </body>
+      </html>
+      ''';
+      ctrl.loadHtmlString(videoJsHtml);
+    } else {
+      // Carrega a página Web normalmente
+      ctrl.loadRequest(Uri.parse(embedUrl), headers: {
         "Referer":    "https://redeflixapi.store/",
         "Origin":     "https://redeflixapi.store",
         "User-Agent": "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Chrome/112.0 Mobile Safari/537.36",
       });
+    }
 
     setState(() {
       _webViewPlayerShowing = true;
@@ -1950,9 +1969,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final adFree = await AdRemovalManager.instance.isAdFree();
     if (adFree) { onSuccess(); return; }
 
-    if (_isFullscreen) _exitFullscreen();
+    if (_isFullscreen) _exitFullscreen(); 
     _videoPlayerController?.pause();
-    // Sinaliza que o player está suspenso para anúncio (evita tela preta ao retomar)
+    
     if (mounted) setState(() => _playerResuming = true);
 
     if (!mounted) return;
@@ -1966,10 +1985,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Navigator.of(ctxPopup, rootNavigator: true).pop();
             Future.delayed(const Duration(milliseconds: 300), () {
               onSuccess();
-              // Remove overlay de loading 600 ms após retomar
-              // (tempo suficiente para o Surface do ExoPlayer acordar)
-              Future.delayed(const Duration(milliseconds: 600), () {
-                if (mounted) setState(() => _playerResuming = false);
+              // Fallback caso a internet esteja ruim e o vídeo não volte a tocar
+              Future.delayed(const Duration(seconds: 5), () {
+                if (mounted && _playerResuming) setState(() => _playerResuming = false);
               });
             }); 
           }
@@ -2111,7 +2129,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'],
+                        s['audio'], // Emojis Removidos
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
@@ -2153,10 +2171,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
         if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
-        // Overlay de loading ao retomar após anúncio — evita tela preta
+        
+        // Tela preta "A retomar" ajustada para remover gaps visuais
         if (isPlaying && !isServerLoading && _playerResuming)
           Container(
-            color: Colors.black87,
+            color: Colors.black,
             child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               const SizedBox(width: 36, height: 36,
                 child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)),
@@ -2164,6 +2183,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               const Text('A retomar...', style: TextStyle(color: Colors.white54, fontSize: 12)),
             ])),
           ),
+
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
