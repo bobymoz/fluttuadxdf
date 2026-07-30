@@ -1157,6 +1157,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
+  List<Map> _serversDisponiveis = []; 
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
