@@ -61,12 +61,11 @@ class _AntiDecompileBomb {
   }
 }
 
-// ==========================================
-// DADOS OFUSCADOS (ANTI-MT MANAGER E SNIFFERS)
-// ==========================================
+
 String get _apiBaseUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 112, 105, 46, 115, 109, 97, 114, 116, 112, 108, 97, 121, 111, 102, 105, 99, 105, 97, 108, 46, 100, 101, 118, 47, 97, 112, 105]);
 String get _smartPlayUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 115, 109, 97, 114, 116, 112, 108, 97, 121, 108, 105, 116, 101, 46, 120, 110, 45, 45, 110, 56, 106, 97, 53, 49, 57, 48, 102, 46, 109, 98, 97]);
 String get _adsterraLink => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 97, 99, 115, 99, 100, 110, 46, 99, 111, 109, 47, 115, 99, 114, 105, 112, 116, 47, 97, 99, 108, 105, 98, 46, 106, 115]);
+
 
 String get _supaUrl => String.fromCharCodes([104, 116, 116, 112, 115, 58, 47, 47, 108, 108, 107, 109, 120, 115, 113, 120, 97, 100, 107, 117, 120, 111, 109, 118, 117, 98, 121, 106, 46, 115, 117, 112, 97, 98, 97, 115, 101, 46, 99, 111]);
 String get _supaToken => String.fromCharCodes([99, 104, 117, 112, 97]); 
@@ -1214,6 +1213,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
+  List<Map> _serversDisponiveis = []; // Variável adicionada de volta para corrigir o erro de compilação
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1225,7 +1225,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
-  
+
   // HunterApi — servidores e URL real 
   List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
@@ -1392,7 +1392,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
     if (savedEpId != null && savedEpId != idVideo) {
       savedPositionSeconds = 0;
-      setState(() { _hlsUrlAtiva = ''; _servidoresNovos = []; _servidorAtivoIdx = -1; });
+      setState(() { _serversDisponiveis = []; _urlAtiva = ''; _hlsUrlAtiva = ''; _servidoresNovos = []; _servidorAtivoIdx = -1; });
     }
 
     if (isParaDownload) {
@@ -1691,8 +1691,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final posParaSeek = savedPositionSeconds;
-    final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
 
+    final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
       _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
