@@ -18,6 +18,7 @@ import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_torrent_streamer/flutter_torrent_streamer.dart';
 
 // ==========================================
 // CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
@@ -591,13 +592,26 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
             future: CoreMediaVault.getPosts(query: searchQuery),
             builder: (c, snapshot) {
               if (!snapshot.hasData) return _buildGridSkeleton();
-              if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+              
+              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez
+              final uniqueItems = [];
+              final seenIds = <String>{};
+              for (var item in snapshot.data!) {
+                final id = item['id'].toString();
+                if (!seenIds.contains(id)) {
+                  seenIds.add(id);
+                  uniqueItems.add(item);
+                }
+              }
+
+              if (uniqueItems.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+              
               return GridView.builder(
                 padding: const EdgeInsets.all(10),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10),
-                itemCount: snapshot.data!.length,
+                itemCount: uniqueItems.length,
                 itemBuilder: (c, i) {
-                  final item = snapshot.data![i];
+                  final item = uniqueItems[i];
                   String slugType = item['type']?['slug'] ?? item['tipo'] ?? 'filmes';
                   return Material(
                     color: Colors.transparent,
@@ -759,11 +773,11 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
               decoration: InputDecoration(hintText: "Nome do botão", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
             ),
             const SizedBox(height: 20),
-            const Text("URL do Vídeo (Link direto .mp4, .m3u8 ou iframe)", style: TextStyle(color: Colors.white70, fontSize: 12)),
+            const Text("URL do Vídeo (Link direto .mp4, .m3u8, iframe ou magnet:)", style: TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(height: 8),
             TextField(
               controller: _urlCtrl, style: const TextStyle(color: Colors.white), maxLines: 2,
-              decoration: InputDecoration(hintText: "https://...", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+              decoration: InputDecoration(hintText: "https://... ou magnet:?xt=...", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
             ),
             const SizedBox(height: 30),
             SizedBox(
@@ -1109,10 +1123,29 @@ class SearchResults extends StatelessWidget {
       future: CoreMediaVault.getPosts(query: query),
       builder: (c, snapshot) {
         if (!snapshot.hasData) return _buildGridSkeleton();
-        if (snapshot.data!.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+        
+        // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez na pesquisa
+        final uniqueItems = [];
+        final seenIds = <String>{};
+        for (var item in snapshot.data!) {
+          final id = item['id'].toString();
+          if (!seenIds.contains(id)) {
+            seenIds.add(id);
+            uniqueItems.add(item);
+          }
+        }
+
+        if (uniqueItems.isEmpty) return const Center(child: Text("Nenhum resultado encontrado.", style: TextStyle(color: Colors.white)));
+        
         return CustomScrollView(slivers: [
           SliverToBoxAdapter(child: _buildCategoryHeader("Resultados")),
-          SliverPadding(padding: const EdgeInsets.all(10), sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: snapshot.data![i]), childCount: snapshot.data!.length)))
+          SliverPadding(
+            padding: const EdgeInsets.all(10), 
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), 
+              delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: uniqueItems[i]), childCount: uniqueItems.length)
+            )
+          )
         ]);
       },
     );
@@ -1157,7 +1190,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
-  List<Map> _serversDisponiveis = []; 
+  List<Map> _serversDisponiveis = [];
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1170,6 +1203,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
   
+  // Torrent Streamer Subs
+  StreamSubscription? _torrentSub;
+
   // HunterApi — servidores e URL real 
   List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
@@ -1193,7 +1229,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _carregarComentarios();
   }
   
-  @override void dispose() { _saveTimer?.cancel(); _adTimer?.cancel(); _chewieController?.dispose(); _videoPlayerController?.dispose(); _webViewPlayerCtrl = null; _comentarioCtrl.dispose(); _exitFullscreen(); super.dispose(); }
+  @override void dispose() { 
+    _saveTimer?.cancel(); 
+    _adTimer?.cancel(); 
+    _torrentSub?.cancel();
+    try { TorrentStreamer.stop(); } catch(_) {}
+    _chewieController?.dispose(); 
+    _videoPlayerController?.dispose(); 
+    _webViewPlayerCtrl = null; 
+    _comentarioCtrl.dispose(); 
+    _exitFullscreen(); 
+    super.dispose(); 
+  }
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
@@ -1230,7 +1277,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final res = await Supabase.instance.client
           .from('links_salvos')
           .select()
-          .eq('url', tmdbId) // Usamos 'url' para guardar o TMDB ID do comentário
+          .eq('url', tmdbId) 
           .eq('nome', 'COMENTARIO')
           .order('created_at', ascending: false);
       if (mounted) setState(() { _comentariosList = res; _carregandoComentarios = false; });
@@ -1246,7 +1293,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await Supabase.instance.client.from('links_salvos').insert({
         'nome': 'COMENTARIO',
         'url': tmdbId, 
-        'comentario': _comentarioCtrl.text.trim(), // Salvando o texto digitado aqui
+        'comentario': _comentarioCtrl.text.trim(),
       });
       _comentarioCtrl.clear();
       FocusScope.of(context).unfocus();
@@ -1276,7 +1323,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       } else if (tipo == 'filmes' && savedPositionSeconds > 0) {
         _abrirServidores(id, details?['name'] ?? widget.item['titulo'], false);
       }
-      _carregarComentarios(); // Carrega com o ID exato após os detalhes
+      _carregarComentarios(); 
     }
   }
 
@@ -1300,6 +1347,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _cleanPlayer() async {
+    _torrentSub?.cancel();
+    try { await TorrentStreamer.stop(); } catch(_) {}
+    
     final oldChewie = _chewieController;
     final oldVideo = _videoPlayerController;
     _chewieController = null;
@@ -1614,13 +1664,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _cleanPlayer();
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
 
-    final posParaSeek = savedPositionSeconds;
+    // ── Suporte direto a Magnet Links com motor nativo ──
+    if (url.toLowerCase().startsWith('magnet:')) {
+      _playerInitializing = false;
+      setState(() { isPlaying = true; isServerLoading = true; _isBuffering = true; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A estabelecer conexão com o Torrent (Buscando pares...)")));
 
+      try {
+        await TorrentStreamer.stop(); 
+        await TorrentStreamer.start(url);
+        
+        _torrentSub?.cancel();
+        _torrentSub = TorrentStreamer.updates.listen((status) {
+          if (!mounted) return;
+          
+          if (status.hasVideo && status.videoUrl != null && status.videoUrl!.isNotEmpty) {
+            _torrentSub?.cancel();
+            // Motor torrent retornou a stream local, joga pro ExoPlayer normalmente
+            _iniciarExoPlayer(status.videoUrl!, tituloEpisodio, embedUrl: embedUrl);
+          }
+        }, onError: (e) {
+          _tentarProximoServidor();
+        });
+      } catch (e) {
+        _tentarProximoServidor();
+      }
+      return;
+    }
+
+    final posParaSeek = savedPositionSeconds;
     final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
+
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
       _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
       return;
+    }
+
+    // Suporte a embeds web gerais da comunidade
+    bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u');
+    if (!isKnownVideoExtension && !_isSignedCdnUrl(url) && !pathLower.endsWith('.txt') && !pathLower.endsWith('.json') && url.startsWith('http') && !url.contains('127.0.0.1')) {
+       _playerInitializing = false;
+       _iniciarWebViewPlayer(url, tituloEpisodio);
+       return;
     }
 
     try {
@@ -1818,7 +1904,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _iniciarExoPlayer(req.url, titulo);
             return NavigationDecision.prevent;
           }
-          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer')) {
+          
+          final uri = Uri.parse(embedUrl);
+          final embedHost = uri.host;
+          
+          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost)) {
             return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
@@ -1996,7 +2086,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        isComunidade ? "${s['audio']} 👥" : s['audio'],
+                        s['audio'],
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
@@ -2017,7 +2107,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           const Divider(color: Colors.white10, height: 1),
           const SizedBox(height: 8),
           const Text(
-            "Se tiver problemas de reproducao, por favor troque de servidor. Pressione e segure servidores com o ícone 👥 para editar.",
+            "Se tiver problemas de reproducao, por favor troque de servidor. Pressione e segure servidores da comunidade para editar.",
             style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.5),
           ),
         ],
