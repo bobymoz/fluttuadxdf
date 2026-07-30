@@ -184,7 +184,7 @@ class CoreMediaVault {
 // ══════════════════════════════════════════════════════════════════════════
 class HunterApi {
   static const Map<String, String> _spoof = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
     "Referer":    "https://redeflixapi.store/",
     "Origin":     "https://redeflixapi.store",
   };
@@ -1235,6 +1235,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // WebView Player: fallback
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
+  // Controla overlay de loading ao retomar após anúncio (evita tela preta)
+  bool _playerResuming = false;
 
   // Comentários da Tabela 'links_salvos'
   List<dynamic> _comentariosList = [];
@@ -1677,7 +1679,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playerInitializing = true;
 
     await _cleanPlayer();
-    setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; });
+    setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; _playerResuming = false; });
 
     // ── Suporte direto a Magnet Links delegados ao App Externo ──
     if (url.toLowerCase().startsWith('magnet:')) {
@@ -1713,7 +1715,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           : {
               "Origin": "https://redeflixapi.store",
               "Referer": "https://redeflixapi.store/",
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+              "User-Agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36",
               "Accept": "*/*",
             };
 
@@ -1813,6 +1815,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     } catch (e) {
       debugPrint('[CDCINE PLAYER ERROR] $e');
+      final errStr = e.toString().toLowerCase();
+
+      // Codec/format error → fallback automático para WebView
+      // (suporta MKV, H.265 e outros formatos que o ExoPlayer não consegue decodificar)
+      final isCodecError = errStr.contains('mediacodec') ||
+          errStr.contains('format(') ||
+          errStr.contains('decoder') ||
+          errStr.contains('videoerror') ||
+          errStr.contains('renderer error') ||
+          (errStr.contains('platformexception') && errStr.contains('video'));
+
+      if (isCodecError && mounted) {
+        debugPrint('[CDCINE] Codec error → WebView fallback');
+        _playerInitializing = false;
+        setState(() { isServerLoading = false; _playerResuming = false; });
+        // Tenta reproduzir no WebView que usa decoder do browser (suporta mais formatos)
+        _iniciarWebViewPlayer(url, tituloEpisodio);
+        return;
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1928,9 +1950,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final adFree = await AdRemovalManager.instance.isAdFree();
     if (adFree) { onSuccess(); return; }
 
-    if (_isFullscreen) _exitFullscreen(); 
+    if (_isFullscreen) _exitFullscreen();
     _videoPlayerController?.pause();
-    
+    // Sinaliza que o player está suspenso para anúncio (evita tela preta ao retomar)
+    if (mounted) setState(() => _playerResuming = true);
+
     if (!mounted) return;
     showDialog(
       context: context, barrierDismissible: false, useRootNavigator: true,
@@ -1942,6 +1966,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Navigator.of(ctxPopup, rootNavigator: true).pop();
             Future.delayed(const Duration(milliseconds: 300), () {
               onSuccess();
+              // Remove overlay de loading 600 ms após retomar
+              // (tempo suficiente para o Surface do ExoPlayer acordar)
+              Future.delayed(const Duration(milliseconds: 600), () {
+                if (mounted) setState(() => _playerResuming = false);
+              });
             }); 
           }
         )
@@ -2124,6 +2153,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
         if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
+        // Overlay de loading ao retomar após anúncio — evita tela preta
+        if (isPlaying && !isServerLoading && _playerResuming)
+          Container(
+            color: Colors.black87,
+            child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(width: 36, height: 36,
+                child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)),
+              const SizedBox(height: 12),
+              const Text('A retomar...', style: TextStyle(color: Colors.white54, fontSize: 12)),
+            ])),
+          ),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
