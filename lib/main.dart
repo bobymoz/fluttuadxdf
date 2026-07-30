@@ -18,7 +18,7 @@ import 'package:chewie/chewie.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_torrent_streamer/flutter_torrent_streamer.dart';
+import 'package:libtorrent_flutter/libtorrent_flutter.dart';
 
 // ==========================================
 // CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
@@ -76,6 +76,9 @@ void main() async {
       'x-app-token': 'chupa', 
     },
   );
+
+  // Inicializa o motor Torrent Nativo (libtorrent 2.0)
+  await LibtorrentFlutter.init();
 
   SecurityDecoyManager.initiateHoneypot();
 
@@ -385,7 +388,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-const String _appVersion = "2.2.1";
+const String _appVersion = "2.1.1";
 const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 class VersionGateScreen extends StatefulWidget { const VersionGateScreen({super.key}); @override State<VersionGateScreen> createState() => _VersionGateScreenState(); }
 class _VersionGateScreenState extends State<VersionGateScreen> {
@@ -1190,7 +1193,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Map? details;
   List temporadas = []; List episodios = [];
   List recomendacoes = [];
-  List<Map> _serversDisponiveis = [];
+  List<Map> _serversDisponiveis = []; // Variável recolocada para evitar erro de build
   
   String sinopse = ""; String backdrop = "";
   String? tempSelecionada; String epAtivoNome = "";
@@ -1203,7 +1206,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
   
-  // Torrent Streamer Subs
+  // Controle de Torrent Nativo
+  String? _activeTorrentId;
   StreamSubscription? _torrentSub;
 
   // HunterApi — servidores e URL real 
@@ -1232,8 +1236,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override void dispose() { 
     _saveTimer?.cancel(); 
     _adTimer?.cancel(); 
+    
+    // Libera os recursos do motor torrent local ao fechar a tela
     _torrentSub?.cancel();
-    try { TorrentStreamer.stop(); } catch(_) {}
+    if (_activeTorrentId != null) {
+      try { LibtorrentFlutter.instance.stopAllStreamsForTorrent(_activeTorrentId!); } catch(_) {}
+    }
+    
     _chewieController?.dispose(); 
     _videoPlayerController?.dispose(); 
     _webViewPlayerCtrl = null; 
@@ -1277,7 +1286,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final res = await Supabase.instance.client
           .from('links_salvos')
           .select()
-          .eq('url', tmdbId) 
+          .eq('url', tmdbId) // Usamos 'url' para guardar o TMDB ID do comentário
           .eq('nome', 'COMENTARIO')
           .order('created_at', ascending: false);
       if (mounted) setState(() { _comentariosList = res; _carregandoComentarios = false; });
@@ -1293,7 +1302,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await Supabase.instance.client.from('links_salvos').insert({
         'nome': 'COMENTARIO',
         'url': tmdbId, 
-        'comentario': _comentarioCtrl.text.trim(),
+        'comentario': _comentarioCtrl.text.trim(), // Salvando o texto digitado aqui
       });
       _comentarioCtrl.clear();
       FocusScope.of(context).unfocus();
@@ -1323,7 +1332,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       } else if (tipo == 'filmes' && savedPositionSeconds > 0) {
         _abrirServidores(id, details?['name'] ?? widget.item['titulo'], false);
       }
-      _carregarComentarios(); 
+      _carregarComentarios(); // Carrega com o ID exato após os detalhes
     }
   }
 
@@ -1347,9 +1356,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _cleanPlayer() async {
+    // Interrompe conexões P2P locais para não drenar internet ao fechar a tela
     _torrentSub?.cancel();
-    try { await TorrentStreamer.stop(); } catch(_) {}
-    
+    if (_activeTorrentId != null) {
+      try { LibtorrentFlutter.instance.stopAllStreamsForTorrent(_activeTorrentId!); } catch(_) {}
+      _activeTorrentId = null;
+    }
+
     final oldChewie = _chewieController;
     final oldVideo = _videoPlayerController;
     _chewieController = null;
@@ -1668,20 +1681,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (url.toLowerCase().startsWith('magnet:')) {
       _playerInitializing = false;
       setState(() { isPlaying = true; isServerLoading = true; _isBuffering = true; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A estabelecer conexão com o Torrent (Buscando pares...)")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("A conectar ao Torrent (Buscando pares...)")));
 
       try {
-        await TorrentStreamer.stop(); 
-        await TorrentStreamer.start(url);
+        final engine = LibtorrentFlutter.instance;
+        final String torrentId = engine.addMagnet(url);
+        _activeTorrentId = torrentId;
         
         _torrentSub?.cancel();
-        _torrentSub = TorrentStreamer.updates.listen((status) {
+        _torrentSub = engine.torrentUpdates.listen((torrents) {
           if (!mounted) return;
           
-          if (status.hasVideo && status.videoUrl != null && status.videoUrl!.isNotEmpty) {
+          final t = torrents[torrentId];
+          if (t != null && t.hasMetadata) {
             _torrentSub?.cancel();
-            // Motor torrent retornou a stream local, joga pro ExoPlayer normalmente
-            _iniciarExoPlayer(status.videoUrl!, tituloEpisodio, embedUrl: embedUrl);
+            try {
+              // O startStream auto-seleciona e isola apenas o vídeo do torrent
+              final stream = engine.startStream(torrentId);
+              _iniciarExoPlayer(stream.url, tituloEpisodio, embedUrl: embedUrl);
+            } catch (e) {
+              _tentarProximoServidor();
+            }
           }
         }, onError: (e) {
           _tentarProximoServidor();
@@ -1693,8 +1713,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     final posParaSeek = savedPositionSeconds;
-    final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
 
+    final pathLower = ((){try{return Uri.parse(url).path.toLowerCase();}catch(_){return url.toLowerCase();}})();
     if ((pathLower.endsWith('.txt') || pathLower.endsWith('.json')) && embedUrl.isNotEmpty) {
       _playerInitializing = false;
       _iniciarWebViewPlayer(embedUrl, tituloEpisodio);
@@ -2086,7 +2106,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'],
+                        s['audio'], // Emojis Removidos
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
