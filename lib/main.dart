@@ -3240,3 +3240,338 @@ class _RewardedPopupState extends State<_RewardedPopup> {
 
   void _iniciarRemocao() {
     final (url, idx) = AdRemovalManager.instance.beginSession();
+    setState(() {
+      _remUrl     = url;
+      _remIdx     = idx;
+      _remStep    = _RemStep.openLink;
+      _remLoading = false;
+      _remUrlOpen = false;
+      _remError   = '';
+    });
+  }
+
+  Future<void> _abrirLink() async {
+    final uri = Uri.parse(_remUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    setState(() {
+      _remUrlOpen = true;
+      _remStep    = _RemStep.enterCode;
+      _remCountdown = 5;
+    });
+    _remTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _remCountdown--);
+      if (_remCountdown <= 0) t.cancel();
+    });
+  }
+
+  Future<void> _validarCodigo() async {
+    if (_remLoading) return;
+    setState(() { _remLoading = true; _remError = ''; });
+    final result = await AdRemovalManager.instance.validate(
+      _remCodeCtrl.text,
+      idx: _remIdx,
+      urlOpened: _remUrlOpen,
+      isTV: _isTV,
+    );
+    if (!mounted) return;
+    if (result.isSuccess) {
+      setState(() { _remStep = _RemStep.success; _remLoading = false; });
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) widget.onSuccess();
+    } else {
+      setState(() {
+        _remLoading = false;
+        _remError   = result.isError
+            ? (result.message ?? 'Erro ao validar. Tenta novamente.')
+            : (result.message ?? 'Código incorrecto. Verifica e tenta de novo.');
+      });
+    }
+  }
+
+  void _voltarAoInicio() {
+    _remTimer?.cancel();
+    _remCodeCtrl.clear();
+    setState(() {
+      _remStep      = _RemStep.hidden;
+      _remUrl       = '';
+      _remUrlOpen   = false;
+      _remError     = '';
+      _remCountdown = 0;
+    });
+  }
+
+  @override Widget build(BuildContext context) {
+    if (_anuncioAberto && _webCtrl != null) {
+      return Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: double.infinity,
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(color: const Color(0xFF0B0B0F), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white12)),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: const BoxDecoration(color: Color(0xFF141414), borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16))),
+                child: Row(
+                  children: [
+                    const Icon(Icons.live_tv, color: Color(0xFFE50914), size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(child: Text("Suporta o CDCINE 🙏", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500))),
+                    if (!_podeFechar)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: _countdown15 / 15, color: Colors.white54, strokeWidth: 2)),
+                          const SizedBox(width: 6),
+                          Text("${_countdown15}s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        ]),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        autofocus: true,
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                        onPressed: widget.onSuccess,
+                        icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                        label: const Text("Fechar", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                  child: WebViewWidget(controller: _webCtrl!),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_remStep != _RemStep.hidden) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+        child: Container(
+          decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+          padding: const EdgeInsets.all(24),
+          child: _buildRemocaoStep(),
+        ),
+      );
+    }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))),
+            const SizedBox(height: 16),
+            Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                autofocus: true,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _abrirAnuncioInApp,
+                icon: const Icon(Icons.bolt, color: Colors.white),
+                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: _aguardando60
+                  ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))]))
+                  : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)))
+                  : OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _iniciarRemocao,
+                      icon: const Icon(Icons.block, color: Color(0xFFE50914), size: 18),
+                      label: const Text("Remover anúncios (grátis)", style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRemocaoStep() {
+    switch (_remStep) {
+      case _RemStep.hidden:
+        return const SizedBox.shrink();
+      case _RemStep.openLink:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.block, color: Color(0xFFE50914), size: 52),
+            const SizedBox(height: 14),
+            Text("Remover Anúncios", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text("Como funciona:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  SizedBox(height: 8),
+                  _RemStep_(icon: Icons.open_in_browser, text: "Abre o link abaixo no navegador"),
+                  _RemStep_(icon: Icons.ads_click,       text: "Passa pelos anúncios (é assim que o CDCINE se mantém grátis)"),
+                  _RemStep_(icon: Icons.copy_outlined,   text: "Copia o código que aparece"),
+                  _RemStep_(icon: Icons.keyboard,        text: "Volta aqui e digita o código"),
+                  _RemStep_(icon: Icons.check_circle_outline, text: "24h sem anúncios! (reinicia se fechares o app)"),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isTV)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.amber.withOpacity(0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.withOpacity(0.3))),
+                child: const Row(children: [
+                  Icon(Icons.tv, color: Colors.amber, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(child: Text("Na TV: abre o link no teu telemóvel, copia o código e digita aqui.", style: TextStyle(color: Colors.amber, fontSize: 12))),
+                ]),
+              ),
+            GestureDetector(
+              onTap: _abrirLink,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5))),
+                child: Row(children: [
+                  const Icon(Icons.link, color: Color(0xFFE50914), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_remUrl, style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.open_in_new, color: Color(0xFFE50914), size: 16),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text("O código é completamente gratuito 🎉", style: TextStyle(color: Colors.green, fontSize: 11), textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                autofocus: true,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _isTV ? () => setState(() { _remStep = _RemStep.enterCode; }) : _abrirLink,
+                icon: Icon(_isTV ? Icons.keyboard : Icons.open_in_browser, color: Colors.white),
+                label: Text(_isTV ? "Já tenho o código →" : "Abrir link e obter código", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Voltar", style: TextStyle(color: Colors.white54))),
+          ],
+        );
+      case _RemStep.enterCode:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.vpn_key_rounded, color: Color(0xFFE50914), size: 48),
+            const SizedBox(height: 14),
+            Text("Digita o código", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Cola ou digita o código que encontraste na página:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 16),
+            if (_remCountdown > 0 && !_isTV)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text("Aguarda ${_remCountdown}s antes de continuar...", style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            TextField(
+              controller: _remCodeCtrl,
+              autofocus: true,
+              enabled: _isTV || (_remUrlOpen && _remCountdown <= 0),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 3),
+              decoration: InputDecoration(
+                hintText: 'CÓDIGO AQUI',
+                hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 1),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              onSubmitted: (_) => _validarCodigo(),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                  : ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: (_isTV || (_remUrlOpen && _remCountdown <= 0)) ? _validarCodigo : null,
+                      child: const Text("Confirmar Código", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Recomeçar", style: TextStyle(color: Colors.white38))),
+          ],
+        );
+      case _RemStep.success:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 72),
+            const SizedBox(height: 16),
+            Text("Anúncios Removidos!", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 26, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            const Text("🎉 24 horas sem anúncios!\nSe fechar e reabrir o app, o processo repete-se.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)),
+          ],
+        );
+    }
+  }
+}
+
+class _RemStep_ extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _RemStep_({required this.icon, required this.text});
+  @override Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFFE50914), size: 14),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.4))),
+      ]),
+    );
+  }
+}
+
+enum _RemStep { hidden, openLink, enterCode, success }
