@@ -860,14 +860,33 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0; final TextEditingController _searchCtrl = TextEditingController(); bool isSearching = false; String searchQuery = "";
   void _changeTab(int index) { setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; }); }
   @override Widget build(BuildContext context) {
-    final List<Widget> views = [
-      InicioTab(onNavigate: _changeTab),
-      PaginatedGridView(title: T.get("Filmes", "Movies"), filterType: "filmes"),
-      PaginatedGridView(title: T.get("Séries", "Series"), filterType: "series"),
-      PaginatedGridView(title: T.get("Animes", "Anime"), filterType: "animes"),
-      if (!GlobalAppConfig.isRestrictedMode) const TvTab() else const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.tv_off, color: Colors.white24, size: 64), SizedBox(height: 16), Text("Live TV is not available in your region.", style: TextStyle(color: Colors.white54, fontSize: 16))])),
-      const GenerosTab(),
-    ];
+    
+    final List<Widget> views = [];
+    final List<BottomNavigationBarItem> navItems = [];
+    
+    views.add(InicioTab(onNavigate: _changeTab));
+    navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.home_filled), label: T.get("Início", "Home")));
+    
+    views.add(PaginatedGridView(title: T.get("Filmes", "Movies"), filterType: "filmes"));
+    navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.movie), label: T.get("Filmes", "Movies")));
+    
+    views.add(PaginatedGridView(title: T.get("Séries", "Series"), filterType: "series"));
+    navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.live_tv), label: T.get("Séries", "Series")));
+    
+    views.add(PaginatedGridView(title: T.get("Animes", "Anime"), filterType: "animes"));
+    navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.animation), label: T.get("Animes", "Anime")));
+    
+    if (!GlobalAppConfig.isRestrictedMode) {
+      views.add(const TvTab());
+      navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.connected_tv), label: T.get("TV", "Live TV")));
+    }
+    
+    views.add(const GenerosTab());
+    navItems.add(BottomNavigationBarItem(icon: const Icon(Icons.category), label: T.get("Gêneros", "Genres")));
+
+    // Controlar a visibilidade da barra de pesquisa em certas tabs
+    bool isTvTab = (!GlobalAppConfig.isRestrictedMode && _currentIndex == 4);
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) { if (didPop) return; if (isSearching) { setState(() { isSearching = false; _searchCtrl.clear(); }); } else if (_currentIndex != 0) { _changeTab(0); } else { SystemNavigator.pop(); } },
@@ -891,13 +910,18 @@ class _MainScreenState extends State<MainScreen> {
         ),
         appBar: AppBar(
           leadingWidth: 100,
-          leading: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())), IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: T.get("Histórico", "History"), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen())))]),
+          leading: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+            children: [
+              Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())), 
+              if (!GlobalAppConfig.isRestrictedMode)
+                IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: T.get("Histórico", "History"), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen())))
+            ]
+          ),
           title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)), centerTitle: true,
           actions: [
-            if (!GlobalAppConfig.isRestrictedMode)
+            if (!GlobalAppConfig.isRestrictedMode) ...[
               IconButton(icon: const Icon(Icons.add_to_queue, color: Colors.greenAccent), tooltip: "Adicionar Servidor", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchMediaForServerScreen()))),
-            
-            if (!GlobalAppConfig.isRestrictedMode)
               ValueListenableBuilder<int>(
                 valueListenable: DownloadManager.activeDownloadsCount,
                 builder: (context, count, child) {
@@ -910,9 +934,10 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 }
               ),
-            const SizedBox(width: 5),
+              const SizedBox(width: 5),
+            ]
           ],
-          bottom: _currentIndex == 4 ? null : PreferredSize(
+          bottom: isTvTab ? null : PreferredSize(
             preferredSize: const Size.fromHeight(60),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -930,14 +955,7 @@ class _MainScreenState extends State<MainScreen> {
         body: isSearching ? SearchResults(query: searchQuery) : IndexedStack(index: _currentIndex, children: views),
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed, selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600], selectedFontSize: 10, unselectedFontSize: 10, currentIndex: _currentIndex, onTap: _changeTab,
-          items: [
-            BottomNavigationBarItem(icon: const Icon(Icons.home_filled), label: T.get("Início", "Home")), 
-            BottomNavigationBarItem(icon: const Icon(Icons.movie), label: T.get("Filmes", "Movies")), 
-            BottomNavigationBarItem(icon: const Icon(Icons.live_tv), label: T.get("Séries", "Series")), 
-            BottomNavigationBarItem(icon: const Icon(Icons.animation), label: T.get("Animes", "Anime")), 
-            BottomNavigationBarItem(icon: const Icon(Icons.connected_tv), label: T.get("TV", "Live TV")), 
-            BottomNavigationBarItem(icon: const Icon(Icons.category), label: T.get("Gêneros", "Genres"))
-          ],
+          items: navItems,
         ),
       ),
     );
@@ -1007,7 +1025,7 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               ],
             ),
 
-          if (GlobalAppConfig.avisoGeral.isNotEmpty)
+          if (!GlobalAppConfig.isRestrictedMode && GlobalAppConfig.avisoGeral.isNotEmpty)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               padding: const EdgeInsets.all(16),
@@ -1032,6 +1050,31 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                     ),
                   ),
                 ],
+              ),
+            ),
+
+          if (GlobalAppConfig.isRestrictedMode)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.3))
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blueAccent, size: 28),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        "See information about your favorite movie, series, and anime.",
+                        style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -1426,7 +1469,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  // --- Função especial para o Modo Restrito (Trailers) ---
   void _abrirTrailer(String titulo) async {
     final query = Uri.encodeComponent("$titulo official trailer");
     final url = Uri.parse("https://www.youtube.com/results?search_query=$query");
@@ -1436,7 +1478,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
-    if (GlobalAppConfig.isRestrictedMode) return; // Proteção adicional
+    if (GlobalAppConfig.isRestrictedMode) return;
 
     if (savedEpId != null && savedEpId != idVideo) {
       savedPositionSeconds = 0;
@@ -1744,6 +1786,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Widget _buildRestrictedHeader(String nomeTitulo) {
+    return Stack(
+      alignment: Alignment.center,
+      fit: StackFit.expand,
+      children: [
+        CachedNetworkImage(
+          imageUrl: backdrop.isNotEmpty ? backdrop : (widget.item['poster'] ?? widget.item['imagem'] ?? ''),
+          fit: BoxFit.cover,
+          errorWidget: (_, __, ___) => Container(color: Colors.grey[900]),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.black.withOpacity(0.4), Colors.transparent, const Color(0xFF0F0F13)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 20,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE50914),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              elevation: 8,
+            ),
+            onPressed: () => _abrirTrailer(nomeTitulo),
+            icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 24),
+            label: const Text("Watch Trailer", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ),
+        Positioned(top: 8, left: 4, child: SafeArea(child: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]), onPressed: () { Navigator.pop(context); }))),
+      ],
+    );
+  }
+
   Widget _buildPlayerArea() {
     return Stack(
       fit: StackFit.expand,
@@ -1761,20 +1841,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') 
           Center(
             child: IconButton(
-              icon: Icon(GlobalAppConfig.isRestrictedMode ? Icons.smart_display : Icons.play_circle_fill, color: Colors.white, size: 70),
-              tooltip: GlobalAppConfig.isRestrictedMode ? "Watch Trailer" : null,
-              onPressed: () {
-                if (GlobalAppConfig.isRestrictedMode) {
-                  _abrirTrailer(widget.item['name'] ?? widget.item['titulo'] ?? "");
-                } else {
-                  _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false);
-                }
-              }
+              icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70),
+              onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false)
             )
           ),
           
         if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') 
-          Center(child: Text(GlobalAppConfig.isRestrictedMode ? "Select an episode to view trailer" : "Seleciona um episódio abaixo", style: const TextStyle(color: Colors.white, fontSize: 16))),
+          const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
         
         if (_webViewPlayerShowing && _webViewPlayerCtrl != null)
           WebViewWidget(controller: _webViewPlayerCtrl!),
@@ -1903,7 +1976,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea()),
+                        AspectRatio(aspectRatio: 16 / 9, child: GlobalAppConfig.isRestrictedMode ? _buildRestrictedHeader(nomeTitulo) : _buildPlayerArea()),
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1951,7 +2024,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       if (temporadas.isNotEmpty) Padding(
                         padding: const EdgeInsets.all(10),
                         child: DropdownButtonFormField<String>(
-                          decoration: InputDecoration(filled: true, fillColor: Colors.grey[900], contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+                          decoration: InputDecoration(filled: true, fillColor: Colors.grey[900], contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2))),
                           dropdownColor: Colors.grey[900],
                           value: tempSelecionada,
                           style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
@@ -2048,7 +2121,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           bottom: false,
           child: Column(
             children: [
-              Container(color: Colors.black, child: AspectRatio(aspectRatio: 16 / 9, child: _buildPlayerArea())),
+              Container(color: Colors.black, child: AspectRatio(aspectRatio: 16 / 9, child: GlobalAppConfig.isRestrictedMode ? _buildRestrictedHeader(nomeTitulo) : _buildPlayerArea())),
               Expanded(
                 child: !isDataLoaded
                   ? _buildPlayerSkeleton()
