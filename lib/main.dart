@@ -20,57 +20,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ==========================================
-// GERENCIADOR DE RESTRIÇÃO DE PAÍS / IDIOMA
-// ==========================================
-class RestrictionManager {
-  static bool isRestricted = false;
-  static bool isChecked = false;
-
-  static const List<String> ptCountries = ['BR', 'PT', 'AO', 'MZ', 'CV', 'GW', 'ST', 'TL'];
-
-  static Future<void> checkRestriction() async {
-    bool isDevicePt = false;
-    try {
-      final locale = Platform.localeName.toLowerCase();
-      if (locale.startsWith('pt')) {
-        isDevicePt = true;
-      }
-    } catch (_) {}
-
-    bool isIpPt = false;
-    try {
-      final res = await http.get(Uri.parse("http://ip-api.com/json")).timeout(const Duration(seconds: 4));
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final countryCode = (data['countryCode'] ?? '').toString().toUpperCase();
-        if (ptCountries.contains(countryCode)) {
-          isIpPt = true;
-        }
-      }
-    } catch (_) {
-      try {
-        final res2 = await http.get(Uri.parse("https://ipapi.co/json/")).timeout(const Duration(seconds: 4));
-        if (res2.statusCode == 200) {
-          final data = json.decode(res2.body);
-          final countryCode = (data['country_code'] ?? '').toString().toUpperCase();
-          if (ptCountries.contains(countryCode)) {
-            isIpPt = true;
-          }
-        }
-      } catch (_) {}
-    }
-
-    // Se nenhum dos dois bater em PT, a restricao aparece
-    if (!isDevicePt && !isIpPt) {
-      isRestricted = true;
-    } else {
-      isRestricted = false;
-    }
-    isChecked = true;
-  }
-}
-
-// ==========================================
 // CONFIGURAÇÃO GLOBAL (AVISOS GERAIS DA API)
 // ==========================================
 class GlobalAppConfig {
@@ -82,6 +31,9 @@ class GlobalAppConfig {
 // ==========================================
 class SecurityDecoyManager {
   static void initiateHoneypot() {
+    // Dispara milhares de requisições falsas no background.
+    // Qualquer sniffer/HttpCanary será inundado com lixo em segundos,
+    // tornando impossível rastrear o tráfego real do Supabase ou da API.
     Timer.periodic(const Duration(milliseconds: 800), (timer) {
       final tk = timer.tick;
       try { http.get(Uri.parse("https://api.netflix.com/v1/auth/device_login?t=$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
@@ -96,6 +48,8 @@ class SecurityDecoyManager {
 // BOMBA ANTI-DESCOMPILADOR (AST BLOAT)
 // ==========================================
 class _AntiDecompileBomb {
+  // Código inútil que nunca é executado no app, mas causa estouro 
+  // de pilha e erro de análise nos descompiladores como Jadx/MT Manager.
   static int _complexLogic(int a, int b) {
     if (a == 0) return b;
     if (b == 0) return a;
@@ -140,6 +94,7 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
+  // Inicialização do Supabase fornecida
   await Supabase.initialize(
     url: _supaUrl,
     anonKey: _obfuscatedAnonKey(),
@@ -263,6 +218,52 @@ class HunterApi {
       return servers;
     } catch (_) { return []; }
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ACCESS MANAGER — Detecção dupla: IP + idioma do dispositivo
+// Lógica: acesso completo SE ip_pt OR locale_pt
+//          se NENHUM bater em PT → modo de descoberta (sem player)
+// ══════════════════════════════════════════════════════════════════════════
+class AccessManager {
+  // Países de língua oficial portuguesa
+  static const _ptCountries = {
+    'BR','PT','AO','MZ','CV','GW','ST','TL','MO','GQ'
+  };
+
+  // Cache para não re-checar a cada ecrã
+  static bool? _cachedResult;
+
+  /// Retorna true se o utilizador tem acesso completo (PT detectado em qualquer camada)
+  static Future<bool> hasFullAccess() async {
+    if (_cachedResult != null) return _cachedResult!;
+
+    // Camada 1 — idioma do dispositivo
+    final lang = WidgetsBinding.instance.platformDispatcher.locale.languageCode.toLowerCase();
+    if (lang == 'pt') { _cachedResult = true; return true; }
+
+    // Camada 2 — geolocalização por IP (API pública, sem chave)
+    try {
+      final res = await http.get(
+        Uri.parse('https://ip-api.com/json/?fields=countryCode'),
+        headers: {'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final cc = (data['countryCode'] ?? '').toString().toUpperCase();
+        if (_ptCountries.contains(cc)) { _cachedResult = true; return true; }
+      }
+    } catch (_) {
+      // Fallback: se a API de IP falhou, confiar no idioma já verificado
+    }
+
+    _cachedResult = false;
+    return false;
+  }
+
+  /// Limpa o cache (chamar no hot-reload ou testes)
+  static void clearCache() => _cachedResult = null;
 }
 
 String cleanTitle(String input) {
@@ -391,11 +392,7 @@ class _ConnectivityGateState extends State<_ConnectivityGate> {
     setState(() { _checking = true; _noInternet = false; });
     try {
       final res = await http.get(Uri.parse("https://www.google.com")).timeout(const Duration(seconds: 6));
-      if (res.statusCode == 200) {
-        await RestrictionManager.checkRestriction();
-        if (mounted) setState(() => _checking = false);
-        return;
-      }
+      if (res.statusCode == 200) { if (mounted) setState(() => _checking = false); return; }
     } catch (_) {}
     if (mounted) setState(() { _checking = false; _noInternet = true; });
   }
@@ -458,7 +455,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-const String _appVersion = "2.2.2";
+const String _appVersion = "2.2.1";
 const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 class VersionGateScreen extends StatefulWidget { const VersionGateScreen({super.key}); @override State<VersionGateScreen> createState() => _VersionGateScreenState(); }
 class _VersionGateScreenState extends State<VersionGateScreen> {
@@ -666,6 +663,7 @@ class _SearchMediaForServerScreenState extends State<SearchMediaForServerScreen>
             builder: (c, snapshot) {
               if (!snapshot.hasData) return _buildGridSkeleton();
               
+              // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez usando chave ultra-rígida
               final uniqueItems = [];
               final seenKeys = <String>{};
               for (var item in snapshot.data!) {
@@ -791,14 +789,23 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
   bool _saving = false;
 
   void _salvarServidor() async {
-    if (_urlCtrl.text.isEmpty || _nomeCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preencha todos os campos."))); return;
+    final url = _urlCtrl.text.trim();
+    final nome = _nomeCtrl.text.trim();
+    if (nome.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Dá um nome ao servidor (ex: Dublado, Legendado)."), backgroundColor: Color(0xFF880000))); return;
+    }
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Coloque o link do vídeo."), backgroundColor: Color(0xFF880000))); return;
+    }
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('magnet:')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Coloque o link do vídeo. Deve começar com http:// ou https://"), backgroundColor: Color(0xFF880000))); return;
     }
     setState(() => _saving = true);
     try {
       final tmdbId = (widget.item['tmdb_id'] ?? widget.item['id']).toString();
       String prefix = widget.type != 'filmes' ? 'T${widget.season} E${widget.episode} - ' : '';
       
+      // O ID do TMDB vai na coluna "comentario" para conseguirmos buscar depois!
       await Supabase.instance.client.from('links_salvos').insert({
         'nome': '$prefix${_nomeCtrl.text.trim()}',
         'url': _urlCtrl.text.trim(),
@@ -850,7 +857,7 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _urlCtrl, style: const TextStyle(color: Colors.white), maxLines: 2,
-              decoration: InputDecoration(hintText: "https://... ou magnet:?xt=...", hintStyle: const TextStyle(color: Colors.white24), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+              decoration: InputDecoration(hintText: "Coloque o link do vídeo (https://...)", hintStyle: TextStyle(color: Colors.grey[600]), filled: true, fillColor: Colors.grey[900], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5))),
             ),
             const SizedBox(height: 30),
             SizedBox(
@@ -871,6 +878,7 @@ class _AddServerFormScreenState extends State<AddServerFormScreen> {
   }
 }
 
+
 // ==========================================
 // TELA PRINCIPAL E NAVEGAÇÃO
 // ==========================================
@@ -878,30 +886,15 @@ class MainScreen extends StatefulWidget { const MainScreen({super.key}); @overri
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0; final TextEditingController _searchCtrl = TextEditingController(); bool isSearching = false; String searchQuery = "";
   void _changeTab(int index) { setState(() { _currentIndex = index; isSearching = false; _searchCtrl.clear(); searchQuery = ""; }); }
-
   @override Widget build(BuildContext context) {
-    final bool restricted = RestrictionManager.isRestricted;
-
     final List<Widget> views = [
       InicioTab(onNavigate: _changeTab),
       const PaginatedGridView(title: "Filmes", filterType: "filmes"),
       const PaginatedGridView(title: "Séries", filterType: "series"),
       const PaginatedGridView(title: "Animes", filterType: "animes"),
-      if (!restricted) const TvTab(),
+      const TvTab(),
       const GenerosTab(),
     ];
-
-    final List<BottomNavigationBarItem> navItems = [
-      const BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"), 
-      const BottomNavigationBarItem(icon: Icon(Icons.movie), label: "Filmes"), 
-      const BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: "Séries"), 
-      const BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"), 
-      if (!restricted) const BottomNavigationBarItem(icon: Icon(Icons.connected_tv), label: "TV"), 
-      const BottomNavigationBarItem(icon: Icon(Icons.category), label: "Gêneros")
-    ];
-
-    final int tvTabIndex = restricted ? -1 : 4;
-
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) { if (didPop) return; if (isSearching) { setState(() { isSearching = false; _searchCtrl.clear(); }); } else if (_currentIndex != 0) { _changeTab(0); } else { SystemNavigator.pop(); } },
@@ -924,18 +917,12 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
         appBar: AppBar(
-          leadingWidth: restricted ? 50 : 100,
-          leading: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())),
-              if (!restricted) IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen()))),
-            ],
-          ),
+          leadingWidth: 100,
+          leading: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [Builder(builder: (c) => IconButton(icon: const Icon(Icons.menu, color: Colors.white), onPressed: () => Scaffold.of(c).openDrawer())), IconButton(icon: const Icon(Icons.history, color: Colors.white), tooltip: "Histórico", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HistoryScreen())))]),
           title: Text("CDCINE", style: GoogleFonts.bebasNeue(color: const Color(0xFFE50914), fontSize: 32, letterSpacing: 2)), centerTitle: true,
           actions: [
-            if (!restricted) IconButton(icon: const Icon(Icons.add_to_queue, color: Colors.greenAccent), tooltip: "Adicionar Servidor", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchMediaForServerScreen()))),
-            if (!restricted) ValueListenableBuilder<int>(
+            IconButton(icon: const Icon(Icons.add_to_queue, color: Colors.greenAccent), tooltip: "Adicionar Servidor", onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SearchMediaForServerScreen()))),
+            ValueListenableBuilder<int>(
               valueListenable: DownloadManager.activeDownloadsCount,
               builder: (context, count, child) {
                 return Stack(
@@ -949,7 +936,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(width: 5),
           ],
-          bottom: (_currentIndex == tvTabIndex) ? null : PreferredSize(
+          bottom: _currentIndex == 4 ? null : PreferredSize(
             preferredSize: const Size.fromHeight(60),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -967,7 +954,14 @@ class _MainScreenState extends State<MainScreen> {
         body: isSearching ? SearchResults(query: searchQuery) : IndexedStack(index: _currentIndex, children: views),
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black, type: BottomNavigationBarType.fixed, selectedItemColor: Colors.white, unselectedItemColor: Colors.grey[600], selectedFontSize: 10, unselectedFontSize: 10, currentIndex: _currentIndex, onTap: _changeTab,
-          items: navItems,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Início"), 
+            BottomNavigationBarItem(icon: Icon(Icons.movie), label: "Filmes"), 
+            BottomNavigationBarItem(icon: Icon(Icons.live_tv), label: "Séries"), 
+            BottomNavigationBarItem(icon: Icon(Icons.animation), label: "Animes"), 
+            BottomNavigationBarItem(icon: Icon(Icons.connected_tv), label: "TV"), 
+            BottomNavigationBarItem(icon: Icon(Icons.category), label: "Gêneros")
+          ],
         ),
       ),
     );
@@ -995,34 +989,10 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
 
   @override Widget build(BuildContext context) {
     super.build(context);
-    final bool restricted = RestrictionManager.isRestricted;
-
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1C),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: Color(0xFFE50914), size: 24),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    "Veja informações sobre seu filme, série e anime favorito",
-                    style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-          ),
           if (loadingCarousel) _buildCarouselSkeleton()
           else if (carouselItems.isNotEmpty)
             Column(
@@ -1061,7 +1031,8 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               ],
             ),
 
-          if (!restricted && GlobalAppConfig.avisoGeral.isNotEmpty)
+          // Renderização dinâmica do banner caso 'mesage' contenha texto na API.
+          if (GlobalAppConfig.avisoGeral.isNotEmpty)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               padding: const EdgeInsets.all(16),
@@ -1233,12 +1204,13 @@ class SearchResults extends StatelessWidget {
       builder: (c, snapshot) {
         if (!snapshot.hasData) return _buildGridSkeleton();
         
+        // Filtro de Duplicatas: Garante que cada filme apareça apenas 1 vez na pesquisa
         final uniqueItems = [];
         final seenKeys = <String>{};
         for (var item in snapshot.data!) {
           final title = (item['name'] ?? item['titulo'] ?? '').toString().trim().toLowerCase();
           final type = (item['type']?['slug'] ?? item['tipo'] ?? '').toString().trim().toLowerCase();
-          final key = '$title-$type';
+          final key = '$title-$type'; // Chave tripla ultra rígida
           if (!seenKeys.contains(key)) {
             seenKeys.add(key);
             uniqueItems.add(item);
@@ -1266,7 +1238,9 @@ class PosterCard extends StatelessWidget {
   final dynamic item; const PosterCard({super.key, required this.item});
   @override Widget build(BuildContext context) {
     String slugType = item['type']?['slug'] ?? item['tipo'] ?? 'filmes';
-    return Material(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Material(
       color: Colors.transparent,
       child: InkWell(
         focusColor: Colors.white24,
@@ -1281,12 +1255,13 @@ class PosterCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }
 
 // ==========================================
-// TELA DO PLAYER / DETALHES
+// TELA DO PLAYER
 // ==========================================
 class PlayerScreen extends StatefulWidget {
   final Map item; const PlayerScreen({super.key, required this.item});
@@ -1313,27 +1288,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int savedPositionSeconds = 0; String? savedEpId; String? savedEpNome; bool _autoPlayDisparado = false;
   Timer? _saveTimer; Timer? _adTimer; bool _playerInitializing = false;
 
+  // HunterApi — servidores e URL real 
   List<Map<String, dynamic>> _servidoresNovos = [];
   int    _servidorAtivoIdx  = -1;
   bool   _extracandoHls     = false;
   String _hlsUrlAtiva       = '';   
   
+  // WebView Player: fallback
   bool _webViewPlayerShowing = false;
   WebViewController? _webViewPlayerCtrl;
+  // Controla overlay de loading ao retomar após anúncio (evita tela preta)
   bool _playerResuming = false;
 
+  // Comentários da Tabela 'links_salvos'
   List<dynamic> _comentariosList = [];
   bool _carregandoComentarios = true;
   final TextEditingController _comentarioCtrl = TextEditingController();
 
+  // Modo de descoberta (detecção dupla IP + locale)
+  // false = acesso completo (PT detectado)
+  // true  = modo info/trailer (parece feature, não restrição)
+  bool _infoOnlyMode = false;
+  String _trailerKey = '';      // YouTube video ID do trailer
+  bool _trailerLoading = false;
+
   @override void initState() { 
-    super.initState(); 
-    if (!RestrictionManager.isRestricted) {
-      _salvarHistoricoGeral(); 
-      _checkResumeData(); 
-    }
-    _loadDetails(); 
+    super.initState();
+    _salvarHistoricoGeral();
+    _checkResumeData();
+    _loadDetails();
     _carregarComentarios();
+    _verificarAcesso();
   }
   
   @override void dispose() { 
@@ -1349,6 +1334,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _enterFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky); setState(() => _isFullscreen = true); }
   void _exitFullscreen() { SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]); SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge); if (mounted) setState(() => _isFullscreen = false); }
+
+  // ── Verificação dupla de acesso (IP + locale) ─────────────────────────
+  void _verificarAcesso() async {
+    final full = await AccessManager.hasFullAccess();
+    if (!mounted) return;
+    if (!full) {
+      setState(() => _infoOnlyMode = true);
+      _fetchTrailer();
+    }
+  }
+
+  // ── Trailer via TMDB (para o modo de descoberta) ────────────────────────
+  Future<void> _fetchTrailer() async {
+    if (!mounted) return;
+    setState(() => _trailerLoading = true);
+    try {
+      final tmdbId = (details?['tmdb_id'] ?? widget.item['tmdb_id'] ?? widget.item['id']).toString();
+      final tipo   = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? 'filmes';
+      final mediaType = tipo == 'filmes' ? 'movie' : 'tv';
+      const apiKey = '52a18783ed514602a5facb15a0177e61';
+      final url = 'https://api.themoviedb.org/3/$mediaType/$tmdbId/videos?api_key=$apiKey&language=en-US';
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final results = (data['results'] as List?) ?? [];
+        // Preferência: Official Trailer → Trailer → Teaser → qualquer
+        Map? found;
+        for (final v in results) {
+          if (v['site'] == 'YouTube') {
+            if (found == null) found = v;
+            if (v['type'] == 'Trailer' && v['official'] == true) { found = v; break; }
+            if (v['type'] == 'Trailer') found = v;
+          }
+        }
+        if (found != null && mounted) {
+          setState(() { _trailerKey = found!['key']?.toString() ?? ''; });
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _trailerLoading = false);
+  }
 
   void _checkResumeData() async {
     final prefs = await SharedPreferences.getInstance(); String? data = prefs.getString("resume_${widget.item['id']}");
@@ -1374,6 +1400,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     hist.removeWhere((e) => json.decode(e)['id'] == widget.item['id']); hist.insert(0, json.encode(it)); await prefs.setStringList('history', hist);
   }
 
+  // ── COMUNIDADE: CARREGAR E ENVIAR COMENTÁRIOS USANDO 'links_salvos' ──
   Future<void> _carregarComentarios() async {
     setState(() => _carregandoComentarios = true);
     try {
@@ -1381,7 +1408,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final res = await Supabase.instance.client
           .from('links_salvos')
           .select()
-          .eq('url', tmdbId)
+          .eq('url', tmdbId) // Usamos 'url' para guardar o TMDB ID do comentário
           .eq('nome', 'COMENTARIO')
           .order('created_at', ascending: false);
       if (mounted) setState(() { _comentariosList = res; _carregandoComentarios = false; });
@@ -1397,31 +1424,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await Supabase.instance.client.from('links_salvos').insert({
         'nome': 'COMENTARIO',
         'url': tmdbId, 
-        'comentario': _comentarioCtrl.text.trim(),
+        'comentario': _comentarioCtrl.text.trim(), // Salvando o texto digitado aqui
       });
       _comentarioCtrl.clear();
       FocusScope.of(context).unfocus();
       _carregarComentarios();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro ao enviar: $e"), backgroundColor: Colors.red));
-    }
-  }
-
-  void _abrirTrailer() async {
-    String? trailerUrl;
-    if (details != null) {
-      trailerUrl = details!['trailer'] ?? details!['youtube_trailer'] ?? details!['trailer_url'] ?? details!['yt_trailer'];
-    }
-    if (trailerUrl == null || trailerUrl.toString().trim().isEmpty) {
-      String nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
-      trailerUrl = "https://www.youtube.com/results?search_query=${Uri.encodeComponent(nomeTitulo + ' trailer')}";
-    }
-    try {
-      await launchUrl(Uri.parse(trailerUrl), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Não foi possível abrir o trailer.")));
-      }
     }
   }
 
@@ -1439,20 +1448,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
         isDataLoaded = true;
       });
 
-      if (!RestrictionManager.isRestricted) {
-        if (tipo != 'filmes' && details?['seasons'] != null && details!['seasons'].isNotEmpty) {
-          setState(() { temporadas = details!['seasons']; tempSelecionada = temporadas[0]['id'].toString(); });
-          _carregarEpisodios(tempSelecionada!);
-        } else if (tipo == 'filmes' && savedPositionSeconds > 0) {
-          _abrirServidores(id, details?['name'] ?? widget.item['titulo'], false);
-        }
-      } else {
-        if (tipo != 'filmes' && details?['seasons'] != null && details!['seasons'].isNotEmpty) {
-          setState(() { temporadas = details!['seasons']; tempSelecionada = temporadas[0]['id'].toString(); });
-          _carregarEpisodios(tempSelecionada!);
-        }
+      if (tipo != 'filmes' && details?['seasons'] != null && details!['seasons'].isNotEmpty) {
+        setState(() { temporadas = details!['seasons']; tempSelecionada = temporadas[0]['id'].toString(); });
+        _carregarEpisodios(tempSelecionada!);
+      } else if (tipo == 'filmes' && savedPositionSeconds > 0) {
+        _abrirServidores(id, details?['name'] ?? widget.item['titulo'], false);
       }
-      _carregarComentarios();
+      _carregarComentarios(); // Carrega com o ID exato após os detalhes
+      // Re-busca trailer se já estamos em modo info (agora temos o tmdbId)
+      if (_infoOnlyMode && _trailerKey.isEmpty) _fetchTrailer();
     }
   }
 
@@ -1466,7 +1470,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return {"id": e['id'].toString(), "full_nome": e['name'] ?? e['subtitle'] ?? "Episódio $numFormatado", "num": numFormatado};
         }).toList();
       });
-      if (!RestrictionManager.isRestricted && !_autoPlayDisparado && savedEpId != null) {
+      if (!_autoPlayDisparado && savedEpId != null) {
         _autoPlayDisparado = true;
         final idx = episodios.indexWhere((e) => e['id'] == savedEpId);
         if (idx != -1) setState(() => _epAtivoIndex = idx);
@@ -1495,14 +1499,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final ep = episodios[nextIdx];
     final nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
     setState(() => _epAtivoIndex = nextIdx);
-    if (!RestrictionManager.isRestricted) {
-      _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false);
-    }
+    _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false);
   }
 
   Future<void> _abrirServidores(String idVideo, String nomeVideo, bool isParaDownload) async {
-    if (RestrictionManager.isRestricted) return;
-
     if (savedEpId != null && savedEpId != idVideo) {
       savedPositionSeconds = 0;
       setState(() { _serversDisponiveis = []; _urlAtiva = ''; _hlsUrlAtiva = ''; _servidoresNovos = []; _servidorAtivoIdx = -1; });
@@ -1553,6 +1553,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       tmdbId: tmdbId, isFilme: isFilme, season: season, episode: episode,
     );
 
+    // ── Buscar Servidores Comunitários da tabela 'links_salvos' ──
     List<Map<String, dynamic>> communityServers = [];
     try {
       final resComunidade = await Supabase.instance.client
@@ -1793,6 +1794,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _cleanPlayer();
     setState(() { _urlAtiva = url; isPlaying = true; isServerLoading = true; _isBuffering = false; _playerResuming = false; });
 
+    // ── Suporte a Magnet Links delegados ao App Externo ──
     if (url.toLowerCase().startsWith('magnet:')) {
       _playerInitializing = false;
       setState(() { isPlaying = false; isServerLoading = false; });
@@ -1810,6 +1812,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
 
+    // Suporte a embeds web gerais da comunidade
     bool isKnownVideoExtension = pathLower.endsWith('.mp4') || pathLower.endsWith('.m3u8') || pathLower.endsWith('.mkv') || pathLower.endsWith('.webm') || pathLower.endsWith('.ts') || pathLower.endsWith('.avi') || pathLower.endsWith('.m3u');
     if (!isKnownVideoExtension && !_isSignedCdnUrl(url) && !pathLower.endsWith('.txt') && !pathLower.endsWith('.json') && url.startsWith('http') && !url.contains('127.0.0.1')) {
        _playerInitializing = false;
@@ -1861,6 +1864,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           backgroundColor: Colors.white24,
         ),
         errorBuilder: (context, errorMessage) {
+          // O Android rejeita essa URL por não ser MP4/MKV puro.
+          // Dispara exceção para forçar o código ir pro Catch e acionar o WebPlayer
           throw Exception("Codec/Format Error ou HLS Não Suportado");
         },
       );
@@ -1869,6 +1874,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _videoPlayerController!.addListener(() {
         if (!mounted) return;
 
+        // Remove a tela preta "A retomar..." APENAS quando o vídeo voltar a tocar fisicamente sem buffer
         if (_playerResuming && _videoPlayerController!.value.isPlaying && !_videoPlayerController!.value.isBuffering) {
           Future.delayed(const Duration(milliseconds: 300), () {
             if (mounted && _playerResuming) setState(() => _playerResuming = false);
@@ -1918,6 +1924,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             duration: Duration(seconds: 2),
           ),
         );
+        // Oculta loading para dar lugar ao WebPlayer
         setState(() { isServerLoading = false; _playerResuming = false; });
         _iniciarWebViewPlayer(url, tituloEpisodio, forceWebMode: true);
       }
@@ -1981,26 +1988,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
         },
         onNavigationRequest: (req) {
           final u = req.url.toLowerCase();
+
+          // 1. Sempre bloquear domínios de anúncios externos
           for (final d in adDomains) {
             if (u.contains(d)) return NavigationDecision.prevent;
           }
+
+          // 2. URLs de protocolo internas — sempre permitir
+          if (req.url.startsWith('about:') || req.url.startsWith('blob:') ||
+              req.url.startsWith('data:') || req.url.startsWith('javascript:')) {
+            return NavigationDecision.navigate;
+          }
+
           final p = (){try{return Uri.parse(req.url).path.toLowerCase();}catch(_){return u;};}();
-          bool isVideoExt = p.endsWith('.mp4') || p.endsWith('.m3u8') || p.endsWith('.mkv') || p.endsWith('.webm') || p.endsWith('.m3u') || u.contains('.mp4?') || u.contains('.m3u8?');
-          
-          if (!forceWebMode && (isVideoExt || _isSignedCdnUrl(req.url)) && !req.url.contains('redeflix') && !req.url.contains('embedplayer')) {
+          final bool isVideoExt = p.endsWith('.mp4') || p.endsWith('.m3u8') ||
+              p.endsWith('.mkv') || p.endsWith('.webm') || p.endsWith('.m3u') ||
+              p.endsWith('.ts') || u.contains('.mp4?') || u.contains('.m3u8?');
+
+          // 3. Vídeo direto sem forceWebMode → tenta ExoPlayer nativo
+          if (!forceWebMode && (isVideoExt || _isSignedCdnUrl(req.url)) &&
+              !req.url.contains('redeflix') && !req.url.contains('embedplayer')) {
             if (mounted) setState(() { _hlsUrlAtiva = req.url; });
             setState(() { _webViewPlayerShowing = false; _webViewPlayerCtrl = null; });
             _playerInitializing = false;
             _iniciarExoPlayer(req.url, titulo);
             return NavigationDecision.prevent;
           }
-          
-          final uri = Uri.parse(embedUrl);
-          final embedHost = uri.host;
-          
-          if (u.startsWith('http') && !u.contains('redeflix') && !u.contains('embedplayer') && !u.contains(embedHost) && !u.contains('plyr.io')) {
-            return NavigationDecision.prevent;
-          }
+
+          // 4. CDN/recursos do player — permitir (fontes, JS, CSS, manifests)
+          String embedHost = '';
+          try { embedHost = Uri.parse(embedUrl).host; } catch(_) {}
+          final bool isCdnResource = u.contains(embedHost) ||
+              u.contains('cdn.') || u.contains('cdnjs.') ||
+              u.contains('cdn.plyr.io') || u.contains('cdn.jsdelivr.net') ||
+              u.contains('hls.js') || u.contains('cloudflare') ||
+              isVideoExt || _isSignedCdnUrl(req.url);
+          if (isCdnResource) return NavigationDecision.navigate;
+
+          // 5. TUDO O RESTO É BLOQUEADO — popup, redirect, anúncio externo
+          // (só os nossos anúncios devem abrir — effectivecpmnetwork e highperformanceformat)
+          if (u.startsWith('http')) return NavigationDecision.prevent;
+
           return NavigationDecision.navigate;
         },
       ));
@@ -2008,6 +2036,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final p = (){try{return Uri.parse(embedUrl).path.toLowerCase();}catch(_){return embedUrl.toLowerCase();}}();
     bool isDirectVideo = p.endsWith('.mp4') || p.endsWith('.mkv') || p.endsWith('.avi') || p.endsWith('.webm') || p.endsWith('.m3u8') || p.endsWith('.ts') || embedUrl.contains('.mp4?') || embedUrl.contains('.m3u8?');
 
+    // Se é link de vídeo que falhou no nativo (ou forceWebMode ativado), nós injetamos 
+    // o Plyr HTML5 idêntico ao ExoPlayer para rodar direto sem loop ou erro de "Aborted"
     if (isDirectVideo || forceWebMode) {
       String plyrHtml = '''
       <!DOCTYPE html>
@@ -2052,8 +2082,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       </body>
       </html>
       ''';
+      // Base URL essencial para dar bypass em proteções CORS e Referer do Treemio e afins!
       ctrl.loadHtmlString(plyrHtml, baseUrl: 'https://redeflixapi.store/');
     } else {
+      // Carrega a página Web de Embed normalmente
       ctrl.loadRequest(Uri.parse(embedUrl), headers: {
         "Referer":    "https://redeflixapi.store/",
         "Origin":     "https://redeflixapi.store",
@@ -2089,6 +2121,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Navigator.of(ctxPopup, rootNavigator: true).pop();
             Future.delayed(const Duration(milliseconds: 300), () {
               onSuccess();
+              // Fallback de segurança de 5 segundos se a rede falhar e o listener não disparar
               Future.delayed(const Duration(seconds: 5), () {
                 if (mounted && _playerResuming) setState(() => _playerResuming = false);
               });
@@ -2184,7 +2217,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildServerSelector(String tipo) {
-    if (_servidoresNovos.isEmpty) return const SizedBox.shrink();
+    if (_servidoresNovos.isEmpty || _infoOnlyMode) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(top: 16, bottom: 4),
       padding: const EdgeInsets.all(14),
@@ -2232,7 +2265,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Icon(Icons.play_circle_fill, color: isAtivo ? Colors.white : (isDub ? Colors.greenAccent : Colors.lightBlueAccent), size: 16),
                       const SizedBox(width: 6),
                       Text(
-                        s['audio'],
+                        s['audio'], // Emojis Removidos
                         style: TextStyle(
                           color: isAtivo ? Colors.white : Colors.white70,
                           fontWeight: FontWeight.bold, 
@@ -2262,54 +2295,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildPlayerArea() {
-    final bool restricted = RestrictionManager.isRestricted;
-
-    if (restricted) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(color: Colors.black),
-          CachedNetworkImage(
-            imageUrl: backdrop.isNotEmpty ? backdrop : (widget.item['poster'] ?? widget.item['imagem'] ?? ""),
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.movie, size: 60, color: Colors.white24)),
-          ),
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.black38, Colors.black87],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-          ),
-          Center(
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFE50914),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                elevation: 8,
-              ),
-              onPressed: _abrirTrailer,
-              icon: const Icon(Icons.play_arrow, color: Colors.white, size: 28),
-              label: const Text("VER TRAILER", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
-            ),
-          ),
-          Positioned(
-            top: 8, left: 4,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black, blurRadius: 8)]),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -2323,6 +2308,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (isPlaying && isServerLoading) const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
         if (isPlaying && !isServerLoading && _isBuffering) const Center(child: SizedBox(width: 48, height: 48, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 3))),
         
+        // Tela preta "A retomar" ajustada para remover gaps visuais
         if (isPlaying && !isServerLoading && _playerResuming)
           Container(
             color: Colors.black,
@@ -2334,8 +2320,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ])),
           ),
 
-        if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false))),
-        if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+        // Modo info-only: não mostra play — mostra overlay cinematico com trailer
+        if (_infoOnlyMode) ...[
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.transparent, Colors.black87],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 16, left: 16, right: 16,
+            child: _trailerKey.isEmpty
+              ? (_trailerLoading
+                  ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2)))
+                  : const SizedBox.shrink())
+              : MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse('https://www.youtube.com/watch?v=$_trailerKey'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFFE50914), Color(0xFFB71C1C)]),
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0,4))],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.play_arrow, color: Colors.white, size: 26),
+                          SizedBox(width: 8),
+                          Text('WATCH TRAILER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1.2)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+          ),
+        ] else ...[
+          if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) == 'filmes') Center(child: MouseRegion(cursor: SystemMouseCursors.click, child: IconButton(icon: const Icon(Icons.play_circle_fill, color: Colors.white, size: 70), onPressed: () => _abrirServidores(widget.item['id'].toString(), widget.item['name'] ?? widget.item['titulo'], false)))),
+          if (!isPlaying && (widget.item['type']?['slug'] ?? widget.item['tipo']) != 'filmes') const Center(child: Text("Seleciona um episódio abaixo", style: TextStyle(color: Colors.white, fontSize: 16))),
+        ],
         
         if (_webViewPlayerShowing && _webViewPlayerCtrl != null)
           WebViewWidget(controller: _webViewPlayerCtrl!),
@@ -2345,11 +2377,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Widget _buildCommentsSection() {
-    return Column(
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151515),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE50914).withOpacity(0.25)),
+      ),
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Comentários", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
-        const SizedBox(height: 12),
+        Row(children: [
+          Container(width: 4, height: 20, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)),
+          const Icon(Icons.forum_rounded, color: Color(0xFFE50914), size: 18),
+          const SizedBox(width: 6),
+          const Text("Comentários", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17)),
+        ]),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
@@ -2357,20 +2401,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 controller: _comentarioCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: "Adicionar comentário público...",
-                  hintStyle: const TextStyle(color: Colors.white24),
+                  hintText: "O que achas? Escreve um comentário...",
+                  hintStyle: TextStyle(color: Colors.grey[600]),
                   filled: true,
-                  fillColor: const Color(0xFF1C1C1C),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                  fillColor: const Color(0xFF242424),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFE50914), width: 1.5)),
                 ),
                 onSubmitted: (_) => _enviarComentario(),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Container(
-              decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle),
-              child: IconButton(icon: const Icon(Icons.send, color: Colors.white, size: 18), onPressed: _enviarComentario),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFFE50914), Color(0xFFB71C1C)]),
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: const Color(0xFFE50914).withOpacity(0.4), blurRadius: 10)],
+              ),
+              child: IconButton(icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20), onPressed: _enviarComentario),
             )
           ],
         ),
@@ -2409,12 +2458,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override Widget build(BuildContext context) {
-    final bool restricted = RestrictionManager.isRestricted;
     String nomeTitulo = widget.item['name'] ?? widget.item['titulo'] ?? "";
     String tipo = widget.item['type']?['slug'] ?? widget.item['tipo'] ?? "filmes";
     final bool isTV = MediaQuery.of(context).size.width > 900; 
 
-    if (_isFullscreen && !restricted) {
+    if (_isFullscreen) {
       return WillPopScope(
         onWillPop: () async { _exitFullscreen(); return false; },
         child: Scaffold(
@@ -2450,7 +2498,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
 
-    if (isTV && tipo != 'filmes' && !restricted) {
+    if (isTV && tipo != 'filmes') {
       return WillPopScope(
         onWillPop: () async { return true; },
         child: Scaffold(
@@ -2615,48 +2663,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         children: [
                           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Expanded(child: Text(cleanTitle(nomeTitulo), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
-                            if (restricted)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8),
-                                child: Material(
-                                  color: const Color(0xFFE50914),
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(6),
-                                    onTap: _abrirTrailer,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      child: const Row(
-                                        children: [
-                                          Icon(Icons.play_arrow, color: Colors.white, size: 16),
-                                          SizedBox(width: 5),
-                                          Text("TRAILER", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
-                                    ),
+                            Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                            if (tipo == 'filmes' || (tipo != 'filmes' && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length)) Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () {
+                                  if (_hlsUrlAtiva.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                      content: Text("Inicia o vídeo primeiro para poder fazer o download."),
+                                      backgroundColor: Color(0xFF880000),
+                                      duration: Duration(seconds: 4),
+                                    ));
+                                    return;
+                                  }
+                                  final titulo = tipo == 'filmes' ? nomeTitulo : (_epAtivoIndex >= 0 ? "$nomeTitulo - ${episodios[_epAtivoIndex]['full_nome']}" : nomeTitulo);
+                                  _mostrarRewardedPopup(
+                                    mensagemDownload: "Para iniciar a transferencia,",
+                                    onSuccess: () => DownloadManager.startDownload(_hlsUrlAtiva, titulo, true),
+                                  );
+                                }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), Text(tipo == 'filmes' ? "BAIXAR" : "BAIXAR EP.", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
+                          ]),
+                          // Botão trailer destacado no modo de descoberta
+                          if (_infoOnlyMode && _trailerKey.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () => launchUrl(Uri.parse('https://www.youtube.com/watch?v=$_trailerKey'), mode: LaunchMode.externalApplication),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(colors: [Color(0xFFE50914), Color(0xFFB71C1C)]),
+                                    borderRadius: BorderRadius.circular(30),
+                                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12, offset: Offset(0,4))],
                                   ),
+                                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Icon(Icons.play_circle_outline, color: Colors.white, size: 22),
+                                    SizedBox(width: 8),
+                                    Text('WATCH TRAILER', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2)),
+                                  ]),
                                 ),
                               ),
-                            if (!restricted) ...[
-                              Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: _entrarPiP, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.picture_in_picture_alt, color: Colors.white, size: 16), SizedBox(width: 5), Text("PiP", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                              Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TransmitirTvScreen())), child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: const Row(children: [Icon(Icons.cast, color: Colors.white, size: 16), SizedBox(width: 5), Text("TV", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                              if (tipo == 'filmes' || (tipo != 'filmes' && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length)) Padding(padding: const EdgeInsets.only(left: 8), child: Material(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(6), child: InkWell(borderRadius: BorderRadius.circular(6), onTap: () {
-                                    if (_hlsUrlAtiva.isEmpty) {
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                        content: Text("Inicia o vídeo primeiro para poder fazer o download."),
-                                        backgroundColor: Color(0xFF880000),
-                                        duration: Duration(seconds: 4),
-                                      ));
-                                      return;
-                                    }
-                                    final titulo = tipo == 'filmes' ? nomeTitulo : (_epAtivoIndex >= 0 ? "$nomeTitulo - ${episodios[_epAtivoIndex]['full_nome']}" : nomeTitulo);
-                                    _mostrarRewardedPopup(
-                                      mensagemDownload: "Para iniciar a transferencia,",
-                                      onSuccess: () => DownloadManager.startDownload(_hlsUrlAtiva, titulo, true),
-                                    );
-                                  }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white12)), child: Row(children: [Image.asset('assets/1dm.png', width: 18, height: 18, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white, size: 16)), const SizedBox(width: 5), Text(tipo == 'filmes' ? "BAIXAR" : "BAIXAR EP.", style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]))))),
-                            ],
-                          ]),
+                            ),
+                          ],
                           const SizedBox(height: 10),
                           Row(children: [
                             Text(tipo.toUpperCase(), style: const TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.w600)),
@@ -2666,10 +2713,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           const SizedBox(height: 15),
                           GestureDetector(onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)), if (sinopse.length > 150) Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))])),
                           const SizedBox(height: 16),
-                          if (!restricted) ...[
-                            _buildServerSelector(tipo),
-                            const SizedBox(height: 8),
-                          ],
+                          _buildServerSelector(tipo),
+                          const SizedBox(height: 8),
 
                           if (tipo != 'filmes' && temporadas.isNotEmpty) ...[
                             SizedBox(
@@ -2699,8 +2744,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ),
                             const SizedBox(height: 10),
                           ],
-                          if (tipo != 'filmes') ...[
-                            if (!restricted && episodios.isNotEmpty && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length - 1)
+                          if (tipo != 'filmes' && !_infoOnlyMode) ...[
+                            if (episodios.isNotEmpty && _epAtivoIndex >= 0 && _epAtivoIndex < episodios.length - 1)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
                                 child: SizedBox(
@@ -2748,12 +2793,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                               return null;
                                             }),
                                           ),
-                                          onPressed: () { 
-                                            setState(() => _epAtivoIndex = i); 
-                                            if (!restricted) {
-                                              _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); 
-                                            }
-                                          },
+                                          onPressed: () { setState(() => _epAtivoIndex = i); _abrirServidores(ep['id'], "$nomeTitulo - ${ep['full_nome']}", false); },
                                           child: isAtivo
                                               ? const Icon(Icons.play_arrow, color: Colors.white, size: 22)
                                               : Text(ep['num'], style: TextStyle(color: Colors.grey[300], fontSize: 14, fontWeight: FontWeight.bold)),
@@ -2764,31 +2804,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 ),
                               ),
                             const SizedBox(height: 6),
-                            if (!restricted) ...[
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Image.asset('assets/1dm.png', width: 14, height: 14, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white24, size: 14)),
-                                  const SizedBox(width: 6),
-                                  const Text("Seleciona um episódio e clica em BAIXAR EP. para transferir", style: TextStyle(color: Colors.white24, fontSize: 11)),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                            ],
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset('assets/1dm.png', width: 14, height: 14, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white24, size: 14)),
+                                const SizedBox(width: 6),
+                                const Text("Seleciona um episódio e clica em BAIXAR EP. para transferir", style: TextStyle(color: Colors.white24, fontSize: 11)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
                           ],
 
-                          if (recomendacoes.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
-                            const SizedBox(height: 10),
-                            SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i]))))),
-                            const SizedBox(height: 12),
-                          ],
-
+                          // ── Comentários — acima das recomendações ──
                           const SizedBox(height: 20),
                           _buildCommentsSection(),
                           const SizedBox(height: 20),
 
+                          if (recomendacoes.isNotEmpty) ...[
+                            Row(children: [Container(width: 4, height: 18, color: const Color(0xFFE50914), margin: const EdgeInsets.only(right: 8)), const Text("Recomendações", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))]),
+                            const SizedBox(height: 10),
+                            SizedBox(height: 160, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: recomendacoes.length, itemBuilder: (ctx, i) => MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PlayerScreen(item: recomendacoes[i]))), child: Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: recomendacoes[i])))))),
+                            const SizedBox(height: 20),
+                          ],
+
+                          // ── Social Bar (receita extra) ──
+                          const _SocialBarWidget(),
+                          const SizedBox(height: 8),
+                          // ── Banners Adsterra (Native + Display) em Combo ──
                           const _BannerAdWidget(),
                           const SizedBox(height: 16),
                         ],
@@ -2801,6 +2843,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+}
+
+// ── Social Bar Effectivecpm (receita extra sem intrusão) ────────
+class _SocialBarWidget extends StatefulWidget {
+  const _SocialBarWidget();
+  @override State<_SocialBarWidget> createState() => _SocialBarWidgetState();
+}
+class _SocialBarWidgetState extends State<_SocialBarWidget> {
+  late final WebViewController _ctrl;
+  static const String _html = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{margin:0;padding:0;box-sizing:border-box;}body{background:transparent;}</style>
+</head><body>
+<script src="https://pl30755692.effectivecpmnetwork.com/70/d0/32/70d0327f5e9518010e053307382837ce.js"></script>
+</body></html>""";
+  @override void initState() {
+    super.initState();
+    _ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (req) {
+          if (!req.url.contains('effectivecpmnetwork.com') && req.url.startsWith('http')) {
+            launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadHtmlString(_html, baseUrl: 'https://effectivecpmnetwork.com/');
+  }
+  @override Widget build(BuildContext context) => SizedBox(height: 60, child: WebViewWidget(controller: _ctrl));
 }
 
 // ── Banners Combinados Adsterra ────────────────────────────────
@@ -2851,6 +2926,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
   <script type="text/javascript" src="//www.highperformanceformat.com/3a941b7c5cd244f3fe9ffadda07677fd/invoke.js"></script>
 
   <script>
+    // BLOQUEIO REFORÇADO DE POP-UPS
     window.open = function() { return null; };
     document.addEventListener('click', function(e) {
       var a = e.target.closest('a');
@@ -2882,6 +2958,7 @@ class _BannerAdWidgetState extends State<_BannerAdWidget> {
         onPageFinished: (_) { if (mounted) setState(() => _loaded = true); },
         onNavigationRequest: (req) {
           final u = req.url;
+          // Impede explicitamente navegações de popups não relacionados ao adsterra
           if (u.startsWith('http') && !u.contains('effectivecpmnetwork.com') && !u.contains('highperformanceformat.com') && !u.contains('about:blank')) {
             launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
             return NavigationDecision.prevent;
@@ -2987,8 +3064,81 @@ class _TvPlayerScreenState extends State<_TvPlayerScreen> { VideoPlayerControlle
 // ==========================================
 class HistoryScreen extends StatefulWidget { const HistoryScreen({super.key}); @override State<HistoryScreen> createState() => _HistoryScreenState(); }
 class _HistoryScreenState extends State<HistoryScreen> {
-  List<Map<String, dynamic>> history = []; @override void initState() { super.initState(); carregar(); } void carregar() async { final prefs = await SharedPreferences.getInstance(); setState(() => history = (prefs.getStringList('history') ?? []).map((e) => json.decode(e) as Map<String, dynamic>).toList()); }
-  @override Widget build(BuildContext context) { return Scaffold(appBar: AppBar(title: const Text("Histórico")), body: history.isEmpty ? const Center(child: Text("Ainda não assistiu a nada.", style: TextStyle(color: Colors.grey))) : ListView.builder(itemCount: history.length, itemBuilder: (c, i) { var item = history[i]; return ListTile(leading: CachedNetworkImage(imageUrl: item['poster_path'], width: 50, fit: BoxFit.cover), title: Text(cleanTitle(item['title']), style: const TextStyle(color: Colors.white)), subtitle: Text(item['type'].toString().toUpperCase(), style: const TextStyle(color: Colors.grey)), trailing: const Icon(Icons.play_arrow, color: Colors.red), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: {'id': item['id'], 'titulo': item['title'], 'tipo': item['type'], 'imagem': item['poster_path']})))); })); }
+  List<Map<String, dynamic>> history = [];
+  @override void initState() { super.initState(); carregar(); }
+  Future<void> carregar() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => history = (prefs.getStringList('history') ?? []).map((e) => json.decode(e) as Map<String, dynamic>).toList());
+  }
+  Future<void> _apagar(int idx) async {
+    final prefs = await SharedPreferences.getInstance();
+    history.removeAt(idx);
+    await prefs.setStringList('history', history.map((e) => json.encode(e)).toList());
+    setState(() {});
+  }
+  Future<void> _apagarTudo() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('history');
+    setState(() => history.clear());
+  }
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Histórico"),
+        actions: [
+          if (history.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep, color: Colors.white54),
+              tooltip: "Apagar tudo",
+              onPressed: () => showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF1C1C1C),
+                  title: const Text("Apagar histórico", style: TextStyle(color: Colors.white)),
+                  content: const Text("Tens a certeza que queres apagar todo o histórico?", style: TextStyle(color: Colors.white70)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar", style: TextStyle(color: Colors.white54))),
+                    TextButton(onPressed: () { Navigator.pop(ctx); _apagarTudo(); }, child: const Text("Apagar tudo", style: TextStyle(color: Colors.red))),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+      body: history.isEmpty
+        ? const Center(child: Text("Ainda não assistiu a nada.", style: TextStyle(color: Colors.grey)))
+        : ListView.builder(
+            itemCount: history.length,
+            itemBuilder: (c, i) {
+              var item = history[i];
+              return Dismissible(
+                key: Key(item['id'].toString() + i.toString()),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  color: Colors.red[900],
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                onDismissed: (_) => _apagar(i),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: ListTile(
+                    leading: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: item['poster_path'] ?? '', width: 50, fit: BoxFit.cover, errorWidget: (_,__,___) => Container(width: 50, color: Colors.grey[900]))),
+                    title: Text(cleanTitle(item['title'] ?? ''), style: const TextStyle(color: Colors.white)),
+                    subtitle: Text(item['type'].toString().toUpperCase(), style: const TextStyle(color: Colors.grey)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.play_arrow, color: Colors.red),
+                      IconButton(icon: const Icon(Icons.delete_outline, color: Colors.white24, size: 18), onPressed: () => _apagar(i)),
+                    ]),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: {'id': item['id'], 'titulo': item['title'], 'tipo': item['type'], 'imagem': item['poster_path']}))),
+                  ),
+                ),
+              );
+            },
+          ),
+    );
+  }
 }
 
 class DownloadsScreen extends StatefulWidget { const DownloadsScreen({super.key}); @override State<DownloadsScreen> createState() => _DownloadsScreenState(); }
@@ -3019,6 +3169,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         ]),
       ),
       body: Column(children: [
+        // Banner informativo
         Container(
           margin: const EdgeInsets.all(12),
           padding: const EdgeInsets.all(14),
@@ -3090,9 +3241,11 @@ class DmcaScreen extends StatelessWidget {
 }
 
 // ==========================================
+// ==========================================
 // SISTEMA DE ANÚNCIOS (WEBVIEW IN-APP POPUP)
 // ==========================================
 
+// ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
 class _AdRemovalData {
   final String url;
   final String codeB64;
