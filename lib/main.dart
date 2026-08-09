@@ -2454,7 +2454,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     },
                   ),
       ],
-    );
+    ),
+  );
   }
 
   @override Widget build(BuildContext context) {
