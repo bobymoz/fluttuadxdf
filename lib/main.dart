@@ -455,7 +455,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
-const String _appVersion = "2.2.2";
+const String _appVersion = "2.2.1";
 const String _versionUrl = "https://pastefy.app/FlTl6ufq/raw";
 class VersionGateScreen extends StatefulWidget { const VersionGateScreen({super.key}); @override State<VersionGateScreen> createState() => _VersionGateScreenState(); }
 class _VersionGateScreenState extends State<VersionGateScreen> {
@@ -997,18 +997,17 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
           else if (carouselItems.isNotEmpty)
             Column(
               children: [
-                CarouselSlider(
-                  options: CarouselOptions(
-                    height: 220, autoPlay: true, enlargeCenterPage: true, viewportFraction: 0.45, 
-                    onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)
-                  ),
-                  items: carouselItems.map((item) {
-                    return Material(
+                Builder(builder: (ctx) {
+                  // Intercala banners a cada 3 itens no carrossel
+                  final List<Widget> slides = [];
+                  for (int ci = 0; ci < carouselItems.length; ci++) {
+                    final item = carouselItems[ci];
+                    slides.add(Material(
                       color: Colors.transparent,
                       child: InkWell(
                         focusColor: Colors.white24,
                         borderRadius: BorderRadius.circular(12),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
+                        onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (c) => PlayerScreen(item: item))),
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 5),
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), image: DecorationImage(image: NetworkImage(item['poster'] ?? item['imagem'] ?? ''), fit: BoxFit.cover, alignment: Alignment.topCenter)),
@@ -1019,9 +1018,19 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                           ),
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ));
+                    // Insere banner a cada 3 itens de conteúdo
+                    if ((ci + 1) % 3 == 0) slides.add(const _CarouselAdSlide());
+                  }
+                  return CarouselSlider(
+                    options: CarouselOptions(
+                      height: 220, autoPlay: true, autoPlayInterval: const Duration(seconds: 4),
+                      enlargeCenterPage: true, viewportFraction: 0.45,
+                      onPageChanged: (index, reason) => setState(() => _currentCarouselIndex = index)
+                    ),
+                    items: slides,
+                  );
+                }),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center, 
                   children: carouselItems.asMap().entries.map((entry) { 
@@ -1072,12 +1081,14 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
               )),
             )
           else if (homeData != null)
-            ...((homeData!['sections'] ?? homeData!['content']?['sections'] ?? []) as List).map((sec) {
-              List items = sec['items'] ?? [];
-              if (items.isEmpty || (sec['filter'] != null && sec['filter']['mode'] == 'canais')) return const SizedBox.shrink();
-              
-              return Column(
-                children: [
+            ...() {
+              final sections = (homeData!['sections'] ?? homeData!['content']?['sections'] ?? []) as List;
+              final List<Widget> sectionWidgets = [];
+              int secIdx = 0;
+              for (final sec in sections) {
+                List items = sec['items'] ?? [];
+                if (items.isEmpty || (sec['filter'] != null && sec['filter']['mode'] == 'canais')) continue;
+                sectionWidgets.add(Column(children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     child: Row(
@@ -1107,8 +1118,16 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                   ),
                 ],
               );
-            }).toList(),
-            const SizedBox(height: 40),
+                ]));
+                // Social bar a cada 2 secções
+                secIdx++;
+                if (secIdx % 2 == 0) sectionWidgets.add(const _SocialBarWidget());
+                // Inline ad a cada 3 secções
+                if (secIdx % 3 == 0) sectionWidgets.add(const _InlineAdBanner());
+              }
+              sectionWidgets.add(const SizedBox(height: 40));
+              return sectionWidgets;
+            }(),
         ],
       ),
     );
@@ -1130,7 +1149,43 @@ class _PaginatedGridViewState extends State<PaginatedGridView> with AutomaticKee
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildCategoryHeader(widget.title)),
-        SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 10), sliver: SliverGrid(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 0.55, crossAxisSpacing: 10, mainAxisSpacing: 10), delegate: SliverChildBuilderDelegate((c, i) => PosterCard(item: items[i]), childCount: items.length))),
+        // Injeta social bar + inline ad entre linhas do grid
+        SliverList(delegate: SliverChildBuilderDelegate((c, i) {
+          // A cada 3 linhas (9 itens) insere um inline ad
+          final rowCount = (items.length / 3).ceil();
+          // Calcula se é linha de anúncio
+          int adEvery = 4; // a cada 4 linhas de conteúdo
+          int totalRows = rowCount + (rowCount ~/ adEvery);
+          int contentRow = 0;
+          int adCount = 0;
+          int row = i;
+          // Determinar se esta linha é anúncio
+          for (int r = 0; r <= i; r++) {
+            if ((contentRow > 0) && contentRow % adEvery == 0 && adCount < contentRow ~/ adEvery) {
+              adCount++;
+              if (r == i) {
+                // Esta é uma linha de anúncio
+                return adCount % 2 == 0
+                  ? const Padding(padding: EdgeInsets.symmetric(vertical: 4), child: _SocialBarWidget())
+                  : const _InlineAdBanner();
+              }
+            } else {
+              if (r == i) {
+                // Linha de conteúdo
+                final startIdx = (contentRow) * 3;
+                final endIdx = (startIdx + 3).clamp(0, items.length);
+                return Row(children: [
+                  for (int j = startIdx; j < endIdx; j++)
+                    Expanded(child: Padding(padding: const EdgeInsets.all(5), child: AspectRatio(aspectRatio: 0.55, child: PosterCard(item: items[j])))),
+                  if (endIdx - startIdx < 3)
+                    for (int k = 0; k < 3 - (endIdx - startIdx); k++) const Expanded(child: SizedBox()),
+                ]);
+              }
+              contentRow++;
+            }
+          }
+          return const SizedBox.shrink();
+        }, childCount: items.length ~/ 3 + (items.length % 3 > 0 ? 1 : 0) + (items.length ~/ 3 ~/ 4).clamp(1, 100))),
         SliverToBoxAdapter(child: Container(color: Colors.black, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[900]), onPressed: page > 1 ? () => _changePage(-1) : null, icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 14), label: const Text("Anterior", style: TextStyle(color: Colors.white))), Text("Página $page", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)), onPressed: items.length >= 10 ? () => _changePage(1) : null, icon: const Text("Próxima", style: TextStyle(color: Colors.white)), label: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 14))]))),
       ],
     );
@@ -2713,7 +2768,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ]),
                           const SizedBox(height: 15),
                           GestureDetector(onTap: () => setState(() => isSynopsisExpanded = !isSynopsisExpanded), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(sinopse, maxLines: isSynopsisExpanded ? null : 3, overflow: isSynopsisExpanded ? TextOverflow.visible : TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)), if (sinopse.length > 150) Padding(padding: const EdgeInsets.only(top: 5), child: Text(isSynopsisExpanded ? "Mostrar menos" : "Ver mais...", style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 12)))])),
-                          const SizedBox(height: 16),
+                          // Social bar abaixo da descrição
+                          const SizedBox(height: 10),
+                          const _SocialBarWidget(),
+                          const SizedBox(height: 10),
                           _buildServerSelector(tipo),
                           const SizedBox(height: 8),
 
@@ -2842,6 +2900,106 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+// ── Inline Ad Banner — banner disfarçado que aparece entre conteúdo ──────
+// Parece um item de conteúdo normal mas carrega um anúncio real.
+class _InlineAdBanner extends StatefulWidget {
+  final double height;
+  const _InlineAdBanner({this.height = 160});
+  @override State<_InlineAdBanner> createState() => _InlineAdBannerState();
+}
+class _InlineAdBannerState extends State<_InlineAdBanner> {
+  late final WebViewController _ctrl;
+  static const String _adHtml = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#141414;display:flex;align-items:center;justify-content:center;
+     width:100%;height:100%;overflow:hidden;}
+</style></head><body>
+<script type="text/javascript">
+atOptions={'key':'923539f65a022c48ecd0ff98e61fe4bf','format':'iframe','height':250,'width':300,'params':{}};
+</script>
+<script src="//www.highperformanceformat.com/923539f65a022c48ecd0ff98e61fe4bf/invoke.js"></script>
+</body></html>""";
+  @override void initState() {
+    super.initState();
+    _ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF141414))
+      ..setNavigationDelegate(NavigationDelegate(onNavigationRequest: (req) {
+        if (!req.url.contains('highperformanceformat.com') && !req.url.contains('about:')) {
+          launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
+        }
+        return NavigationDecision.navigate;
+      }))
+      ..loadHtmlString(_adHtml, baseUrl: 'https://highperformanceformat.com/');
+  }
+  @override Widget build(BuildContext context) {
+    return Container(
+      height: widget.height,
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: const Color(0xFF141414)),
+      clipBehavior: Clip.hardEdge,
+      child: WebViewWidget(controller: _ctrl),
+    );
+  }
+}
+
+// ── Carousel Ad Slide — aparece entre filmes do carrossel ────────────────
+class _CarouselAdSlide extends StatefulWidget {
+  const _CarouselAdSlide();
+  @override State<_CarouselAdSlide> createState() => _CarouselAdSlideState();
+}
+class _CarouselAdSlideState extends State<_CarouselAdSlide> {
+  late final WebViewController _ctrl;
+  static const String _html = """<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>*{margin:0;padding:0;}body{background:#111;display:flex;align-items:center;
+justify-content:center;width:100vw;height:100vh;overflow:hidden;}</style>
+</head><body>
+<script async data-cfasync="false" src="//pl29657400.effectivecpmnetwork.com/0b441d364002ce46271a097b97bf33af/invoke.js"></script>
+<div id="container-0b441d364002ce46271a097b97bf33af"></div>
+</body></html>""";
+  @override void initState() {
+    super.initState();
+    _ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF111111))
+      ..setNavigationDelegate(NavigationDelegate(onNavigationRequest: (req) {
+        if (!req.url.contains('effectivecpmnetwork.com') && req.url.startsWith('http')) {
+          launchUrl(Uri.parse(req.url), mode: LaunchMode.externalApplication);
+          return NavigationDecision.prevent;
+        }
+        return NavigationDecision.navigate;
+      }))
+      ..loadHtmlString(_html, baseUrl: 'https://effectivecpmnetwork.com/');
+  }
+  @override Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF111111),
+        border: Border.all(color: Colors.white10),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Stack(children: [
+        WebViewWidget(controller: _ctrl),
+        // Label discreto canto inferior direito
+        Positioned(bottom: 4, right: 6, child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+          child: const Text('anúncio', style: TextStyle(color: Colors.white30, fontSize: 8)),
+        )),
+      ]),
     );
   }
 }
