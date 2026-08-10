@@ -1116,9 +1116,7 @@ class _InicioTabState extends State<InicioTab> with AutomaticKeepAliveClientMixi
                       itemBuilder: (c, i) => Container(width: 105, margin: const EdgeInsets.only(right: 10), child: PosterCard(item: items[i])),
                     ),
                   ),
-                ],
-              );
-                ]));
+                ])); // Fechamento correto: ] da children, ) da Column, ) do add e ;
                 // Social bar a cada 2 secções
                 secIdx++;
                 if (secIdx % 2 == 0) sectionWidgets.add(const _SocialBarWidget());
