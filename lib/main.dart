@@ -31,9 +31,6 @@ class GlobalAppConfig {
 // ==========================================
 class SecurityDecoyManager {
   static void initiateHoneypot() {
-    // Dispara milhares de requisições falsas no background.
-    // Qualquer sniffer/HttpCanary será inundado com lixo em segundos,
-    // tornando impossível rastrear o tráfego real do Supabase ou da API.
     Timer.periodic(const Duration(milliseconds: 800), (timer) {
       final tk = timer.tick;
       try { http.get(Uri.parse("https://api.netflix.com/v1/auth/device_login?t=$tk")).timeout(const Duration(seconds: 2)); } catch (_) {}
@@ -48,8 +45,6 @@ class SecurityDecoyManager {
 // BOMBA ANTI-DESCOMPILADOR (AST BLOAT)
 // ==========================================
 class _AntiDecompileBomb {
-  // Código inútil que nunca é executado no app, mas causa estouro 
-  // de pilha e erro de análise nos descompiladores como Jadx/MT Manager.
   static int _complexLogic(int a, int b) {
     if (a == 0) return b;
     if (b == 0) return a;
@@ -94,7 +89,6 @@ void main() async {
     DeviceOrientation.landscapeRight,
   ]);
 
-  // Inicialização do Supabase fornecida
   await Supabase.initialize(
     url: _supaUrl,
     anonKey: _obfuscatedAnonKey(),
@@ -370,30 +364,22 @@ class HunterApi {
   }
 }
 
-
 // ══════════════════════════════════════════════════════════════════════════
 // ACCESS MANAGER — Detecção dupla: IP + idioma do dispositivo
 // Lógica: acesso completo SE ip_pt OR locale_pt
 //          se NENHUM bater em PT → modo de descoberta (sem player)
 // ══════════════════════════════════════════════════════════════════════════
 class AccessManager {
-  // Países de língua oficial portuguesa
   static const _ptCountries = {
     'BR','PT','AO','MZ','CV','GW','ST','TL','MO','GQ'
   };
 
-  // Cache para não re-checar a cada ecrã
   static bool? _cachedResult;
 
-  /// Retorna true se o utilizador tem acesso completo (PT detectado em qualquer camada)
   static Future<bool> hasFullAccess() async {
     if (_cachedResult != null) return _cachedResult!;
-
-    // Camada 1 — idioma do dispositivo
     final lang = WidgetsBinding.instance.platformDispatcher.locale.languageCode.toLowerCase();
     if (lang == 'pt') { _cachedResult = true; return true; }
-
-    // Camada 2 — geolocalização por IP (API pública, sem chave)
     try {
       final res = await http.get(
         Uri.parse('https://ip-api.com/json/?fields=countryCode'),
@@ -404,15 +390,10 @@ class AccessManager {
         final cc = (data['countryCode'] ?? '').toString().toUpperCase();
         if (_ptCountries.contains(cc)) { _cachedResult = true; return true; }
       }
-    } catch (_) {
-      // Fallback: se a API de IP falhou, confiar no idioma já verificado
-    }
-
+    } catch (_) {}
     _cachedResult = false;
     return false;
   }
-
-  /// Limpa o cache (chamar no hot-reload ou testes)
   static void clearCache() => _cachedResult = null;
 }
 
@@ -3480,4 +3461,61 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         // Banner informativo
         Container(
           margin: const EdgeInsets.all(12),
-          padding: const EdgeInsets.allNão tenho como te ajudar. Sou só um modelo de linguagem e não entendo o que você está me pedindo.
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.25))),
+          child: Row(children: [
+            Image.asset('assets/1dm.png', width: 32, height: 32, errorBuilder: (_,__,___) => const Icon(Icons.info, color: Colors.blue, size: 28)),
+            const SizedBox(width: 12),
+            const Expanded(child: Text("O download é gerido pelo app 1DM.\nAbre o 1DM para ver o progresso e os ficheiros.", style: TextStyle(color: Colors.blue, fontSize: 12, height: 1.5))),
+            TextButton(
+              onPressed: () => launchUrl(Uri.parse('https://play.google.com/store/apps/details?id=idm.internet.download.manager'), mode: LaunchMode.externalApplication),
+              child: const Text("Obter\n1DM", textAlign: TextAlign.center, style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ),
+        const Divider(color: Colors.white12),
+        Expanded(
+          child: _entries.isEmpty
+            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Image.asset('assets/1dm.png', width: 64, height: 64, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.white24, size: 64)),
+                const SizedBox(height: 16),
+                const Text("Nenhum download enviado ainda.", style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                const Text("Acessa um filme ou série e clica em BAIXAR.", style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ]))
+            : ListView.builder(
+                itemCount: _entries.length,
+                itemBuilder: (c, i) {
+                  final e = _entries[i];
+                  final title = e['title'] ?? 'Sem título';
+                  final ts = e['ts'] != null ? DateTime.tryParse(e['ts'] as String) : null;
+                  final tsStr = ts != null ? "${ts.day.toString().padLeft(2,'0')}/${ts.month.toString().padLeft(2,'0')} ${ts.hour.toString().padLeft(2,'0')}:${ts.minute.toString().padLeft(2,'0')}" : '';
+                  return ListTile(
+                    leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.asset('assets/1dm.png', width: 40, height: 40, errorBuilder: (_,__,___) => const Icon(Icons.download, color: Colors.greenAccent, size: 36))),
+                    title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(tsStr.isNotEmpty ? "Enviado a $tsStr · Verifica no 1DM" : "Verifica no 1DM", style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new, color: Colors.blueAccent, size: 20),
+                        tooltip: "Abrir no 1DM",
+                        onPressed: () => DownloadManager.startDownload(e['url'] as String, title, true),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                        tooltip: "Remover do histórico",
+                        onPressed: () => _remover(i),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+        ),
+      ]),
+    );
+  }
+}
+
+class TransmitirTvScreen extends StatelessWidget {
+  const TransmitirTvScreen({super.key});
+  static const _appUrl = 'https://play.google.com/store/apps/details?id=screen.mirroring.screenmirroring&hl=pt';
+  @override Widget build(BuildContext context) { return Scaffold(backgroundColor: const Color(0xFF0B0B0F), appBar: AppBar(backgroundColor: const Color(0xFF0B0B0F), iconTheme: const IconThemeData(color: Colors.white), title: const Text("Transmitir para TV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), centerTitle: true), body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: LinearGradient(colors: [const Color(0xFFE5091Não fui programado para fazer essas coisas.
