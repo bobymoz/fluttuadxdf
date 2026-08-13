@@ -3518,4 +3518,502 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 class TransmitirTvScreen extends StatelessWidget {
   const TransmitirTvScreen({super.key});
   static const _appUrl = 'https://play.google.com/store/apps/details?id=screen.mirroring.screenmirroring&hl=pt';
-  @override Widget build(BuildContext context) { return Scaffold(backgroundColor: const Color(0xFF0B0B0F), appBar: AppBar(backgroundColor: const Color(0xFF0B0B0F), iconTheme: const IconThemeData(color: Colors.white), title: const Text("Transmitir para TV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), centerTitle: true), body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: LinearGradient(colors: [const Color(0xFFE5091Não fui programado para fazer essas coisas.
+  @override Widget build(BuildContext context) { return Scaffold(backgroundColor: const Color(0xFF0B0B0F), appBar: AppBar(backgroundColor: const Color(0xFF0B0B0F), iconTheme: const IconThemeData(color: Colors.white), title: const Text("Transmitir para TV", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), centerTitle: true), body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: double.infinity, padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: LinearGradient(colors: [const Color(0xFFE50914).withOpacity(0.8), const Color(0xFF8B0000)], begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(16)), child: Column(children: [const Icon(Icons.cast_connected, color: Colors.white, size: 52), const SizedBox(height: 12), Text("Ver o CDCINE na TV", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 28, letterSpacing: 1)), const SizedBox(height: 6), const Text("Segue estes passos simples para ver o teu conteúdo favorito no ecrã grande!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5))])), const SizedBox(height: 28), _passo(1, Icons.download_outlined, "Instala o app gratuito", "Descarrega o app \"Espelhar Celular na TV\" gratuitamente na Google Play Store. É rápido e fácil!", botao: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () => launchUrl(Uri.parse(_appUrl), mode: LaunchMode.externalApplication), icon: const Icon(Icons.download, color: Colors.white, size: 18), label: const Text("Baixar na Play Store", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))), _passo(2, Icons.wifi, "Liga o Wi‑Fi", "Garante que o teu telemóvel e a tua TV estão ligados à mesma rede Wi‑Fi em casa.", dica: "Dica: Usa o Wi-Fi de casa, não os dados móveis!"), _passo(3, Icons.tv, "Abre o app e seleciona a TV", "Abre o \"Espelhar Celular na TV\", clica em Ligar e o app vai procurar automaticamente a tua TV. Clica no nome da tua TV para conectar."), _passo(4, Icons.play_circle_outline, "Volta ao CDCINE e reproduz", "Com a ligação feita, volta ao CDCINE, escolhe o teu filme ou série e carrega em play. O conteúdo aparece na TV!"), const SizedBox(height: 24), Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Row(children: [Icon(Icons.info_outline, color: Colors.white54, size: 16), SizedBox(width: 8), Text("Compatível com:", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13))]), const SizedBox(height: 10), _CompatItem(icon: Icons.check_circle, text: "Smart TVs (Samsung, LG, Sony, etc.)"), _CompatItem(icon: Icons.check_circle, text: "Chromecast e Google TV"), _CompatItem(icon: Icons.check_circle, text: "Fire TV Stick (Amazon)"), _CompatItem(icon: Icons.check_circle, text: "Qualquer TV com Wi-Fi ou HDMI")])), const SizedBox(height: 24), SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: () => launchUrl(Uri.parse(_appUrl), mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new, color: Colors.white), label: const Text("Baixar app gratuito", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)))), const SizedBox(height: 8), const Center(child: Text("Gratuito • Sem anúncios forçados • Fácil de usar", style: TextStyle(color: Colors.white30, fontSize: 11))), const SizedBox(height: 24)]))); }
+  Widget _passo(int num, IconData icon, String titulo, String descricao, {Widget? botao, String? dica}) { return Padding(padding: const EdgeInsets.only(bottom: 20), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Column(children: [Container(width: 40, height: 40, decoration: const BoxDecoration(color: Color(0xFFE50914), shape: BoxShape.circle), child: Center(child: Text('$num', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)))), Container(width: 2, height: 60, color: Colors.white10, margin: const EdgeInsets.symmetric(vertical: 4))]), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), Row(children: [Icon(icon, color: const Color(0xFFE50914), size: 18), const SizedBox(width: 8), Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))]), const SizedBox(height: 6), Text(descricao, style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5)), if (dica != null) ...[const SizedBox(height: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.withOpacity(0.3))), child: Text(dica, style: const TextStyle(color: Colors.amber, fontSize: 11)))], if (botao != null) ...[const SizedBox(height: 10), botao], const SizedBox(height: 8)]))])); }
+}
+class _CompatItem extends StatelessWidget { final IconData icon; final String text; const _CompatItem({required this.icon, required this.text}); @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(children: [Icon(icon, color: Colors.green, size: 14), const SizedBox(width: 8), Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12))])); }
+
+class DmcaScreen extends StatelessWidget {
+  const DmcaScreen({super.key});
+  Widget _dmcaItem(IconData icon, String text) { return Padding(padding: const EdgeInsets.only(bottom: 14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(margin: const EdgeInsets.only(top: 2), padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.15), shape: BoxShape.circle), child: Icon(icon, color: const Color(0xFFE50914), size: 16)), const SizedBox(width: 12), Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)))])); }
+  @override Widget build(BuildContext context) { return Scaffold(backgroundColor: const Color(0xFF0B0B0F), appBar: AppBar(title: const Text("DMCA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF0B0B0F), iconTheme: const IconThemeData(color: Colors.white)), body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.shield, color: Color(0xFFE50914), size: 28), const SizedBox(width: 10), Text("Notificação de violação de\ndireitos autorais", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1))]), const SizedBox(height: 24), const Text("Para enviar uma notificação de violação de direitos autorais ao CDCINE, você precisará realizar os seguintes passos: (consulte seu advogado ou a Seção 512(c)(3) da Lei de Direitos Autorais para confirmar esses requisitos)", style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)), const SizedBox(height: 20), _dmcaItem(Icons.person_outline, "Informações sobre a pessoa/empresa que reivindica os direitos autorais."), _dmcaItem(Icons.link, "Envio da identificação do material protegido por direitos autorais, fornecendo os URLs correspondentes."), _dmcaItem(Icons.contact_mail_outlined, "Informações que nos permitam entrar em contato com a empresa/empresa em questão, como e-mail, número de telefone ou endereço físico."), const SizedBox(height: 20), Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0xFF1C1C1C), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE50914).withOpacity(0.4))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Todas as informações acima devem ser enviadas para:", style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)), const SizedBox(height: 12), SizedBox(width: double.infinity, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), onPressed: () => launchUrl(Uri.parse("mailto:cdcine@horsefucker.org?subject=DMCA%20Notice"), mode: LaunchMode.externalApplication), icon: const Icon(Icons.email_outlined, color: Colors.white), label: const Text("Enviar notificação DMCA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))), const SizedBox(height: 8), const Text("Quaisquer outros meios de envio não serão aceitos e não receberão resposta.", style: TextStyle(color: Colors.white54, fontSize: 12, height: 1.5))])), const SizedBox(height: 20), Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue.withOpacity(0.3))), child: const Text("O conteúdo protegido por direitos autorais será analisado em até 24 horas e removido em até 48 horas.", style: TextStyle(color: Colors.blue, fontSize: 13, height: 1.6))), const SizedBox(height: 20), Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.orange.withOpacity(0.3))), child: const Text("Observe também que, de acordo com a Seção 512(f), qualquer pessoa que, conscientemente, declare falsamente que um material ou atividade infringe direitos autorais poderá ser responsabilizada.", style: TextStyle(color: Colors.orange, fontSize: 13, height: 1.6))), const SizedBox(height: 30)]))); }
+}
+
+// ==========================================
+// ==========================================
+// SISTEMA DE ANÚNCIOS (WEBVIEW IN-APP POPUP)
+// ==========================================
+
+// ── Lógica de Remoção de Anúncios ──────────────────────────────────────────
+class _AdRemovalData {
+  final String url;
+  final String codeB64;
+  const _AdRemovalData(this.url, this.codeB64);
+  String get decoded {
+    final bytes = base64Decode(codeB64);
+    return utf8.decode(bytes).trim().toLowerCase();
+  }
+}
+
+class AdRemovalManager {
+  AdRemovalManager._();
+  static final AdRemovalManager instance = AdRemovalManager._();
+
+  static const List<_AdRemovalData> _entries = [
+    _AdRemovalData('https://shrtslug.biz/cdom',  'Y2RjaW5lMjAyNQ=='),
+    _AdRemovalData('https://stfly.vip/cdom2',    'Y2RjaW5lMjAyNQ=='),
+  ];
+
+  static const String _keyExpiry  = 'adrem_expiry_ms';
+  static const Duration _validity = Duration(hours: 24);
+
+  Future<bool> isAdFree() async {
+    final prefs = await SharedPreferences.getInstance();
+    final exp = prefs.getInt(_keyExpiry);
+    if (exp == null) return false;
+    return DateTime.now().millisecondsSinceEpoch < exp;
+  }
+
+  (String, int) beginSession() {
+    final idx = DateTime.now().millisecond % _entries.length;
+    return (_entries[idx].url, idx);
+  }
+
+  Future<_AdRemResult> validate(String input, {required int idx, required bool urlOpened, required bool isTV}) async {
+    if (!isTV && !urlOpened) {
+      return _AdRemResult.invalid('Tens de abrir o link primeiro para obter o código!');
+    }
+    final given = input.trim().toLowerCase();
+    if (given.isEmpty) return _AdRemResult.invalid('Digita o código obtido no link.');
+
+    const blackList = ['1234', '0000', '1111', '12345', '123456', '000000', 'teste', 'admin', '123123', 'qwer', 'asdf'];
+    if (given.length < 4 || blackList.contains(given) || RegExp(r'^(\d)\1+$').hasMatch(given)) {
+      return _AdRemResult.invalid('Código inválido. Por favor, copia o código real da página gerada.');
+    }
+
+    final exp = DateTime.now().add(_validity).millisecondsSinceEpoch;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyExpiry, exp);
+    return _AdRemResult.success;
+  }
+
+  Future<void> invalidate() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyExpiry);
+  }
+}
+
+class _AdRemResult {
+  final bool isSuccess;
+  final bool isError;
+  final String? message;
+  const _AdRemResult._({required this.isSuccess, required this.isError, this.message});
+  static const _AdRemResult success = _AdRemResult._(isSuccess: true,  isError: false);
+  static _AdRemResult invalid(String msg) => _AdRemResult._(isSuccess: false, isError: false, message: msg);
+  static _AdRemResult error(String msg)   => _AdRemResult._(isSuccess: false, isError: true,  message: msg);
+}
+
+class _RewardedPopup extends StatefulWidget {
+  final VoidCallback onSuccess;
+  final String tituloAdicional;
+  const _RewardedPopup({required this.onSuccess, this.tituloAdicional = "Para continuar a assistir"});
+  @override State<_RewardedPopup> createState() => _RewardedPopupState();
+}
+
+class _RewardedPopupState extends State<_RewardedPopup> {
+  int _countdown60 = 60;
+  int _countdown15 = 15;
+  bool _aguardando60  = false;
+  bool _anuncioAberto = false;
+  bool _podeFechar    = false;
+  Timer? _timer60;
+  Timer? _timer15;
+  WebViewController? _webCtrl;
+
+  _RemStep _remStep    = _RemStep.hidden;
+  String   _remUrl     = '';
+  int      _remIdx     = 0;       
+  bool     _remLoading = false;
+  bool     _remUrlOpen = false;   
+  String   _remError   = '';
+  int      _remCountdown = 0;
+  Timer?   _remTimer;
+  final    _remCodeCtrl = TextEditingController();
+
+  bool get _isTV => navigatorKey.currentContext != null &&
+      MediaQuery.of(navigatorKey.currentContext!).size.width > 900;
+
+  @override void initState() {
+    super.initState();
+    if (_adsterraLink.length < 10) exit(0);
+  }
+
+  @override void dispose() {
+    _timer60?.cancel();
+    _timer15?.cancel();
+    _remTimer?.cancel();
+    _remCodeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _iniciarContagemLenta() {
+    setState(() { _aguardando60 = true; _countdown60 = 60; });
+    _timer60 = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _countdown60--);
+      if (_countdown60 <= 0) { t.cancel(); widget.onSuccess(); }
+    });
+  }
+
+  void _abrirAnuncioInApp() {
+    final ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFF0B0B0F))
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (req) {
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadRequest(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'));
+
+    setState(() { _anuncioAberto = true; _podeFechar = false; _countdown15 = 15; _webCtrl = ctrl; });
+
+    _timer15 = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _countdown15--);
+      
+      if (_countdown15 == 5) {
+         launchUrl(Uri.parse('https://www.effectivecpmnetwork.com/uxdnex1e3?key=1fe6aae31fc64a4f7b7eea79b9505328'), mode: LaunchMode.externalApplication);
+      }
+
+      if (_countdown15 <= 0) { t.cancel(); setState(() => _podeFechar = true); }
+    });
+  }
+
+  void _iniciarRemocao() {
+    final (url, idx) = AdRemovalManager.instance.beginSession();
+    setState(() {
+      _remUrl     = url;
+      _remIdx     = idx;
+      _remStep    = _RemStep.openLink;
+      _remLoading = false;
+      _remUrlOpen = false;
+      _remError   = '';
+    });
+  }
+
+  Future<void> _abrirLink() async {
+    final uri = Uri.parse(_remUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    setState(() {
+      _remUrlOpen = true;
+      _remStep    = _RemStep.enterCode;
+      _remCountdown = 5;
+    });
+    _remTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _remCountdown--);
+      if (_remCountdown <= 0) t.cancel();
+    });
+  }
+
+  Future<void> _validarCodigo() async {
+    if (_remLoading) return;
+    setState(() { _remLoading = true; _remError = ''; });
+    final result = await AdRemovalManager.instance.validate(
+      _remCodeCtrl.text,
+      idx: _remIdx,
+      urlOpened: _remUrlOpen,
+      isTV: _isTV,
+    );
+    if (!mounted) return;
+    if (result.isSuccess) {
+      setState(() { _remStep = _RemStep.success; _remLoading = false; });
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) widget.onSuccess();
+    } else {
+      setState(() {
+        _remLoading = false;
+        _remError   = result.isError
+            ? (result.message ?? 'Erro ao validar. Tenta novamente.')
+            : (result.message ?? 'Código incorrecto. Verifica e tenta de novo.');
+      });
+    }
+  }
+
+  void _voltarAoInicio() {
+    _remTimer?.cancel();
+    _remCodeCtrl.clear();
+    setState(() {
+      _remStep      = _RemStep.hidden;
+      _remUrl       = '';
+      _remUrlOpen   = false;
+      _remError     = '';
+      _remCountdown = 0;
+    });
+  }
+
+  @override Widget build(BuildContext context) {
+    if (_anuncioAberto && _webCtrl != null) {
+      return Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: double.infinity,
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(color: const Color(0xFF0B0B0F), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white12)),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: const BoxDecoration(color: Color(0xFF141414), borderRadius: BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16))),
+                child: Row(
+                  children: [
+                    const Icon(Icons.live_tv, color: Color(0xFFE50914), size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(child: Text("Suporta o CDCINE 🙏", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500))),
+                    if (!_podeFechar)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(value: _countdown15 / 15, color: Colors.white54, strokeWidth: 2)),
+                          const SizedBox(width: 6),
+                          Text("${_countdown15}s", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        ]),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        autofocus: true,
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                        onPressed: widget.onSuccess,
+                        icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                        label: const Text("Fechar", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                  child: WebViewWidget(controller: _webCtrl!),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_remStep != _RemStep.hidden) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+        child: Container(
+          decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+          padding: const EdgeInsets.all(24),
+          child: _buildRemocaoStep(),
+        ),
+      );
+    }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(color: const Color(0xFF141414), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 30)]),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.asset('assets/pobre.jpg', height: 120, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.live_tv, color: Colors.white54, size: 72))),
+            const SizedBox(height: 16),
+            Text(widget.tituloAdicional, style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Para manter o CDCINE gratuito e os servidores online, escolhe uma das opções abaixo:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                autofocus: true,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF01875F), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _abrirAnuncioInApp,
+                icon: const Icon(Icons.bolt, color: Colors.white),
+                label: const Text("Ver anúncio rápido (15 seg)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: _aguardando60
+                  ? Container(padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(value: _countdown60 / 60, color: Colors.white54, strokeWidth: 2.5)), const SizedBox(width: 12), Text("Aguardando... $_countdown60 seg", style: const TextStyle(color: Colors.white54, fontSize: 13))]))
+                  : OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: const BorderSide(color: Colors.white38), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _iniciarContagemLenta, icon: const Icon(Icons.timer_outlined, color: Colors.white60, size: 18), label: const Text("Aguardar 60 segundos", style: TextStyle(color: Colors.white60, fontSize: 14, fontWeight: FontWeight.w500))),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Color(0xFFE50914), strokeWidth: 2.5)))
+                  : OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: Color(0xFFE50914), width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _iniciarRemocao,
+                      icon: const Icon(Icons.block, color: Color(0xFFE50914), size: 18),
+                      label: const Text("Remover anúncios (grátis)", style: TextStyle(color: Color(0xFFE50914), fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRemocaoStep() {
+    switch (_remStep) {
+      case _RemStep.hidden:
+        return const SizedBox.shrink();
+      case _RemStep.openLink:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.block, color: Color(0xFFE50914), size: 52),
+            const SizedBox(height: 14),
+            Text("Remover Anúncios", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 24, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text("Como funciona:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                  SizedBox(height: 8),
+                  _RemStep_(icon: Icons.open_in_browser, text: "Abre o link abaixo no navegador"),
+                  _RemStep_(icon: Icons.ads_click,       text: "Passa pelos anúncios (é assim que o CDCINE se mantém grátis)"),
+                  _RemStep_(icon: Icons.copy_outlined,   text: "Copia o código que aparece"),
+                  _RemStep_(icon: Icons.keyboard,        text: "Volta aqui e digita o código"),
+                  _RemStep_(icon: Icons.check_circle_outline, text: "24h sem anúncios! (reinicia se fechares o app)"),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isTV)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.amber.withOpacity(0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.withOpacity(0.3))),
+                child: const Row(children: [
+                  Icon(Icons.tv, color: Colors.amber, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(child: Text("Na TV: abre o link no teu telemóvel, copia o código e digita aqui.", style: TextStyle(color: Colors.amber, fontSize: 12))),
+                ]),
+              ),
+            GestureDetector(
+              onTap: _abrirLink,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: const Color(0xFFE50914).withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE50914).withOpacity(0.5))),
+                child: Row(children: [
+                  const Icon(Icons.link, color: Color(0xFFE50914), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_remUrl, style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.open_in_new, color: Color(0xFFE50914), size: 16),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text("O código é completamente gratuito 🎉", style: TextStyle(color: Colors.green, fontSize: 11), textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                autofocus: true,
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _isTV ? () => setState(() { _remStep = _RemStep.enterCode; }) : _abrirLink,
+                icon: Icon(_isTV ? Icons.keyboard : Icons.open_in_browser, color: Colors.white),
+                label: Text(_isTV ? "Já tenho o código →" : "Abrir link e obter código", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Voltar", style: TextStyle(color: Colors.white54))),
+          ],
+        );
+      case _RemStep.enterCode:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.vpn_key_rounded, color: Color(0xFFE50914), size: 48),
+            const SizedBox(height: 14),
+            Text("Digita o código", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 22, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            const Text("Cola ou digita o código que encontraste na página:", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 16),
+            if (_remCountdown > 0 && !_isTV)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text("Aguarda ${_remCountdown}s antes de continuar...", style: const TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            TextField(
+              controller: _remCodeCtrl,
+              autofocus: true,
+              enabled: _isTV || (_remUrlOpen && _remCountdown <= 0),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 3),
+              decoration: InputDecoration(
+                hintText: 'CÓDIGO AQUI',
+                hintStyle: const TextStyle(color: Colors.white24, letterSpacing: 1),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE50914), width: 2)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+              onSubmitted: (_) => _validarCodigo(),
+            ),
+            if (_remError.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(_remError, style: const TextStyle(color: Colors.red, fontSize: 12), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: _remLoading
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                  : ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: (_isTV || (_remUrlOpen && _remCountdown <= 0)) ? _validarCodigo : null,
+                      child: const Text("Confirmar Código", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(onPressed: _voltarAoInicio, child: const Text("← Recomeçar", style: TextStyle(color: Colors.white38))),
+          ],
+        );
+      case _RemStep.success:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 72),
+            const SizedBox(height: 16),
+            Text("Anúncios Removidos!", style: GoogleFonts.bebasNeue(color: Colors.white, fontSize: 26, letterSpacing: 1)),
+            const SizedBox(height: 10),
+            const Text("🎉 24 horas sem anúncios!\nSe fechar e reabrir o app, o processo repete-se.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.6)),
+          ],
+        );
+    }
+  }
+}
+
+class _RemStep_ extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _RemStep_({required this.icon, required this.text});
+  @override Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFFE50914), size: 14),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.4))),
+      ]),
+    );
+  }
+}
+
+enum _RemStep { hidden, openLink, enterCode, success }
